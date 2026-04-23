@@ -1,0 +1,11 @@
+export { Dashboard } from './Dashboard';
+export { Sessions } from './Sessions';
+export { Skills } from './Skills';
+export { CronJobs } from './CronJobs';
+export { Settings } from './Settings';
+export { Monitor } from './Monitor';
+export { Memory } from './Memory';
+export { Platforms } from './Platforms';
+export { Files } from './Files';
+export { ChatPage } from './Chat';
+export { Preferences } from './Preferences';

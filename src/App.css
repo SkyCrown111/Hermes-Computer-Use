@@ -1,0 +1,16 @@
+/* App.css - Hermes Console Application Styles */
+/* Note: Global styles are defined in src/styles/globals.css */
+/* This file is kept for any app-specific overrides if needed */
+
+/* Override default Tauri template styles */
+.logo.vite:hover {
+  filter: drop-shadow(0 0 2em #747bff);
+}
+
+.logo.react:hover {
+  filter: drop-shadow(0 0 2em #61dafb);
+}
+
+.logo.tauri:hover {
+  filter: drop-shadow(0 0 2em #24c8db);
+}

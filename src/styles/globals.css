@@ -1,0 +1,362 @@
+@import "tailwindcss";
+
+/* ============================================
+   Hermes Console - Reference Design Color System
+   ============================================ */
+
+:root {
+  /* ─── Primary Colors (Warm Brown/Copper) ─── */
+  --color-primary: #8F482F;
+  --color-primary-container: #AD5F45;
+  --color-primary-fixed: #FFDBD0;
+  --color-primary-fixed-dim: #FFB59D;
+
+  --color-on-primary: #FFFFFF;
+  --color-on-surface: #1B1C1A;
+  --color-on-surface-variant: #54433E;
+
+  /* ─── Surface Colors (Light Theme) ─── */
+  --color-surface: #FAF9F5;
+  --color-surface-bright: #FAF9F5;
+  --color-surface-dim: #DBDAD6;
+  --color-surface-container: #EFEEEA;
+  --color-surface-container-low: #F4F4F0;
+  --color-surface-container-high: #E9E8E4;
+  --color-surface-container-highest: #E3E2DF;
+  --color-surface-container-lowest: #FFFFFF;
+  --color-surface-variant: #E3E2DF;
+
+  --color-background: #FAF9F5;
+
+  /* ─── Outline Colors ─── */
+  --color-outline: #87736D;
+  --color-outline-variant: #DAC1BA;
+
+  /* ─── Secondary & Tertiary ─── */
+  --color-secondary: #2D628F;
+  --color-secondary-container: #9ACBFE;
+  --color-tertiary: #4F6237;
+  --color-tertiary-container: #677B4E;
+
+  /* ─── Status Colors ─── */
+  --color-error: #BA1A1A;
+  --color-error-container: #FFDAD6;
+  --color-success: #16A34A;
+  --color-warning: #CA8A04;
+
+  /* ─── Inverse Colors (for dark elements on light bg) ─── */
+  --color-inverse-surface: #2F312E;
+  --color-inverse-on-surface: #F2F1ED;
+  --color-inverse-primary: #FFB59D;
+
+  /* ─── Brand & Accents ─── */
+  --color-brand: var(--color-primary);
+  --color-text-accent: var(--color-secondary);
+
+  /* ─── Fonts ─── */
+  --font-headline: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+  --font-body: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+  --font-label: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+  --font-mono: 'SF Mono', 'Fira Code', Consolas, monospace;
+
+  /* ─── Semantic Aliases ─── */
+  /* Layout dimensions */
+  --sidebar-width: 240px;
+  --sidebar-collapsed-width: 64px;
+  --titlebar-height: 40px;
+
+  /* Surface aliases */
+  --color-surface-sidebar: var(--color-surface-container-low);
+  --color-surface-hover: var(--color-surface-container-high);
+  --color-surface-selected: var(--color-surface-container);
+  --color-surface-user-msg: var(--color-surface-container);
+
+  /* Border aliases */
+  --color-border: var(--color-outline-variant);
+  --color-border-focus: var(--color-primary);
+  --color-border-separator: var(--color-outline-variant);
+
+  /* Text aliases */
+  --color-text-primary: var(--color-on-surface);
+  --color-text-secondary: var(--color-on-surface-variant);
+  --color-text-tertiary: var(--color-outline);
+
+  /* Info surface */
+  --color-surface-info: var(--color-surface-container-low);
+
+  /* Shadows */
+  --shadow-sm: 0 2px 8px rgba(27, 28, 26, 0.04);
+  --shadow-md: 0 4px 16px rgba(27, 28, 26, 0.08);
+  --shadow-lg: 0 8px 32px rgba(27, 28, 26, 0.12);
+  --shadow-dropdown: 0 4px 20px rgba(27, 28, 26, 0.04), 0 12px 40px rgba(27, 28, 26, 0.08);
+
+  /* Button colors */
+  --color-btn-primary-bg: var(--color-primary);
+  --color-btn-primary-fg: var(--color-on-primary);
+  --color-btn-primary-bg-hover: var(--color-primary-container);
+  --color-btn-primary-bg-active: var(--color-primary);
+
+  /* ─── Legacy Variables (for backwards compatibility) ─── */
+  --bg-primary: var(--color-surface);
+  --bg-secondary: var(--color-surface-container);
+  --bg-tertiary: var(--color-surface-container-high);
+  --bg-glass: rgba(244, 244, 240, 0.8);
+
+  --text-primary: var(--color-text-primary);
+  --text-secondary: var(--color-text-secondary);
+  --text-tertiary: var(--color-text-tertiary);
+
+  --accent-primary: var(--color-brand);
+  --accent-secondary: var(--color-secondary);
+  --accent-success: var(--color-success);
+  --accent-warning: var(--color-warning);
+  --accent-error: var(--color-error);
+
+  --glass-blur: blur(20px);
+  --glass-border: var(--color-border);
+
+  /* ─── Typography ─── */
+  --font-sans: var(--font-body);
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-base: 16px;
+  --text-lg: 18px;
+  --text-xl: 20px;
+  --text-2xl: 24px;
+  --text-3xl: 30px;
+
+  --font-normal: 400;
+  --font-medium: 500;
+  --font-semibold: 600;
+  --font-bold: 700;
+
+  /* ─── Spacing ─── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* ─── Radii ─── */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+
+  /* ─── Transitions ─── */
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --duration-slow: 400ms;
+
+  --ease-out: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --ease-in-out: cubic-bezier(0.42, 0, 0.58, 1);
+  --ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+/* ─── Dark Theme ─── */
+[data-theme="dark"] {
+  /* ─── Surface Colors (Dark Theme) ─── */
+  --color-surface: #1B1C1A;
+  --color-surface-bright: #2F312E;
+  --color-surface-dim: #1B1C1A;
+  --color-surface-container: #252624;
+  --color-surface-container-low: #1F201E;
+  --color-surface-container-high: #2B2C29;
+  --color-surface-container-highest: #353633;
+  --color-surface-container-lowest: #151614;
+  --color-surface-variant: #2F312E;
+
+  --color-background: #1B1C1A;
+
+  /* ─── Outline Colors (Dark) ─── */
+  --color-outline: #A09B96;
+  --color-outline-variant: #544F4B;
+
+  /* ─── Text Colors (Dark) ─── */
+  --color-on-surface: #E3E2DF;
+  --color-on-surface-variant: #C9C5C0;
+
+  /* ─── Primary Colors (Dark) - Muted for dark theme ─── */
+  --color-primary: #9A6248;
+  --color-primary-container: #B87A5E;
+  --color-primary-fixed: #4A2215;
+  --color-primary-fixed-dim: #3D1A10;
+  --color-on-primary: #FFFFFF;
+
+  /* ─── Inverse Colors (for light elements on dark bg) ─── */
+  --color-inverse-surface: #E3E2DF;
+  --color-inverse-on-surface: #2F312E;
+  --color-inverse-primary: #8F482F;
+
+  /* ─── Status Colors (Dark) ─── */
+  --color-error: #FFB4AB;
+  --color-error-container: #93000A;
+  --color-success: #4ADE80;
+  --color-warning: #FBBF24;
+
+  /* ─── Shadows (Dark) ─── */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
+  --shadow-dropdown: 0 4px 20px rgba(0, 0, 0, 0.3), 0 12px 40px rgba(0, 0, 0, 0.4);
+
+  /* ─── Legacy Variables Update ─── */
+  --bg-glass: rgba(27, 28, 26, 0.8);
+
+  /* ─── Brand Override for Dark Theme ─── */
+  --color-brand: var(--color-primary);
+  --accent-primary: var(--color-primary);
+  --accent-secondary: var(--color-secondary);
+  --accent-success: var(--color-success);
+  --accent-warning: var(--color-warning);
+  --accent-error: var(--color-error);
+}
+
+/* ─── Base Styles ─── */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+}
+
+body {
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  color: var(--color-text-primary);
+  background-color: var(--color-background);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Form Elements ─── */
+select {
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2387736D' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 32px;
+}
+
+select:hover {
+  border-color: var(--color-outline);
+  background-color: var(--color-surface-container-low);
+}
+
+select:focus {
+  outline: none;
+  border-color: var(--color-border-focus);
+  box-shadow: 0 0 0 3px rgba(143, 72, 47, 0.15);
+}
+
+select option {
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+}
+
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-outline);
+  border-radius: var(--radius-full);
+  opacity: 0.3;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  opacity: 0.6;
+}
+
+/* ─── Selection ─── */
+::selection {
+  background: rgba(143, 72, 47, 0.2);
+  color: var(--color-text-primary);
+}
+
+/* ─── Glass Card ─── */
+.glass-card {
+  background: var(--bg-glass);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+}
+
+/* ─── Transitions ─── */
+.transition-base {
+  transition: all var(--duration-normal) var(--ease-out);
+}
+
+.hover-scale {
+  transition: transform var(--duration-normal) var(--ease-out);
+}
+
+.hover-scale:hover {
+  transform: scale(1.02);
+}
+
+/* ─── Animations ─── */
+@keyframes shimmer {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.animate-shimmer { animation: shimmer 1.5s ease-in-out infinite; }
+.animate-spin { animation: spin 1s linear infinite; }
+.animate-pulse-dot { animation: pulse-dot 1.5s ease-in-out infinite; }
+
+/* ─── Material Symbols ─── */
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 20px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: 'liga';
+}

@@ -1,0 +1,53 @@
+{
+  "name": "hermes-computer-use",
+  "version": "0.1.1",
+  "description": "Hermes Computer Use - Desktop management application for Hermes Agent",
+  "author": "Crown_22",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Crown-22/Hermes-Computer-Use.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Crown-22/Hermes-Computer-Use/issues"
+  },
+  "homepage": "https://github.com/Crown-22/Hermes-Computer-Use#readme",
+  "keywords": [
+    "hermes",
+    "ai",
+    "agent",
+    "desktop",
+    "tauri",
+    "react",
+    "computer-use"
+  ],
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "npx tauri",
+    "tauri:dev": "npx tauri dev",
+    "tauri:build": "npx tauri build"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-opener": "^2",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "zustand": "^5.0.12"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.2.2",
+    "@tauri-apps/cli": "^2.10.1",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^4.6.0",
+    "autoprefixer": "^10.5.0",
+    "postcss": "^8.5.10",
+    "tailwindcss": "^4.2.2",
+    "typescript": "~5.8.3",
+    "vite": "^7.0.4"
+  }
+}
