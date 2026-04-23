@@ -399,30 +399,43 @@ function parseToolJson(content: string): {
           try {
             const parsed = JSON.parse(jsonStr);
 
-            // Error JSON
-            if (parsed.success === false || parsed.error) {
-              errors.push({ error: parsed.error || 'Unknown error' });
+            // Error JSON - extract error message
+            if (parsed.success === false) {
+              // Handle nested error messages
+              let errorMsg = 'Unknown error';
+              if (typeof parsed.error === 'string') {
+                errorMsg = parsed.error;
+              } else if (parsed.error && typeof parsed.error === 'object') {
+                errorMsg = parsed.error.message || JSON.stringify(parsed.error);
+              }
+              errors.push({ error: errorMsg });
               cleanContent = cleanContent.replace(jsonStr, '').trim();
-              i = 0; // Restart scanning
+              i = 0;
               continue;
             }
             // Session search results
             else if (parsed.success && parsed.results && Array.isArray(parsed.results)) {
               sessionSearchResults = parsed as SessionSearchResponse;
               cleanContent = cleanContent.replace(jsonStr, '').trim();
-              i = 0; // Restart scanning
+              i = 0;
               continue;
             }
             // Tool execution output format
             else if (parsed.output !== undefined && parsed.exit_code !== undefined) {
               cleanContent = cleanContent.replace(jsonStr, '').trim();
-              i = 0; // Restart scanning
+              i = 0;
+              continue;
+            }
+            // Screenshot/vision analysis result (remove from display)
+            else if (parsed.screenshot_path || parsed.note) {
+              cleanContent = cleanContent.replace(jsonStr, '').trim();
+              i = 0;
               continue;
             }
             // Other success JSON - remove from display (it's tool execution output)
             else if (parsed.success || parsed.job_id || parsed.jobs || parsed.targets || parsed.count !== undefined || parsed.api_calls || parsed.tool_trace || parsed.duration_seconds) {
               cleanContent = cleanContent.replace(jsonStr, '').trim();
-              i = 0; // Restart scanning
+              i = 0;
               continue;
             }
           } catch {
@@ -445,8 +458,26 @@ function parseToolJson(content: string): {
 
 // Tool Error Card Component - for displaying tool execution errors
 const ToolErrorCard: React.FC<{ error: string }> = ({ error }) => {
-  // Parse Playwright-style errors for cleaner display
+  // Parse various error formats for cleaner display
   const parseError = (errorMsg: string): { title: string; details: string } => {
+    // Vision analysis error
+    if (errorMsg.includes('vision analysis')) {
+      const match = errorMsg.match(/Error during vision analysis:\s*(.+)/);
+      if (match) {
+        // Try to extract the actual error message from nested JSON
+        const innerError = match[1];
+        if (innerError.includes('image_url is only supported')) {
+          return {
+            title: '视觉分析错误',
+            details: '当前模型不支持图片分析 (image_url)，请使用支持视觉的模型',
+          };
+        }
+        return {
+          title: '视觉分析错误',
+          details: innerError.slice(0, 200),
+        };
+      }
+    }
     // Playwright page.evaluate error
     if (errorMsg.includes('page.evaluate:')) {
       const match = errorMsg.match(/page\.evaluate:\s*(.+)/);
@@ -455,10 +486,10 @@ const ToolErrorCard: React.FC<{ error: string }> = ({ error }) => {
         details: match?.[1] || errorMsg,
       };
     }
-    // Generic error
+    // Generic error - truncate if too long
     return {
       title: '工具执行错误',
-      details: errorMsg,
+      details: errorMsg.length > 300 ? errorMsg.slice(0, 300) + '...' : errorMsg,
     };
   };
 
