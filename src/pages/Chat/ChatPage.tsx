@@ -354,14 +354,27 @@ function parseToolJson(content: string): {
   // These are typically multi-line outputs that don't form valid JSON
   const toolOutputPatterns = [
     /^npm error.*$/gm,
-    /^npm error\s+at async.*$/gm,
-    /^npm error\s+\{.*$/gm,
-    /^npm error\s+\}.*$/gm,
+    /^npm\s+error\s+at async.*$/gm,
+    /^npm\s+error\s+\{.*$/gm,
+    /^npm\s+error\s+\}.*$/gm,
+    /^npm\s+error\s+errno.*$/gm,
+    /^npm\s+error\s+code.*$/gm,
+    /^npm\s+error\s+syscall.*$/gm,
+    /^npm\s+error\s+path.*$/gm,
+    /^npm\s+error\s+dest.*$/gm,
+    /^npm\s+error\s+The operation.*$/gm,
+    /^npm\s+error\s+It is likely.*$/gm,
+    /^npm\s+error\s+If you believe.*$/gm,
+    /^npm\s+error\s+permissions.*$/gm,
+    /^npm\s+error\s+the command.*$/gm,
+    /^npm\s+error\s+A complete log.*$/gm,
+    /^npm\s+error$/gm,
     /^-rwxrwxrwx.*$/gm,  // file listings
     /^drwxrwxrwx.*$/gm,  // directory listings
     /^total\s+\d+.*$/gm, // ls totals
     /^生成.*架构图.*$/gm, // Chinese generation messages
     /^架构图生成完成.*$/gm,
+    /^继续检查状态.*$/gm,
   ];
 
   for (const pattern of toolOutputPatterns) {
@@ -369,11 +382,15 @@ function parseToolJson(content: string): {
   }
 
   // Remove JSON-like structures that start with {"output": or {"bytes_written":
-  // These often have malformed JSON due to unescaped newlines
-  cleanContent = cleanContent.replace(/\{"output":\s*"[^"]*"/g, '').trim();
-  cleanContent = cleanContent.replace(/\{"bytes_written":\s*\d+/g, '').trim();
+  // Use [\s\S] to match any character including newlines
+  cleanContent = cleanContent.replace(/\{"output":\s*"[\s\S]*?",\s*"exit_code"/g, '').trim();
+  cleanContent = cleanContent.replace(/\{"bytes_written":\s*\d+[\s\S]*?\}/g, '').trim();
+  cleanContent = cleanContent.replace(/\{"success":\s*(true|false)[\s\S]*?"screenshot_path"[\s\S]*?\}/g, '').trim();
   cleanContent = cleanContent.replace(/"exit_code":\s*\d+/g, '').trim();
   cleanContent = cleanContent.replace(/"error":\s*(null|"[^"]*")/g, '').trim();
+
+  // Remove remaining JSON fragments
+  cleanContent = cleanContent.replace(/\{[\s\S]*?"output"[\s\S]*?\}/g, '').trim();
 
   // Helper to find matching closing brace
   const findJsonEnd = (str: string, start: number): number => {
