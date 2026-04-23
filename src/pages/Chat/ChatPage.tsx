@@ -340,7 +340,7 @@ interface SessionSearchResponse {
 }
 
 // Parse various JSON formats from tool outputs
-// Only extract errors and session search results - other JSON is part of tool execution
+// Only extract errors - other JSON is part of tool execution and should be removed
 function parseToolJson(content: string): {
   cleanContent: string;
   errors: Array<{ error: string }>;
@@ -350,108 +350,114 @@ function parseToolJson(content: string): {
   let sessionSearchResults: SessionSearchResponse | null = null;
   let cleanContent = content;
 
-  // First, remove incomplete JSON fragments (lines starting with , or containing tool_trace, api_calls, etc.)
-  // These are fragments from session metadata
-  cleanContent = cleanContent.replace(/^\s*,\s*"[^"]+"\s*:\s*[\d\[\{][^\n]*$/gm, '').trim();
-  cleanContent = cleanContent.replace(/\{\s*"api_calls"[^}]*\}/g, '').trim();
-  cleanContent = cleanContent.replace(/\{\s*"tool_trace"[^}]*\}/g, '').trim();
-  cleanContent = cleanContent.replace(/"tool_trace"\s*:\s*\[[^\]]*\]/g, '').trim();
-  cleanContent = cleanContent.replace(/"tokens"\s*:\s*\{[^}]*\}/g, '').trim();
+  // Helper to find matching closing brace
+  const findJsonEnd = (str: string, start: number): number => {
+    let depth = 0;
+    let inString = false;
+    let escape = false;
 
-  // Remove tool execution output format: {"output": "...", "exit_code": 0, "error": null}
-  cleanContent = cleanContent.replace(/\{\s*"output"\s*:\s*"[^"]*",\s*"exit_code"\s*:\s*\d+,\s*"error"\s*:\s*(null|"[^"]*")\s*\}/g, '').trim();
+    for (let j = start; j < str.length; j++) {
+      const char = str[j];
 
-  // Find and extract JSON objects by matching balanced braces
+      if (escape) {
+        escape = false;
+        continue;
+      }
+
+      if (char === '\\') {
+        escape = true;
+        continue;
+      }
+
+      if (char === '"') {
+        inString = !inString;
+      } else if (!inString) {
+        if (char === '{') depth++;
+        else if (char === '}') {
+          depth--;
+          if (depth === 0) return j;
+        }
+      }
+    }
+    return -1;
+  };
+
+  // Process all JSON objects in content
   let i = 0;
-  while (i < cleanContent.length) {
+  let iterations = 0;
+  const maxIterations = 100; // Prevent infinite loops
+
+  while (i < cleanContent.length && iterations < maxIterations) {
+    iterations++;
+
     if (cleanContent[i] === '{') {
-      // Try to find the matching closing brace
-      let depth = 0;
-      let j = i;
-      let inString = false;
-      let escape = false;
+      const endIdx = findJsonEnd(cleanContent, i);
 
-      while (j < cleanContent.length) {
-        const char = cleanContent[j];
+      if (endIdx > 0) {
+        const jsonStr = cleanContent.slice(i, endIdx + 1);
 
-        if (escape) {
-          escape = false;
-          j++;
-          continue;
-        }
+        try {
+          const parsed = JSON.parse(jsonStr);
 
-        if (char === '\\') {
-          escape = true;
-          j++;
-          continue;
-        }
+          // Determine if this JSON should be removed
+          let shouldRemove = false;
 
-        if (char === '"') {
-          inString = !inString;
-        } else if (!inString) {
-          if (char === '{') depth++;
-          else if (char === '}') depth--;
-        }
-
-        if (depth === 0) {
-          // Found complete JSON object
-          const jsonStr = cleanContent.slice(i, j + 1);
-          try {
-            const parsed = JSON.parse(jsonStr);
-
-            // Error JSON - extract error message
-            if (parsed.success === false) {
-              // Handle nested error messages
-              let errorMsg = 'Unknown error';
-              if (typeof parsed.error === 'string') {
-                errorMsg = parsed.error;
-              } else if (parsed.error && typeof parsed.error === 'object') {
-                errorMsg = parsed.error.message || JSON.stringify(parsed.error);
-              }
-              errors.push({ error: errorMsg });
-              cleanContent = cleanContent.replace(jsonStr, '').trim();
-              i = 0;
-              continue;
+          // Error JSON - extract error message
+          if (parsed.success === false) {
+            let errorMsg = 'Unknown error';
+            if (typeof parsed.error === 'string') {
+              errorMsg = parsed.error;
+            } else if (parsed.error && typeof parsed.error === 'object') {
+              errorMsg = parsed.error.message || JSON.stringify(parsed.error);
             }
-            // Session search results
-            else if (parsed.success && parsed.results && Array.isArray(parsed.results)) {
-              sessionSearchResults = parsed as SessionSearchResponse;
-              cleanContent = cleanContent.replace(jsonStr, '').trim();
-              i = 0;
-              continue;
-            }
-            // Tool execution output format
-            else if (parsed.output !== undefined && parsed.exit_code !== undefined) {
-              cleanContent = cleanContent.replace(jsonStr, '').trim();
-              i = 0;
-              continue;
-            }
-            // Screenshot/vision analysis result (remove from display)
-            else if (parsed.screenshot_path || parsed.note) {
-              cleanContent = cleanContent.replace(jsonStr, '').trim();
-              i = 0;
-              continue;
-            }
-            // Other success JSON - remove from display (it's tool execution output)
-            else if (parsed.success || parsed.job_id || parsed.jobs || parsed.targets || parsed.count !== undefined || parsed.api_calls || parsed.tool_trace || parsed.duration_seconds) {
-              cleanContent = cleanContent.replace(jsonStr, '').trim();
-              i = 0;
-              continue;
-            }
-          } catch {
-            // Not valid JSON, continue
+            errors.push({ error: errorMsg });
+            shouldRemove = true;
           }
-          break;
+          // Session search results - keep for special display
+          else if (parsed.success && parsed.results && Array.isArray(parsed.results)) {
+            sessionSearchResults = parsed as SessionSearchResponse;
+            shouldRemove = true;
+          }
+          // Tool execution outputs - always remove
+          else if (
+            parsed.output !== undefined ||
+            parsed.exit_code !== undefined ||
+            parsed.screenshot_path ||
+            parsed.note ||
+            parsed.bytes_written ||
+            parsed.dirs_created ||
+            parsed.success === true ||
+            parsed.job_id ||
+            parsed.jobs ||
+            parsed.targets ||
+            parsed.count !== undefined ||
+            parsed.api_calls ||
+            parsed.tool_trace ||
+            parsed.duration_seconds
+          ) {
+            shouldRemove = true;
+          }
+
+          if (shouldRemove) {
+            cleanContent = cleanContent.replace(jsonStr, '').trim();
+            i = 0; // Restart from beginning after modification
+            continue;
+          }
+        } catch {
+          // Not valid JSON, skip
         }
-        j++;
       }
     }
     i++;
   }
 
-  // Clean up any remaining JSON-like fragments
-  cleanContent = cleanContent.replace(/\}\s*,\s*"[^"]+"\s*:\s*[\d\[\{]/g, '}').trim();
-  cleanContent = cleanContent.replace(/\[\s*\{[^}]*"tool"[^}]*\}[\s\S]*?\]/g, '').trim();
+  // Clean up remaining artifacts
+  cleanContent = cleanContent
+    .replace(/^\s*,\s*"[^"]+"\s*:\s*[\d\[\{][^\n]*$/gm, '')
+    .replace(/\}\s*\{/g, '\n') // Separate adjacent JSON objects
+    .replace(/\}\s*,\s*"[^"]+"\s*:\s*[\d\[\{]/g, '}')
+    .replace(/\[\s*\{[^}]*"tool"[^}]*\}[\s\S]*?\]/g, '')
+    .trim();
 
   return { cleanContent, errors, sessionSearchResults };
 }
