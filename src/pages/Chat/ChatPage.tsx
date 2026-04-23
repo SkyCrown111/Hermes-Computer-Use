@@ -350,6 +350,31 @@ function parseToolJson(content: string): {
   let sessionSearchResults: SessionSearchResponse | null = null;
   let cleanContent = content;
 
+  // Pre-process: remove lines that look like tool output (npm errors, file listings, etc.)
+  // These are typically multi-line outputs that don't form valid JSON
+  const toolOutputPatterns = [
+    /^npm error.*$/gm,
+    /^npm error\s+at async.*$/gm,
+    /^npm error\s+\{.*$/gm,
+    /^npm error\s+\}.*$/gm,
+    /^-rwxrwxrwx.*$/gm,  // file listings
+    /^drwxrwxrwx.*$/gm,  // directory listings
+    /^total\s+\d+.*$/gm, // ls totals
+    /^生成.*架构图.*$/gm, // Chinese generation messages
+    /^架构图生成完成.*$/gm,
+  ];
+
+  for (const pattern of toolOutputPatterns) {
+    cleanContent = cleanContent.replace(pattern, '').trim();
+  }
+
+  // Remove JSON-like structures that start with {"output": or {"bytes_written":
+  // These often have malformed JSON due to unescaped newlines
+  cleanContent = cleanContent.replace(/\{"output":\s*"[^"]*"/g, '').trim();
+  cleanContent = cleanContent.replace(/\{"bytes_written":\s*\d+/g, '').trim();
+  cleanContent = cleanContent.replace(/"exit_code":\s*\d+/g, '').trim();
+  cleanContent = cleanContent.replace(/"error":\s*(null|"[^"]*")/g, '').trim();
+
   // Helper to find matching closing brace
   const findJsonEnd = (str: string, start: number): number => {
     let depth = 0;
