@@ -1,6 +1,7 @@
 import './styles/globals.css';
 import { Dashboard, Sessions, Skills, CronJobs, Settings, Monitor, Memory, Platforms, Files, ChatPage, Preferences } from './pages';
 import { useNavigationStore, useThemeStore, useSessionStore } from './stores';
+import { initializeChatStore } from './stores/chatStore';
 import { Layout } from './components/layout';
 import { useEffect } from 'react';
 import { logger } from './lib/logger';
@@ -19,10 +20,13 @@ function App() {
 
   // Restore tabs and fetch sessions on mount
   useEffect(() => {
-    // Fetch sessions list first
-    fetchSessions().then(() => {
-      // Then restore tabs (needs sessions to validate)
-      restoreTabs();
+    // Initialize chat store with persisted messages first
+    initializeChatStore();
+
+    // Restore tabs first (from localStorage)
+    restoreTabs().then(() => {
+      // Then fetch sessions list (will also check for missing sessions from open tabs)
+      fetchSessions();
     });
   }, [fetchSessions, restoreTabs]);
 

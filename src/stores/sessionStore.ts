@@ -105,12 +105,20 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
     try {
       const response = await sessionApi.listSessions(platform || undefined, limit, offset);
+      logger.debug('[SessionStore] Server returned sessions:', response.sessions.length);
+
+      // Log each session ID for debugging
+      response.sessions.forEach((s, i) => {
+        logger.debug(`[SessionStore] Server session ${i}:`, s.id, s.chat_name);
+      });
 
       // Preserve optimistically added sessions that are not yet in the server response
       const { sessions: currentSessions, optimisticSessionIds } = get();
       const optimisticSessions = currentSessions.filter(s =>
         optimisticSessionIds.has(s.id) && !response.sessions.some(rs => rs.id === s.id)
       );
+
+      logger.debug('[SessionStore] Optimistic sessions to preserve:', optimisticSessions.length);
 
       // Merge: optimistic sessions first, then server sessions
       const mergedSessions = [...optimisticSessions];
@@ -126,11 +134,79 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         newOptimisticIds.delete(serverSession.id);
       }
 
+      // Check for open tabs that are not in the session list
+      // This handles the case where a session exists but wasn't returned in this batch
+      try {
+        const { useNavigationStore } = await import('./navigationStore');
+        const { openTabs } = useNavigationStore.getState();
+
+        logger.debug('[SessionStore] Open tabs to check:', openTabs.map(t => t.id));
+
+        // For each open tab that's not in mergedSessions
+        for (const tab of openTabs) {
+          if (mergedSessions.some(s => s.id === tab.id)) continue;
+
+          // Handle "new_" tabs - create optimistic session entry
+          if (tab.id.startsWith('new_')) {
+            const now = new Date().toISOString();
+            const newSession: Session = {
+              id: tab.id,
+              platform: 'cli',
+              chat_id: '',
+              chat_name: tab.title || '新会话',
+              started_at: now,
+              last_activity_at: now,
+              message_count: 0,
+              model: '',
+              input_tokens: 0,
+              output_tokens: 0,
+              estimated_cost_usd: 0,
+              status: 'active',
+            };
+            mergedSessions.unshift(newSession);
+            logger.debug('[SessionStore] Created optimistic session for new_ tab:', tab.id);
+            continue;
+          }
+
+          logger.debug('[SessionStore] Tab not in session list, fetching:', tab.id);
+
+          // Try to fetch this session individually
+          try {
+            const sessionResponse = await sessionApi.getSession(tab.id);
+            if (sessionResponse.session) {
+              // Use the tab title if it's more descriptive than the session's chat_name
+              const sessionWithTitle = {
+                ...sessionResponse.session,
+                chat_name: tab.title || sessionResponse.session.chat_name || `会话 ${tab.id.slice(0, 12)}`,
+              };
+              mergedSessions.unshift(sessionWithTitle);
+              logger.debug('[SessionStore] Fetched missing session:', tab.id, 'title:', sessionWithTitle.chat_name);
+            }
+          } catch (err) {
+            // Session might not exist on server anymore - remove from optimistic tracking
+            logger.debug('[SessionStore] Could not fetch session:', tab.id, err);
+            newOptimisticIds.delete(tab.id);
+          }
+        }
+      } catch (err) {
+        logger.debug('[SessionStore] Could not import navigationStore:', err);
+      }
+
+      // Sort by last_activity_at descending
+      mergedSessions.sort((a, b) =>
+        new Date(b.last_activity_at).getTime() - new Date(a.last_activity_at).getTime()
+      );
+
       set({
         sessions: mergedSessions,
-        total: response.total + optimisticSessions.length,
+        total: mergedSessions.length,
         isLoading: false,
         optimisticSessionIds: newOptimisticIds,
+      });
+
+      logger.debug('[SessionStore] Final merged sessions:', mergedSessions.length);
+      mergedSessions.forEach((s, i) => {
+        logger.debug(`[SessionStore] Final session ${i}:`, s.id, s.chat_name);
       });
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
@@ -140,8 +216,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   // 强制刷新会话列表
   refreshSessions: () => {
-    const { refreshKey } = get();
+    const { refreshKey, fetchSessions } = get();
     set({ refreshKey: refreshKey + 1 });
+    // Immediately fetch sessions from server
+    fetchSessions();
   },
 
   // 更新会话活动状态（发送消息后调用）
@@ -169,7 +247,20 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
     // 检查是否已存在
     if (sessions.some(s => s.id === sessionId)) {
+      logger.debug('[SessionStore] Session already exists, skipping optimistic add:', sessionId);
       return;
+    }
+
+    // Try to get title from navigation store
+    let sessionTitle = '新会话';
+    try {
+      const { useNavigationStore } = require('./navigationStore');
+      const tab = useNavigationStore.getState().openTabs.find((t: { id: string; title: string }) => t.id === sessionId);
+      if (tab?.title) {
+        sessionTitle = tab.title;
+      }
+    } catch {
+      // Ignore if navigation store not available
     }
 
     const now = new Date().toISOString();
@@ -177,7 +268,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       id: sessionId,
       platform: 'cli',
       chat_id: '',
-      chat_name: '新会话',
+      chat_name: sessionTitle,
       started_at: now,
       last_activity_at: now,
       message_count: 0,
@@ -197,7 +288,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       sessions: [newSession, ...sessions],
       optimisticSessionIds: newOptimisticIds
     });
-    logger.debug('[SessionStore] Optimistically added session:', sessionId);
+    logger.debug('[SessionStore] Optimistically added session:', sessionId, 'title:', sessionTitle);
   },
 
   // 从乐观列表中移除（服务器已返回）
@@ -334,6 +425,24 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       if (currentSession?.id === id) {
         set({ currentSession: { ...currentSession, chat_name: title } });
       }
+
+      // Update the tab title in navigation store
+      try {
+        const { useNavigationStore } = await import('./navigationStore');
+        useNavigationStore.getState().updateTabTitle(id, title);
+      } catch {
+        // Ignore if navigation store not available
+      }
+
+      // Save tabs to persist the updated title
+      try {
+        const { useNavigationStore } = await import('./navigationStore');
+        useNavigationStore.getState().saveTabs();
+      } catch {
+        // Ignore if navigation store not available
+      }
+
+      logger.debug('[SessionStore] Updated session title:', id, title);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       set({ error: errorMsg || 'Unknown error' });

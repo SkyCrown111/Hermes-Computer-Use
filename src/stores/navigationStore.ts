@@ -167,9 +167,9 @@ export const useNavigationStore = create<NavigationState>((set, get) => ({
       const data = JSON.parse(raw) as TabPersistence;
       if (!data.openTabs || data.openTabs.length === 0) return;
 
-      // Filter out "new_" tabs (temporary tabs that weren't saved as real sessions)
+      // Keep all tabs including "new_" ones - they might have messages
+      // The session store will try to fetch them or create them
       const validTabs: OpenTab[] = data.openTabs
-        .filter(t => !t.id.startsWith('new_'))
         .map(t => ({
           id: t.id,
           title: t.title,
@@ -191,6 +191,7 @@ export const useNavigationStore = create<NavigationState>((set, get) => ({
       });
 
       logger.debug('[NavigationStore] Restored tabs:', validTabs.length, 'active:', activeId);
+      logger.debug('[NavigationStore] Tab IDs:', validTabs.map(t => t.id));
     } catch (err) {
       logger.error('[NavigationStore] Error restoring tabs:', err);
     }

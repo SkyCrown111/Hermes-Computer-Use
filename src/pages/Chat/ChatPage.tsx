@@ -997,13 +997,15 @@ export const ChatPage: React.FC<ChatPageProps> = ({
             if (currentTabId && currentTabId.startsWith('new_')) {
               // First migrate messages from old ID to new ID
               useChatStore.getState().migrateSession(currentTabId, newSessionId);
-              // Then update the tab
-              useNavigationStore.getState().replaceTabId(currentTabId, newSessionId);
+              // Then update the tab with the new session ID
+              // Use a default title that will be updated when the session is fetched
+              useNavigationStore.getState().replaceTabId(currentTabId, newSessionId, '新会话');
             }
 
             // Optimistically add session to list immediately
-            // Don't call refreshSessions here - onComplete will handle it
             useSessionStore.getState().addSessionOptimistic(newSessionId);
+            // Then fetch the full session list to get the actual session data from server
+            useSessionStore.getState().fetchSessions();
           },
         }
       );

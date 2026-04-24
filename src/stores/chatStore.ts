@@ -4,6 +4,9 @@
 import { create } from 'zustand';
 import { logger } from '../lib/logger';
 
+// LocalStorage key for message persistence
+const CHAT_MESSAGES_KEY = 'hermes-chat-messages';
+
 // 每个会话的状态
 export interface PerSessionState {
   messages: ChatMessage[];
@@ -179,6 +182,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         },
       };
     });
+
+    // Persist after adding message
+    persistMessages(get().sessions);
   },
 
   updateMessage: (sessionId, messageId, updates) => {
@@ -189,6 +195,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         ),
       })),
     }));
+
+    // Persist after updating message
+    persistMessages(get().sessions);
   },
 
   setStreaming: (sessionId, isStreaming) => {
@@ -374,6 +383,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         },
       };
     });
+
+    // Persist after loading messages
+    persistMessages(get().sessions);
   },
 
   getLastMessage: (sessionId) => {
@@ -410,17 +422,56 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     });
 
     logger.debug('[ChatStore] Migrated session from', oldId, 'to', newId);
+
+    // Persist messages after migration
+    persistMessages(get().sessions);
   },
 }));
 
-// Debug: log state changes
-if (typeof window !== 'undefined') {
-  useChatStore.subscribe((state) => {
-    const sessionCount = Object.keys(state.sessions).length;
-    const totalMessages = Object.values(state.sessions).reduce(
-      (sum, s) => sum + s.messages.length,
-      0
-    );
-    logger.debug('[ChatStore] State:', sessionCount, 'sessions,', totalMessages, 'messages');
-  });
+// Persist messages to localStorage
+function persistMessages(sessions: Record<string, PerSessionState>) {
+  try {
+    // Only persist messages, not streaming state
+    const messagesToSave: Record<string, ChatMessage[]> = {};
+    for (const [sessionId, state] of Object.entries(sessions)) {
+      if (state.messages.length > 0) {
+        messagesToSave[sessionId] = state.messages;
+      }
+    }
+    localStorage.setItem(CHAT_MESSAGES_KEY, JSON.stringify(messagesToSave));
+    logger.debug('[ChatStore] Persisted messages for', Object.keys(messagesToSave).length, 'sessions');
+  } catch (err) {
+    logger.error('[ChatStore] Failed to persist messages:', err);
+  }
+}
+
+// Restore messages from localStorage
+export function restoreMessages(): Record<string, ChatMessage[]> {
+  try {
+    const raw = localStorage.getItem(CHAT_MESSAGES_KEY);
+    if (!raw) return {};
+
+    const messages = JSON.parse(raw) as Record<string, ChatMessage[]>;
+    logger.debug('[ChatStore] Restored messages for', Object.keys(messages).length, 'sessions');
+    return messages;
+  } catch (err) {
+    logger.error('[ChatStore] Failed to restore messages:', err);
+    return {};
+  }
+}
+
+// Initialize store with persisted messages
+export function initializeChatStore() {
+  const persistedMessages = restoreMessages();
+  const sessions: Record<string, PerSessionState> = {};
+
+  for (const [sessionId, messages] of Object.entries(persistedMessages)) {
+    sessions[sessionId] = {
+      ...createDefaultSessionState(),
+      messages,
+    };
+  }
+
+  useChatStore.setState({ sessions });
+  logger.debug('[ChatStore] Initialized with', Object.keys(sessions).length, 'sessions');
 }

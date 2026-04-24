@@ -143,6 +143,12 @@ export async function streamChatRealtime(
   const unlisteners: UnlistenFn[] = [];
   let fullContent = '';
 
+  // Create a promise that resolves when chat:complete is received
+  let completeResolve: () => void;
+  const completePromise = new Promise<void>((resolve) => {
+    completeResolve = resolve;
+  });
+
   try {
     // Listen for status updates
     unlisteners.push(
@@ -197,6 +203,8 @@ export async function streamChatRealtime(
         // Use accumulated content if event content is empty
         const finalContent = event.payload.content || fullContent;
         callbacks.onComplete?.(finalContent, event.payload.id, event.payload.usage);
+        // Resolve the promise to signal completion
+        completeResolve();
       })
     );
 
@@ -206,6 +214,8 @@ export async function streamChatRealtime(
         console.error('[HermesChat] Error event:', event.payload);
         logger.error('[HermesChat] Error event:', event.payload);
         callbacks.onError?.(new Error(event.payload.error));
+        // Also resolve on error to avoid hanging
+        completeResolve();
       })
     );
 
@@ -234,6 +244,10 @@ export async function streamChatRealtime(
       sessionId: sessionId || null,
     });
     console.log('[HermesChat] Command returned:', result);
+
+    // Wait for the chat:complete event before cleaning up listeners
+    // This ensures we don't miss the final event
+    await completePromise;
 
   } catch (error) {
     console.error('[HermesChat] Stream error:', error);
