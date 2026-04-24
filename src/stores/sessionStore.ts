@@ -13,6 +13,9 @@ interface SessionState {
   isLoading: boolean;
   error: string | null;
 
+  // 乐观添加的会话ID集合（用于刷新时保留）
+  optimisticSessionIds: Set<string>;
+
   // 当前会话
   currentSession: Session | null;
   messages: SessionMessage[];
@@ -39,6 +42,7 @@ interface SessionState {
   updateSessionTitle: (id: string, title: string) => Promise<void>;
   updateSessionActivity: (sessionId: string) => void; // 实时更新会话活动
   addSessionOptimistic: (sessionId: string) => void; // 乐观添加新会话（立即显示在列表中）
+  removeOptimisticSession: (sessionId: string) => void; // 从乐观列表中移除（服务器已返回）
 
   // Actions - 当前会话
   fetchSession: (id: string) => Promise<SessionMessage[]>;
@@ -69,6 +73,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   isLoading: false,
   error: null,
 
+  // 初始状态 - 乐观会话ID
+  optimisticSessionIds: new Set<string>(),
+
   // 初始状态 - 当前会话
   currentSession: null,
   messages: [],
@@ -98,10 +105,32 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
     try {
       const response = await sessionApi.listSessions(platform || undefined, limit, offset);
+
+      // Preserve optimistically added sessions that are not yet in the server response
+      const { sessions: currentSessions, optimisticSessionIds } = get();
+      const optimisticSessions = currentSessions.filter(s =>
+        optimisticSessionIds.has(s.id) && !response.sessions.some(rs => rs.id === s.id)
+      );
+
+      // Merge: optimistic sessions first, then server sessions
+      const mergedSessions = [...optimisticSessions];
+      for (const serverSession of response.sessions) {
+        if (!mergedSessions.some(s => s.id === serverSession.id)) {
+          mergedSessions.push(serverSession);
+        }
+      }
+
+      // Remove from optimistic set if server now has the session
+      const newOptimisticIds = new Set(optimisticSessionIds);
+      for (const serverSession of response.sessions) {
+        newOptimisticIds.delete(serverSession.id);
+      }
+
       set({
-        sessions: response.sessions,
-        total: response.total,
+        sessions: mergedSessions,
+        total: response.total + optimisticSessions.length,
         isLoading: false,
+        optimisticSessionIds: newOptimisticIds,
       });
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
@@ -136,7 +165,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   // 乐观添加新会话（立即显示在列表中，不等待API）
   addSessionOptimistic: (sessionId: string) => {
-    const { sessions } = get();
+    const { sessions, optimisticSessionIds } = get();
 
     // 检查是否已存在
     if (sessions.some(s => s.id === sessionId)) {
@@ -159,9 +188,24 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       status: 'active',
     };
 
+    // Add to optimistic set
+    const newOptimisticIds = new Set(optimisticSessionIds);
+    newOptimisticIds.add(sessionId);
+
     // 添加到列表开头
-    set({ sessions: [newSession, ...sessions] });
+    set({
+      sessions: [newSession, ...sessions],
+      optimisticSessionIds: newOptimisticIds
+    });
     logger.debug('[SessionStore] Optimistically added session:', sessionId);
+  },
+
+  // 从乐观列表中移除（服务器已返回）
+  removeOptimisticSession: (sessionId: string) => {
+    const { optimisticSessionIds } = get();
+    const newOptimisticIds = new Set(optimisticSessionIds);
+    newOptimisticIds.delete(sessionId);
+    set({ optimisticSessionIds: newOptimisticIds });
   },
 
   // 获取单个会话详情 - 返回消息数组

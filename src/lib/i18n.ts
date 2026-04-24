@@ -81,6 +81,10 @@ const translations: Translations = {
   'sidebar.timeGroup.older': { zh: '更早', en: 'Older' },
   'sidebar.searchPlaceholder': { zh: '搜索会话...', en: 'Search sessions...' },
   'sidebar.noSessions': { zh: '暂无会话', en: 'No sessions' },
+  'sidebar.noMatching': { zh: '没有匹配的会话', en: 'No matching sessions' },
+  'sidebar.rename': { zh: '重命名', en: 'Rename' },
+  'sidebar.renameSession': { zh: '重命名会话', en: 'Rename Session' },
+  'sidebar.enterSessionName': { zh: '请输入会话名称', en: 'Enter session name' },
 
   // Skills Page
   'skills.title': { zh: 'Skills', en: 'Skills' },

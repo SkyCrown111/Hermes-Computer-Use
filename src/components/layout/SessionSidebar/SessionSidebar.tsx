@@ -1,9 +1,19 @@
 // Session Sidebar - Shows session list next to main navigation
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useSessionStore, useNavigationStore } from '../../../stores';
 import { useTranslation } from '../../../hooks/useTranslation';
 import { PlusIcon } from '../../index';
+import { InputModal } from '../../ui/Modal';
 import './SessionSidebar.css';
+
+// Context menu position type
+interface ContextMenuState {
+  visible: boolean;
+  x: number;
+  y: number;
+  sessionId: string;
+  sessionName: string;
+}
 
 // Time group type for session list
 type TimeGroup = 'today' | 'yesterday' | 'last7days' | 'older';
@@ -50,7 +60,27 @@ export const SessionSidebar: React.FC = () => {
   const sessions = useSessionStore((s) => s.sessions);
   const activeTabId = useNavigationStore((s) => s.activeTabId);
   const openTab = useNavigationStore((s) => s.openTab);
+  const updateSessionTitle = useSessionStore((s) => s.updateSessionTitle);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>({
+    visible: false,
+    x: 0,
+    y: 0,
+    sessionId: '',
+    sessionName: '',
+  });
+
+  // Rename modal state
+  const [renameModal, setRenameModal] = useState({
+    isOpen: false,
+    sessionId: '',
+    currentName: '',
+  });
+
+  // Ref for context menu to handle click outside
+  const contextMenuRef = useRef<HTMLDivElement>(null);
 
   // Filter sessions by search query
   const filteredSessions = useMemo(() => {
@@ -78,6 +108,62 @@ export const SessionSidebar: React.FC = () => {
     const newId = `new_${Date.now()}`;
     openTab(newId, '新会话', 'new');
   };
+
+  // Handle right-click on session item
+  const handleContextMenu = useCallback((e: React.MouseEvent, session: { id: string; chat_name: string }) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    setContextMenu({
+      visible: true,
+      x: e.clientX,
+      y: e.clientY,
+      sessionId: session.id,
+      sessionName: session.chat_name || `会话 ${session.id.slice(0, 12)}`,
+    });
+  }, []);
+
+  // Close context menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+        setContextMenu(prev => ({ ...prev, visible: false }));
+      }
+    };
+
+    if (contextMenu.visible) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [contextMenu.visible]);
+
+  // Handle rename action
+  const handleRename = useCallback(() => {
+    setRenameModal({
+      isOpen: true,
+      sessionId: contextMenu.sessionId,
+      currentName: contextMenu.sessionName,
+    });
+    setContextMenu(prev => ({ ...prev, visible: false }));
+  }, [contextMenu.sessionId, contextMenu.sessionName]);
+
+  // Handle rename confirmation
+  const handleRenameConfirm = useCallback(async (newName: string) => {
+    try {
+      await updateSessionTitle(renameModal.sessionId, newName);
+    } catch (error) {
+      console.error('Failed to rename session:', error);
+    }
+    setRenameModal({ isOpen: false, sessionId: '', currentName: '' });
+  }, [renameModal.sessionId, updateSessionTitle]);
+
+  // Handle rename cancel
+  const handleRenameCancel = useCallback(() => {
+    setRenameModal({ isOpen: false, sessionId: '', currentName: '' });
+  }, []);
 
   return (
     <aside className="session-sidebar">
@@ -121,6 +207,7 @@ export const SessionSidebar: React.FC = () => {
                     key={session.id}
                     className={`session-sidebar-item ${activeTabId === session.id ? 'active' : ''}`}
                     onClick={() => openTab(session.id, session.chat_name || `会话 ${session.id.slice(0, 12)}`, 'session')}
+                    onContextMenu={(e) => handleContextMenu(e, session)}
                   >
                     <span className="session-sidebar-item-dot" />
                     <span className="session-sidebar-item-title">
@@ -136,6 +223,40 @@ export const SessionSidebar: React.FC = () => {
           );
         })}
       </div>
+
+      {/* Context Menu */}
+      {contextMenu.visible && (
+        <div
+          ref={contextMenuRef}
+          className="session-context-menu"
+          style={{
+            position: 'fixed',
+            left: contextMenu.x,
+            top: contextMenu.y,
+            zIndex: 1000,
+          }}
+        >
+          <div
+            className="session-context-menu-item"
+            onClick={handleRename}
+          >
+            <span className="session-context-menu-icon">✏️</span>
+            {t('sidebar.rename') || '重命名'}
+          </div>
+        </div>
+      )}
+
+      {/* Rename Modal */}
+      <InputModal
+        isOpen={renameModal.isOpen}
+        title={t('sidebar.renameSession') || '重命名会话'}
+        placeholder={t('sidebar.enterSessionName') || '请输入会话名称'}
+        defaultValue={renameModal.currentName}
+        confirmText={t('common.confirm') || '确定'}
+        cancelText={t('common.cancel') || '取消'}
+        onConfirm={handleRenameConfirm}
+        onCancel={handleRenameCancel}
+      />
     </aside>
   );
 };
