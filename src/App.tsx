@@ -1,19 +1,30 @@
 import './styles/globals.css';
 import { Dashboard, Sessions, Skills, CronJobs, Settings, Monitor, Memory, Platforms, Files, ChatPage, Preferences } from './pages';
-import { useNavigationStore, useThemeStore } from './stores';
+import { useNavigationStore, useThemeStore, useSessionStore } from './stores';
 import { Layout } from './components/layout';
 import { useEffect } from 'react';
 import { logger } from './lib/logger';
 
 function App() {
-  const { activeItem, chatContext } = useNavigationStore();
+  const { activeItem, chatContext, restoreTabs } = useNavigationStore();
   const { mode } = useThemeStore();
+  const fetchSessions = useSessionStore((s) => s.fetchSessions);
+
   logger.component('App', 'Active item:', activeItem, 'Chat context:', chatContext);
 
   // Apply theme to document
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', mode);
   }, [mode]);
+
+  // Restore tabs and fetch sessions on mount
+  useEffect(() => {
+    // Fetch sessions list first
+    fetchSessions().then(() => {
+      // Then restore tabs (needs sessions to validate)
+      restoreTabs();
+    });
+  }, [fetchSessions, restoreTabs]);
 
   // Simple page routing based on navigation state
   const renderPage = () => {

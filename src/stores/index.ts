@@ -11,3 +11,4 @@ export * from './monitorStore';
 export * from './memoryStore';
 export * from './platformStore';
 export * from './filesStore';
+export * from './chatStore';

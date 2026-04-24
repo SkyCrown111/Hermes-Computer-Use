@@ -490,6 +490,10 @@
    ======================================== */
 .thinking-block-wrapper {
   margin-bottom: var(--space-2);
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-container-lowest);
 }
 
 .thinking-block-toggle {
@@ -497,12 +501,11 @@
   align-items: center;
   gap: 6px;
   width: 100%;
-  padding: 2px 4px;
+  padding: var(--space-2) var(--space-3);
   border: none;
   background: transparent;
   text-align: left;
   cursor: pointer;
-  border-radius: var(--radius-sm);
   transition: background 0.15s;
 }
 
@@ -536,13 +539,10 @@
 }
 
 .thinking-block-content {
-  margin-top: var(--space-1);
+  border-top: 1px solid var(--color-border);
   max-height: 300px;
   overflow-y: auto;
-  padding: var(--space-2-5);
-  background: var(--color-surface-container-lowest);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--color-border);
+  padding: var(--space-3);
   font-size: 11px;
   line-height: 1.35;
   color: var(--color-text-secondary);
@@ -655,8 +655,8 @@
 /* Individual tool item inside the block */
 .tool-item {
   display: flex;
-  align-items: center;
-  gap: var(--space-2);
+  flex-direction: column;
+  align-items: stretch;
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--color-border);
 }
@@ -1720,3 +1720,142 @@
   color: var(--color-success);
 }
 
+/* ========================================
+   Diff Viewer Styles
+   ======================================== */
+.diff-viewer {
+  margin-top: var(--space-2);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-container-low);
+  overflow: hidden;
+}
+
+.diff-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-surface-container);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.diff-file-path {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+.diff-stats {
+  display: flex;
+  gap: var(--space-2);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.diff-add {
+  color: #1A7F37;
+  background: #E8F5E2;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.diff-remove {
+  color: #CF222E;
+  background: #FDECEA;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.diff-content {
+  max-height: 300px;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.diff-line {
+  display: flex;
+  min-height: 18px;
+}
+
+.diff-line.context {
+  background: transparent;
+}
+
+.diff-line.add {
+  background: #E8F5E2;
+}
+
+.diff-line.remove {
+  background: #FDECEA;
+}
+
+.diff-line-num {
+  flex-shrink: 0;
+  width: 32px;
+  padding: 0 4px;
+  text-align: right;
+  color: var(--color-text-tertiary);
+  background: var(--color-surface-container);
+  user-select: none;
+}
+
+.diff-line-marker {
+  flex-shrink: 0;
+  width: 16px;
+  text-align: center;
+  font-weight: 600;
+}
+
+.diff-line.add .diff-line-marker {
+  color: #1A7F37;
+}
+
+.diff-line.remove .diff-line-marker {
+  color: #CF222E;
+}
+
+.diff-line-content {
+  flex: 1;
+  padding: 0 8px;
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.diff-more {
+  padding: var(--space-1) var(--space-2);
+  text-align: center;
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  background: var(--color-surface-container);
+}
+
+/* Tool item with diff support */
+.tool-item-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  min-height: 24px;
+}
+
+.tool-item-file {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tool-item-expand {
+  font-size: 14px;
+  color: var(--color-text-tertiary);
+}
+
+.tool-diff-container {
+  padding: var(--space-2) 0;
+}

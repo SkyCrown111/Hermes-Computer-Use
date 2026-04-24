@@ -3,7 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::process::{Command, Stdio};
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::fs;
 use tauri::AppHandle;
 use tauri::Emitter;
@@ -45,24 +45,6 @@ fn ensure_scripts_installed() -> Result<(), String> {
         .output()
         .map_err(|e| format!("Failed to create directory: {}", e))?;
 
-    // Write script to temp file then copy (avoids quoting issues)
-    let script_path = "/tmp/hermes_stream_agent.py";
-    fs::write(script_path, STREAM_AGENT_SCRIPT)
-        .map_err(|e| format!("Failed to write temp script: {}", e))?;
-
-    // Copy to WSL path
-    let copy_cmd = format!(
-        "cp /mnt/c/tmp/hermes_stream_agent.py ~/.hermes/hermes-app/stream_agent.py 2>/dev/null || \
-         echo '{}' | base64 -d > ~/.hermes/hermes-app/stream_agent.py",
-        STANDARD.encode(STREAM_AGENT_SCRIPT)
-    );
-
-    // Simpler approach: use cat with heredoc
-    let install_cmd = r#"
-mkdir -p ~/.hermes/hermes-app
-cat > ~/.hermes/hermes-app/stream_agent.py << 'HERMES_SCRIPT_EOF'
-"#;
-
     // Actually, let's just check if file exists and skip if it does
     let check_cmd = "test -f ~/.hermes/hermes-app/stream_agent.py && echo 'exists' || echo 'not_found'";
     let output = create_command("wsl")
@@ -77,6 +59,7 @@ cat > ~/.hermes/hermes-app/stream_agent.py << 'HERMES_SCRIPT_EOF'
     }
 
     // Write script using base64 encoding (most reliable)
+    // Use temp file in WSL, not Windows
     let encoded = STANDARD.encode(STREAM_AGENT_SCRIPT);
     let write_cmd = format!(
         "mkdir -p ~/.hermes/hermes-app && echo '{}' | base64 -d > ~/.hermes/hermes-app/stream_agent.py",
@@ -130,7 +113,7 @@ pub fn send_chat_message(
 
     // Use stream_agent.py for simple call
     let mut cmd_str = format!(
-        "~/.hermes/hermes-agent/venv/bin/python ~/.hermes/hermes-agent/stream_agent.py '{}'",
+        "~/.hermes/hermes-agent/venv/bin/python ~/.hermes/hermes-app/stream_agent.py '{}'",
         query.replace("'", "'\\''")
     );
 
@@ -192,6 +175,7 @@ pub async fn stream_chat_realtime(
     session_id: Option<String>,
 ) -> Result<String, String> {
     println!("[ChatStream] Starting realtime stream, session: {:?}", session_id);
+    println!("[ChatStream] Messages count: {}", messages.len());
 
     // Emit thinking status
     let _ = app.emit("chat:status", serde_json::json!({
@@ -208,32 +192,56 @@ pub async fn stream_chat_realtime(
 
     println!("[ChatStream] Query: {}", query);
 
+    // Build history from all messages except the last user message
+    let history: Vec<serde_json::Value> = messages
+        .iter()
+        .rev()
+        .skip(1)  // Skip the last user message
+        .rev()    // Restore original order
+        .map(|m| serde_json::json!({
+            "role": m.role,
+            "content": m.content
+        }))
+        .collect();
+
+    println!("[ChatStream] History messages: {}", history.len());
+
     let app_clone = app.clone();
     let session_clone = session_id.clone();
 
     let handle = tokio::task::spawn_blocking(move || {
-        // Build command to run stream_agent.py
-        // Script is bundled with hermes-app, copied to ~/.hermes/hermes-app/ on first run
+        // Build command to run stream_agent.py with --stdin flag
         let script_path = "~/.hermes/hermes-app/stream_agent.py";
-        let mut cmd_str = format!(
-            "~/.hermes/hermes-agent/venv/bin/python {} '{}'",
-            script_path,
-            query.replace("'", "'\\''")
+        let cmd_str = format!(
+            "~/.hermes/hermes-agent/venv/bin/python {} --stdin",
+            script_path
         );
 
-        if let Some(ref sid) = session_clone {
-            cmd_str.push_str(&format!(" '{}'", sid));
-        }
+        // Build JSON input for stdin
+        let stdin_json = serde_json::json!({
+            "query": query,
+            "session_id": session_clone,
+            "history": history
+        });
+        let stdin_data = stdin_json.to_string();
 
         println!("[ChatStream] Executing: {}", cmd_str);
+        println!("[ChatStream] Stdin data length: {} bytes", stdin_data.len());
 
-        // Spawn process and read output line by line
+        // Spawn process with stdin
         let mut child = create_command("wsl")
             .args(["-e", "bash", "-c", &cmd_str])
+            .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| format!("Failed to spawn Hermes: {}", e))?;
+
+        // Write JSON to stdin
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin.write_all(stdin_data.as_bytes())
+                .map_err(|e| format!("Failed to write to stdin: {}", e))?;
+        }
 
         let stdout = child.stdout.take().expect("Failed to capture stdout");
         let reader = BufReader::new(stdout);
@@ -288,8 +296,15 @@ pub async fn stream_chat_realtime(
                             let _ = app_clone.emit("chat:approval", approval_data);
                         }
                     }
+                    else if trimmed.starts_with("SESSION:") {
+                        let session_json = &trimmed[8..];
+                        if let Ok(session_data) = serde_json::from_str::<serde_json::Value>(session_json) {
+                            let _ = app_clone.emit("chat:session", session_data);
+                        }
+                    }
                     else if trimmed.starts_with("DONE:") {
                         let result_json = &trimmed[5..];
+                        println!("[ChatStream] DONE JSON: {}", result_json);
                         if let Ok(result) = serde_json::from_str::<serde_json::Value>(result_json) {
                             session_id_result = result.get("session_id")
                                 .and_then(|v| v.as_str())
@@ -300,6 +315,11 @@ pub async fn stream_chat_realtime(
                                 .and_then(|v| v.as_str())
                                 .unwrap_or(&accumulated_content)
                                 .to_string();
+
+                            println!("[ChatStream] Session ID: {}", session_id_result);
+                            println!("[ChatStream] Content from result: {}", result.get("content").and_then(|v| v.as_str()).unwrap_or("(none)"));
+                            println!("[ChatStream] Accumulated content: {}", accumulated_content);
+                            println!("[ChatStream] Final content length: {}", content.len());
 
                             let input_tokens = result.get("input_tokens")
                                 .and_then(|v| v.as_u64())

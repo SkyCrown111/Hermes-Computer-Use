@@ -1,10 +1,11 @@
 // Chat Page - Full screen chat interface with Hermes Agent
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { streamChatRealtime, checkHermesApiHealth, respondApproval, type ChatMessage } from '../../services/hermesChat';
-import { useSessionStore, useNavigationStore } from '../../stores';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { streamChatRealtime, checkHermesApiHealth, respondApproval } from '../../services/hermesChat';
+import { useSessionStore, useNavigationStore, useChatStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
 import { ZapIcon, UserIcon, BotIcon, AlertIcon, PlayIcon, StopIcon, TokenIcon, ThinkingIcon, PlusIcon, ClockIcon } from '../../components';
 import { logger } from '../../lib/logger';
+import type { ChatMessage, ToolCallInfo } from '../../stores/chatStore';
 import './ChatPage.css';
 
 // Hermes Agent slash commands - descriptions will be set in component
@@ -20,111 +21,6 @@ const getHermesCommands = (t: (key: string) => string) => [
   { command: '/file', description: t('chat.cmd.file') },
   { command: '/search', description: t('chat.cmd.search') },
 ];
-
-// Chat Tabs Navigation Component (cc-haha style)
-interface ChatTabsProps {
-  onNewChat: () => void;
-}
-
-const ChatTabs: React.FC<ChatTabsProps> = ({ onNewChat }) => {
-  const { openTabs, activeTabId, switchTab, closeTab } = useNavigationStore();
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const [canScrollLeft, setCanScrollLeft] = useState(false);
-  const [canScrollRight, setCanScrollRight] = useState(false);
-
-  const updateScrollState = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    setCanScrollLeft(el.scrollLeft > 0);
-    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
-  }, []);
-
-  useEffect(() => {
-    updateScrollState();
-    const el = scrollRef.current;
-    if (!el) return;
-    el.addEventListener('scroll', updateScrollState);
-    return () => el.removeEventListener('scroll', updateScrollState);
-  }, [updateScrollState, openTabs.length]);
-
-  const scroll = (direction: 'left' | 'right') => {
-    const el = scrollRef.current;
-    if (!el) return;
-    el.scrollBy({ left: direction === 'left' ? -180 : 180, behavior: 'smooth' });
-  };
-
-  if (openTabs.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="chat-tabs-bar">
-      {canScrollLeft && (
-        <button onClick={() => scroll('left')} className="chat-tabs-scroll-btn">
-          <span className="material-symbols-outlined">chevron_left</span>
-        </button>
-      )}
-
-      <div ref={scrollRef} className="chat-tabs-container">
-        {openTabs.map((tab) => (
-          <div
-            key={tab.id}
-            className={`chat-tab ${activeTabId === tab.id ? 'active' : ''}`}
-            onClick={() => switchTab(tab.id)}
-          >
-            {tab.type === 'new' ? (
-              <span className="chat-tab-icon new">✨</span>
-            ) : (
-              <span className="chat-tab-icon session">💬</span>
-            )}
-            <span className="chat-tab-title">{tab.title}</span>
-            <button
-              className="chat-tab-close"
-              onClick={(e) => {
-                e.stopPropagation();
-                closeTab(tab.id);
-              }}
-            >
-              <span className="material-symbols-outlined">close</span>
-            </button>
-          </div>
-        ))}
-      </div>
-
-      {canScrollRight && (
-        <button onClick={() => scroll('right')} className="chat-tabs-scroll-btn">
-          <span className="material-symbols-outlined">chevron_right</span>
-        </button>
-      )}
-
-      <button className="chat-tab-new" onClick={onNewChat} title="新建会话">
-        <span className="material-symbols-outlined">add</span>
-      </button>
-    </div>
-  );
-};
-
-// Extended message type with thinking and stats
-interface ExtendedChatMessage extends ChatMessage {
-  thinking?: string;
-  reasoning?: string;  // Real-time reasoning from agent
-  tools?: ToolCallInfo[];  // Tool calls during this message
-  thinkingTime?: number;
-  inputTokens?: number;
-  outputTokens?: number;
-  totalTokens?: number;
-  isStreaming?: boolean;
-}
-
-// Tool call information
-interface ToolCallInfo {
-  name: string;
-  event_type: string;
-  preview?: string;
-  args?: Record<string, unknown>;
-  duration?: number;
-  is_error?: boolean;
-}
 
 // Collapsible Thinking Block Component
 const ThinkingBlock: React.FC<{ content: string; isActive?: boolean }> = ({ content, isActive }) => {
@@ -158,33 +54,132 @@ const ThinkingBlock: React.FC<{ content: string; isActive?: boolean }> = ({ cont
   );
 };
 
+// Simple Diff Viewer Component
+const SimpleDiffViewer: React.FC<{ oldStr: string; newStr: string; filePath?: string }> = ({ oldStr, newStr, filePath }) => {
+  const oldLines = oldStr.split('\n');
+  const newLines = newStr.split('\n');
+
+  // Simple line-by-line diff
+  const diffLines: Array<{ type: 'context' | 'add' | 'remove'; oldNum?: number; newNum?: number; content: string }> = [];
+  let oldIdx = 0;
+  let newIdx = 0;
+
+  while (oldIdx < oldLines.length || newIdx < newLines.length) {
+    const oldLine = oldLines[oldIdx];
+    const newLine = newLines[newIdx];
+
+    if (oldIdx >= oldLines.length) {
+      // Only new lines left
+      diffLines.push({ type: 'add', newNum: newIdx + 1, content: newLine });
+      newIdx++;
+    } else if (newIdx >= newLines.length) {
+      // Only old lines left
+      diffLines.push({ type: 'remove', oldNum: oldIdx + 1, content: oldLine });
+      oldIdx++;
+    } else if (oldLine === newLine) {
+      // Context line
+      diffLines.push({ type: 'context', oldNum: oldIdx + 1, newNum: newIdx + 1, content: oldLine });
+      oldIdx++;
+      newIdx++;
+    } else {
+      // Check if this is a modification
+      diffLines.push({ type: 'remove', oldNum: oldIdx + 1, content: oldLine });
+      diffLines.push({ type: 'add', newNum: newIdx + 1, content: newLine });
+      oldIdx++;
+      newIdx++;
+    }
+  }
+
+  // Count additions and deletions
+  const additions = diffLines.filter(l => l.type === 'add').length;
+  const deletions = diffLines.filter(l => l.type === 'remove').length;
+
+  return (
+    <div className="diff-viewer">
+      {filePath && (
+        <div className="diff-header">
+          <span className="diff-file-path">{filePath.split('/').pop()}</span>
+          <div className="diff-stats">
+            <span className="diff-add">+{additions}</span>
+            <span className="diff-remove">-{deletions}</span>
+          </div>
+        </div>
+      )}
+      <div className="diff-content">
+        {diffLines.slice(0, 20).map((line, idx) => (
+          <div key={idx} className={`diff-line ${line.type}`}>
+            {line.oldNum !== undefined && <span className="diff-line-num old">{line.oldNum}</span>}
+            {line.newNum !== undefined && <span className="diff-line-num new">{line.newNum}</span>}
+            <span className="diff-line-marker">{line.type === 'add' ? '+' : line.type === 'remove' ? '-' : ' '}</span>
+            <span className="diff-line-content">{line.content}</span>
+          </div>
+        ))}
+        {diffLines.length > 20 && (
+          <div className="diff-more">... {diffLines.length - 20} more lines</div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 // Single Tool Item Component (used inside ToolsBlock)
 const ToolItem: React.FC<{ tool: ToolCallInfo; isStreaming?: boolean }> = ({ tool, isStreaming }) => {
+  const [showDiff, setShowDiff] = useState(false);
   const isRunning = !tool.duration && !tool.is_error && isStreaming;
   const icon = TOOL_ICONS[tool.name] || 'build';
 
+  // Check if this is an Edit/Write tool with diff content
+  const args = tool.args as Record<string, unknown> | undefined;
+  const filePath = args?.file_path as string | undefined;
+  const oldString = args?.old_string as string | undefined;
+  const newString = args?.new_string as string | undefined;
+  const content = args?.content as string | undefined;
+
+  const canShowDiff = (tool.name === 'edit_file' || tool.name === 'write_file' || tool.name === 'Edit' || tool.name === 'Write') &&
+    (oldString !== undefined || newString !== undefined || content !== undefined);
+
   return (
     <div className={`tool-item ${tool.is_error ? 'error' : 'success'}`}>
-      <span className="material-symbols-outlined tool-item-icon">{icon}</span>
-      <span className="tool-item-name">{tool.name}</span>
-      {tool.preview && (
-        <span className="tool-item-preview">{tool.preview.slice(0, 50)}{tool.preview.length > 50 ? '...' : ''}</span>
-      )}
-      <span className="tool-item-spacer" />
-      {isRunning && (
-        <span className="tool-item-status running">运行中...</span>
-      )}
-      {!isRunning && !tool.is_error && (
-        <span className="tool-item-status success">
-          <span className="material-symbols-outlined">check</span>
-          {tool.duration && `${tool.duration.toFixed(0)}ms`}
-        </span>
-      )}
-      {tool.is_error && (
-        <span className="tool-item-status error">
-          <span className="material-symbols-outlined">error</span>
-          失败
-        </span>
+      <div className="tool-item-header" onClick={() => canShowDiff && setShowDiff(!showDiff)}>
+        <span className="material-symbols-outlined tool-item-icon">{icon}</span>
+        <span className="tool-item-name">{tool.name}</span>
+        {filePath && (
+          <span className="tool-item-file">{filePath.split('/').pop()}</span>
+        )}
+        {tool.preview && !filePath && (
+          <span className="tool-item-preview">{tool.preview.slice(0, 50)}{tool.preview.length > 50 ? '...' : ''}</span>
+        )}
+        <span className="tool-item-spacer" />
+        {isRunning && (
+          <span className="tool-item-status running">运行中...</span>
+        )}
+        {!isRunning && !tool.is_error && (
+          <span className="tool-item-status success">
+            <span className="material-symbols-outlined">check</span>
+            {tool.duration && `${tool.duration.toFixed(0)}ms`}
+          </span>
+        )}
+        {tool.is_error && (
+          <span className="tool-item-status error">
+            <span className="material-symbols-outlined">error</span>
+            失败
+          </span>
+        )}
+        {canShowDiff && (
+          <span className="material-symbols-outlined tool-item-expand">
+            {showDiff ? 'expand_less' : 'expand_more'}
+          </span>
+        )}
+      </div>
+      {/* Diff viewer for Edit/Write tools */}
+      {showDiff && canShowDiff && (
+        <div className="tool-diff-container">
+          {tool.name === 'Edit' || tool.name === 'edit_file' ? (
+            <SimpleDiffViewer oldStr={oldString || ''} newStr={newString || ''} filePath={filePath} />
+          ) : (
+            <SimpleDiffViewer oldStr="" newStr={content || ''} filePath={filePath} />
+          )}
+        </div>
       )}
     </div>
   );
@@ -499,6 +494,13 @@ function parseToolJson(content: string): {
     .replace(/\}\s*\{/g, '\n') // Separate adjacent JSON objects
     .replace(/\}\s*,\s*"[^"]+"\s*:\s*[\d\[\{]/g, '}')
     .replace(/\[\s*\{[^}]*"tool"[^}]*\}[\s\S]*?\]/g, '')
+    // Clean up JSON fragments like "0, }" or ", }"
+    .replace(/,\s*\d+\s*,\s*\}/g, '')
+    .replace(/,\s*\}/g, '}')
+    .replace(/\{\s*\}/g, '')
+    .replace(/\[\s*\]/g, '')
+    .replace(/^\s*\d+\s*,?\s*$/gm, '')
+    .replace(/,\s*$/gm, '')
     .trim();
 
   return { cleanContent, errors, sessionSearchResults };
@@ -592,92 +594,143 @@ const SessionSearchCard: React.FC<{
 interface ChatPageProps {
   sessionId?: string;
   sessionTitle?: string;
-  initialMessages?: ExtendedChatMessage[];
 }
 
 export const ChatPage: React.FC<ChatPageProps> = ({
   sessionId,
   sessionTitle: _sessionTitle,
-  initialMessages = [],
 }) => {
   const { t } = useTranslation();
   const HERMES_COMMANDS = getHermesCommands(t);
 
-  // Get messages from session store if we have a sessionId
-  const sessionMessages = useSessionStore((s) => s.messages);
-  const fetchMessages = useSessionStore((s) => s.fetchMessages);
-  const updateSessionActivity = useSessionStore((s) => s.updateSessionActivity);
-
   // Navigation store for tabs
-  const { chatContext } = useNavigationStore();
+  const { chatContext, activeTabId } = useNavigationStore();
+  const effectiveSessionId = chatContext?.sessionId || sessionId || activeTabId;
 
-  const [messages, setMessages] = useState<ExtendedChatMessage[]>(initialMessages);
+  // Chat store - use stable selectors for each primitive value
+  // This avoids object recreation issues that cause infinite loops
+  const sessionMessages = useChatStore((s) => s.sessions[effectiveSessionId || '']?.messages);
+  const sessionStreamingText = useChatStore((s) => s.sessions[effectiveSessionId || '']?.streamingText);
+  const sessionIsStreaming = useChatStore((s) => s.sessions[effectiveSessionId || '']?.isStreaming);
+  const sessionIsThinking = useChatStore((s) => s.sessions[effectiveSessionId || '']?.isThinking);
+  const sessionThinkingText = useChatStore((s) => s.sessions[effectiveSessionId || '']?.thinkingText);
+  const sessionReasoningText = useChatStore((s) => s.sessions[effectiveSessionId || '']?.reasoningText);
+  const sessionStreamingTools = useChatStore((s) => s.sessions[effectiveSessionId || '']?.streamingTools);
+  const sessionPendingPermission = useChatStore((s) => s.sessions[effectiveSessionId || '']?.pendingPermission);
+  const sessionTokenUsage = useChatStore((s) => s.sessions[effectiveSessionId || '']?.tokenUsage);
+
+  // Build session state with stable references
+  // Use primitive values for dependencies to avoid object reference issues
+  const sessionState = useMemo(() => ({
+    messages: sessionMessages ?? [],
+    streamingText: sessionStreamingText ?? '',
+    isStreaming: sessionIsStreaming ?? false,
+    isThinking: sessionIsThinking ?? false,
+    thinkingText: sessionThinkingText ?? '',
+    reasoningText: sessionReasoningText ?? '',
+    streamingTools: sessionStreamingTools ?? [],
+    pendingPermission: sessionPendingPermission ?? null,
+    tokenUsage: sessionTokenUsage ?? { input_tokens: 0, output_tokens: 0 },
+  }), [
+    // Use stable primitive values for comparison
+    sessionMessages,
+    sessionStreamingText,
+    sessionIsStreaming,
+    sessionIsThinking,
+    sessionThinkingText,
+    sessionReasoningText,
+    sessionStreamingTools,
+    sessionPendingPermission,
+    sessionTokenUsage,
+  ]);
+
+  const {
+    addMessage,
+    updateMessage,
+    setStreaming,
+    setStreamingText,
+    setThinking,
+    appendReasoningText,
+    clearReasoningText,
+    addStreamingTool,
+    clearStreamingTools,
+    setPendingPermission: setChatPendingPermission,
+    clearPendingPermission,
+    setTokenUsage,
+    loadMessages,
+  } = useChatStore();
+
+  // Session store for loading history from server
+  const fetchMessagesFromServer = useSessionStore((s) => s.fetchMessages);
+  const updateSessionActivity = useSessionStore((s) => s.updateSessionActivity);
+  const fetchSessions = useSessionStore((s) => s.fetchSessions);
+  const sessionsRefreshKey = useSessionStore((s) => s.refreshKey);
+
+  // Load sessions list when component mounts or refreshKey changes
+  useEffect(() => {
+    fetchSessions();
+  }, [fetchSessions, sessionsRefreshKey]);
+
+  // Local UI state (not per-session)
   const [inputValue, setInputValue] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [isRunning, setIsRunning] = useState(false);
   const [apiAvailable, setApiAvailable] = useState<boolean | null>(null);
-  const [currentSessionId, setCurrentSessionId] = useState(sessionId);
   const [thinkingStartTime, setThinkingStartTime] = useState<number | null>(null);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [showCommands, setShowCommands] = useState(false);
   const [filteredCommands, setFilteredCommands] = useState(HERMES_COMMANDS);
   const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
   const [attachedFiles, setAttachedFiles] = useState<string[]>([]);
-  const [pendingApproval, setPendingApproval] = useState<{ id: string; command: string; description: string; allow_permanent: boolean; choices: string[] } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const addMenuRef = useRef<HTMLDivElement>(null);
-  const isStoppedRef = useRef<boolean>(false); // Flag to track if user stopped
+  const isStoppedRef = useRef<boolean>(false);
+  const accumulatedContentRef = useRef<string>('');
 
   // Track if component is mounted to prevent state updates after unmount
   const isMountedRef = useRef<boolean>(true);
 
-  // Use activeTabId from navigation store if available
-  const effectiveSessionId = chatContext?.sessionId || sessionId;
-
-  // Load session messages when effectiveSessionId changes
+  // Load session messages from server when effectiveSessionId changes
   useEffect(() => {
-    if (!effectiveSessionId) {
-      // Clear messages when no session
-      setMessages([]);
-      return;
-    }
+    if (!effectiveSessionId) return;
 
     // Skip new session tabs (they start with "new_")
-    if (effectiveSessionId.startsWith('new_')) {
-      setMessages([]);
+    if (effectiveSessionId.startsWith('new_')) return;
+
+    // Check if we already have messages loaded in chatStore for this session
+    const existingMessages = useChatStore.getState().sessions[effectiveSessionId]?.messages;
+    if (existingMessages && existingMessages.length > 0) {
+      logger.component('ChatPage', 'Already have messages in chatStore for:', effectiveSessionId);
       return;
     }
 
-    logger.component('ChatPage', 'effectiveSessionId changed:', effectiveSessionId);
-
-    // Use fetchMessages which checks cache first
-    fetchMessages(effectiveSessionId).catch((err) => {
+    // Load from server - use returned messages directly to avoid stale closure issues
+    logger.component('ChatPage', 'Loading messages for:', effectiveSessionId);
+    fetchMessagesFromServer(effectiveSessionId).then((serverMessages) => {
+      // Use returned messages directly instead of getCachedMessages
+      if (serverMessages && serverMessages.length > 0) {
+        const convertedMessages: ChatMessage[] = serverMessages.map((msg) => ({
+          id: `msg-${Date.now()}-${Math.random()}`,
+          role: msg.role as 'user' | 'assistant' | 'system',
+          content: msg.content,
+          timestamp: msg.timestamp,
+          reasoning: msg.reasoning,
+          tools: msg.tool_calls?.map(tc => ({
+            name: tc.name,
+            event_type: 'tool.completed',
+            args: tc.args,
+            duration: 0,
+          })),
+        }));
+        loadMessages(effectiveSessionId, convertedMessages);
+        logger.component('ChatPage', 'Loaded', convertedMessages.length, 'messages for session:', effectiveSessionId);
+      } else {
+        logger.component('ChatPage', 'No messages found for session:', effectiveSessionId);
+      }
+    }).catch((err) => {
       logger.error('[ChatPage] Failed to load session:', err);
     });
-  }, [effectiveSessionId]); // Only depend on effectiveSessionId to prevent infinite loops
-
-  // Update messages when sessionMessages changes (separate effect)
-  useEffect(() => {
-    if (effectiveSessionId && sessionMessages.length > 0) {
-      const convertedMessages: ExtendedChatMessage[] = sessionMessages.map((msg) => ({
-        role: msg.role as 'user' | 'assistant' | 'system',
-        content: msg.content,
-        timestamp: msg.timestamp,
-        reasoning: msg.reasoning, // Preserve reasoning from database
-        tools: msg.tool_calls?.map(tc => ({
-          name: tc.name,
-          event_type: 'tool.completed',
-          args: tc.args,
-          duration: 0,
-        })),
-      }));
-      setMessages(convertedMessages);
-      logger.component('ChatPage', 'Updated messages from store:', convertedMessages.length);
-    }
-  }, [sessionMessages]); // Only depend on sessionMessages
+  }, [effectiveSessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Check API availability on mount
   useEffect(() => {
@@ -690,7 +743,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({
   // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [sessionState.messages]);
 
   // Focus input on mount
   useEffect(() => {
@@ -758,173 +811,156 @@ export const ChatPage: React.FC<ChatPageProps> = ({
   };
 
   const handleSendMessage = useCallback(async () => {
-    if (!inputValue.trim() || isLoading || isStreaming) return;
+    // Get current streaming state from store directly to avoid stale closure
+    const currentIsStreaming = useChatStore.getState().sessions[effectiveSessionId || '']?.isStreaming;
+    if (!inputValue.trim() || !effectiveSessionId || currentIsStreaming) return;
 
     const userMessage = inputValue.trim();
     setInputValue('');
-    setIsLoading(true);
-    setIsRunning(true);
     setThinkingStartTime(Date.now());
-    isStoppedRef.current = false; // Reset stop flag
+    isStoppedRef.current = false;
+    accumulatedContentRef.current = '';
 
-    // Add user message immediately
-    const newUserMessage: ExtendedChatMessage = {
+    // Clear previous streaming state
+    setStreamingText(effectiveSessionId, '');
+    clearReasoningText(effectiveSessionId);
+    clearStreamingTools(effectiveSessionId);
+
+    // Add user message to chatStore
+    addMessage(effectiveSessionId, {
       role: 'user',
       content: userMessage,
-      timestamp: new Date().toISOString(),
-    };
-    setMessages(prev => [...prev, newUserMessage]);
+    });
 
     // Add streaming placeholder message
-    const streamingMessage: ExtendedChatMessage = {
+    addMessage(effectiveSessionId, {
       role: 'assistant',
       content: '',
-      thinking: t('chat.thinking'),
-      isStreaming: true,
-      timestamp: new Date().toISOString(),
-    };
-    setMessages(prev => [...prev, streamingMessage]);
+    });
+
+    // Set streaming state
+    setStreaming(effectiveSessionId, true);
+    setThinking(effectiveSessionId, true, t('chat.thinking'));
 
     try {
-      const historyForApi = messages.slice(-20);
+      // Get current messages from store directly to avoid stale closure
+      const currentMessages = useChatStore.getState().sessions[effectiveSessionId]?.messages || [];
+      const historyForApi = currentMessages.slice(-20);
 
       await streamChatRealtime(
         userMessage,
-        currentSessionId,
+        effectiveSessionId,
         historyForApi,
         {
           onStatus: (_status, msg) => {
             if (isStoppedRef.current || !isMountedRef.current) return;
-            // Update thinking message with status
-            setMessages(prev => {
-              const newMessages = [...prev];
-              const lastMsg = newMessages[newMessages.length - 1];
-              if (lastMsg.role === 'assistant' && lastMsg.isStreaming) {
-                newMessages[newMessages.length - 1] = {
-                  ...lastMsg,
-                  thinking: msg,
-                };
-              }
-              return newMessages;
-            });
+            // Get current session ID from navigation store (in case tab was switched)
+            const currentTabId = useNavigationStore.getState().activeTabId;
+            if (currentTabId) setThinking(currentTabId, true, msg);
           },
           onChunk: (_chunk, accumulated) => {
             if (isStoppedRef.current || !isMountedRef.current) return;
-            setIsStreaming(true);
-            // Update streaming message content progressively
-            setMessages(prev => {
-              const newMessages = [...prev];
-              const lastMsg = newMessages[newMessages.length - 1];
-              if (lastMsg.role === 'assistant') {
-                newMessages[newMessages.length - 1] = {
-                  ...lastMsg,
-                  content: accumulated,
-                  thinking: undefined, // Clear thinking once content starts
-                };
-              }
-              return newMessages;
-            });
+            // Get current session ID from navigation store (in case tab was switched)
+            const currentTabId = useNavigationStore.getState().activeTabId;
+            if (currentTabId) {
+              setStreamingText(currentTabId, accumulated);
+              setThinking(currentTabId, false);
+            }
           },
           onReasoning: (text, _accumulated) => {
             if (isStoppedRef.current || !isMountedRef.current) return;
-            // Update reasoning/thinking display
-            setMessages(prev => {
-              const newMessages = [...prev];
-              const lastMsg = newMessages[newMessages.length - 1];
-              if (lastMsg.role === 'assistant' && lastMsg.isStreaming) {
-                newMessages[newMessages.length - 1] = {
-                  ...lastMsg,
-                  reasoning: (lastMsg.reasoning || '') + text,
-                };
-              }
-              return newMessages;
-            });
+            // Get current session ID from navigation store (in case tab was switched)
+            const currentTabId = useNavigationStore.getState().activeTabId;
+            if (currentTabId) {
+              appendReasoningText(currentTabId, text);
+              setThinking(currentTabId, false); // Stop showing "thinking" when reasoning starts
+            }
           },
           onTool: (tool) => {
             if (isStoppedRef.current || !isMountedRef.current) return;
             console.log('[ChatPage] Tool call:', tool);
-            // Add tool call to message
-            setMessages(prev => {
-              const newMessages = [...prev];
-              const lastMsg = newMessages[newMessages.length - 1];
-              if (lastMsg.role === 'assistant') {
-                const tools = lastMsg.tools || [];
-                newMessages[newMessages.length - 1] = {
-                  ...lastMsg,
-                  tools: [...tools, tool],
-                  thinking: undefined, // Clear thinking when tool is called
-                };
-              }
-              return newMessages;
-            });
+            // Get current session ID from navigation store (in case tab was switched)
+            const currentTabId = useNavigationStore.getState().activeTabId;
+            if (currentTabId) {
+              addStreamingTool(currentTabId, tool); // Only add to streaming display during streaming
+              setThinking(currentTabId, false);
+            }
           },
           onUsage: (usage) => {
             if (isStoppedRef.current || !isMountedRef.current) return;
-            // Update message with token info
-            setMessages(prev => {
-              const newMessages = [...prev];
-              const lastMsg = newMessages[newMessages.length - 1];
-              if (lastMsg.role === 'assistant') {
-                newMessages[newMessages.length - 1] = {
-                  ...lastMsg,
-                  inputTokens: usage.prompt_tokens,
-                  outputTokens: usage.completion_tokens,
-                  totalTokens: usage.total_tokens,
-                };
-              }
-              return newMessages;
-            });
+            // Get current session ID from navigation store (in case tab was switched)
+            const currentTabId = useNavigationStore.getState().activeTabId;
+            if (currentTabId) {
+              setTokenUsage(currentTabId, {
+                input_tokens: usage.prompt_tokens,
+                output_tokens: usage.completion_tokens,
+              });
+            }
           },
           onComplete: (content, newSessionId, usage) => {
             if (!isMountedRef.current) return;
             const thinkingTime = thinkingStartTime ? Math.round((Date.now() - thinkingStartTime) / 1000) : 0;
-            setIsStreaming(false);
-            setIsLoading(false);
-            setIsRunning(false);
+
+            // Determine the correct session ID to use
+            // If a new session was created from a "new_" tab, use the new session ID
+            const targetSessionId = (effectiveSessionId.startsWith('new_') && newSessionId)
+              ? newSessionId
+              : effectiveSessionId;
+
+            setStreaming(targetSessionId, false);
+            setThinking(targetSessionId, false);
             setThinkingStartTime(null);
 
-            // Finalize the message - preserve reasoning and tools from streaming message
-            setMessages(prev => {
-              const newMessages = [...prev];
-              const lastMsg = newMessages[newMessages.length - 1];
-              const assistantMessage: ExtendedChatMessage = {
-                role: 'assistant',
-                content: content,
-                reasoning: lastMsg?.reasoning, // Preserve reasoning
-                tools: lastMsg?.tools, // Preserve tools
-                thinkingTime: thinkingTime,
+            // Use accumulated content if event content is empty
+            const finalContent = content || accumulatedContentRef.current;
+
+            // Get the reasoning text and tools from the current store state
+            const currentSession = useChatStore.getState().sessions[targetSessionId];
+            const currentReasoningText = currentSession?.reasoningText || '';
+            const currentStreamingTools = currentSession?.streamingTools || [];
+
+            // Get the last message ID from the current store state (not closure)
+            const currentMessages = currentSession?.messages;
+            const lastMessage = currentMessages?.[currentMessages.length - 1];
+            if (lastMessage) {
+              updateMessage(targetSessionId, lastMessage.id, {
+                content: finalContent,
+                reasoning: currentReasoningText,
+                tools: currentStreamingTools, // Save streaming tools to message
+                thinkingTime,
                 inputTokens: usage?.prompt_tokens,
                 outputTokens: usage?.completion_tokens,
                 totalTokens: usage?.total_tokens,
-                timestamp: new Date().toISOString(),
-              };
-              newMessages[newMessages.length - 1] = assistantMessage;
-              return newMessages;
-            });
+              });
+            }
 
-            // Update session activity in the list (for real-time sorting)
-            if (effectiveSessionId && !effectiveSessionId.startsWith('new_')) {
-              updateSessionActivity(effectiveSessionId);
+            // Clear streaming state after saving to message
+            setStreamingText(targetSessionId, '');
+            clearReasoningText(targetSessionId);
+            clearStreamingTools(targetSessionId);
+
+            // Update session activity in the list
+            if (targetSessionId && !targetSessionId.startsWith('new_')) {
+              updateSessionActivity(targetSessionId);
             }
 
             // If new session was created, refresh the session list
             if (newSessionId) {
-              // Refresh sessions list to include the new session
               useSessionStore.getState().refreshSessions();
-              if (!currentSessionId) {
-                setCurrentSessionId(newSessionId);
-              }
             }
           },
           onError: (error) => {
             if (!isMountedRef.current) return;
             logger.error('[ChatPage] Stream error:', error);
-            setIsStreaming(false);
-            setIsLoading(false);
-            setIsRunning(false);
+
+            // Get the current session ID from navigation store (in case it was replaced)
+            const currentTabId = useNavigationStore.getState().activeTabId;
+            const targetSessionId = currentTabId || effectiveSessionId;
+
+            setStreaming(targetSessionId, false);
+            setThinking(targetSessionId, false);
             setThinkingStartTime(null);
 
-            // Handle error message - error could be Error object, string, or object
             let errorMessage = 'Unknown error';
             if (error instanceof Error) {
               errorMessage = error.message || 'Unknown error';
@@ -934,81 +970,96 @@ export const ChatPage: React.FC<ChatPageProps> = ({
               errorMessage = JSON.stringify(error);
             }
 
-            const errorMsg: ExtendedChatMessage = {
-              role: 'assistant',
-              content: `${t('chat.error')}: ${errorMessage}\n\n${t('chat.ensureGateway')}。\n\n${t('chat.runCommand')}: hermes gateway`,
-              timestamp: new Date().toISOString(),
-            };
-
-            setMessages(prev => {
-              const newMessages = [...prev];
-              newMessages[newMessages.length - 1] = errorMsg;
-              return newMessages;
-            });
+            // Get the last message ID from the current store state (not closure)
+            const currentMessages = useChatStore.getState().sessions[targetSessionId]?.messages;
+            const lastMessage = currentMessages?.[currentMessages.length - 1];
+            if (lastMessage) {
+              updateMessage(targetSessionId, lastMessage.id, {
+                content: `${t('chat.error')}: ${errorMessage}\n\n${t('chat.ensureGateway')}。\n\n${t('chat.runCommand')}: hermes gateway`,
+              });
+            }
           },
           onApproval: (approval) => {
             if (!isMountedRef.current) return;
             console.log('[ChatPage] Approval request:', approval);
-            logger.debug('[ChatPage] Approval request:', approval);
-            // Show approval dialog
-            setPendingApproval(approval);
+            // Get current session ID from navigation store (in case tab was switched)
+            const currentTabId = useNavigationStore.getState().activeTabId;
+            if (currentTabId) setChatPendingPermission(currentTabId, approval);
+          },
+          onSessionCreated: (newSessionId) => {
+            if (!isMountedRef.current) return;
+            console.log('[ChatPage] Session created:', newSessionId);
+
+            // Get current tab ID from navigation store (in case tab was switched)
+            const currentTabId = useNavigationStore.getState().activeTabId;
+
+            // If current tab is a temporary "new_" tab, replace it with the real session ID
+            if (currentTabId && currentTabId.startsWith('new_')) {
+              // First migrate messages from old ID to new ID
+              useChatStore.getState().migrateSession(currentTabId, newSessionId);
+              // Then update the tab
+              useNavigationStore.getState().replaceTabId(currentTabId, newSessionId);
+            }
+
+            // Optimistically add session to list immediately
+            // Don't call refreshSessions here - onComplete will handle it
+            useSessionStore.getState().addSessionOptimistic(newSessionId);
           },
         }
       );
     } catch (error) {
       if (!isMountedRef.current) return;
       logger.error('[ChatPage] Error:', error);
-      const errorMessage: ExtendedChatMessage = {
-        role: 'assistant',
-        content: `${t('chat.error')}: ${(error as Error).message}`,
-        timestamp: new Date().toISOString(),
-      };
-      setMessages(prev => {
-        const newMessages = [...prev];
-        newMessages[newMessages.length - 1] = errorMessage;
-        return newMessages;
-      });
-      setIsLoading(false);
-      setIsStreaming(false);
-      setIsRunning(false);
+      setStreaming(effectiveSessionId, false);
+      setThinking(effectiveSessionId, false);
       setThinkingStartTime(null);
+
+      // Get the last message ID from the current store state (not closure)
+      const currentMessages = useChatStore.getState().sessions[effectiveSessionId]?.messages;
+      const lastMessage = currentMessages?.[currentMessages.length - 1];
+      if (lastMessage) {
+        updateMessage(effectiveSessionId, lastMessage.id, {
+          content: `${t('chat.error')}: ${(error as Error).message}`,
+        });
+      }
     }
-  }, [inputValue, isLoading, isStreaming, messages, currentSessionId, thinkingStartTime]);
+  }, [inputValue, effectiveSessionId, addMessage, updateMessage, setStreaming, setStreamingText, setThinking, appendReasoningText, clearReasoningText, clearStreamingTools, addStreamingTool, setTokenUsage, setChatPendingPermission, thinkingStartTime, t, updateSessionActivity, fetchSessions]);
 
   // Stop running
   const handleStop = () => {
-    isStoppedRef.current = true; // Set stop flag
-    setIsLoading(false);
-    setIsStreaming(false);
-    setIsRunning(false);
+    // Get current session ID from navigation store (in case tab was switched)
+    const currentTabId = useNavigationStore.getState().activeTabId;
+    const targetSessionId = currentTabId || effectiveSessionId;
+    if (!targetSessionId) return;
+
+    isStoppedRef.current = true;
+    setStreaming(targetSessionId, false);
+    setThinking(targetSessionId, false);
     setThinkingStartTime(null);
 
-    // Update the last message to show it was stopped
-    setMessages(prev => {
-      const newMessages = [...prev];
-      const lastMsg = newMessages[newMessages.length - 1];
-      if (lastMsg.role === 'assistant' && lastMsg.isStreaming) {
-        newMessages[newMessages.length - 1] = {
-          ...lastMsg,
-          isStreaming: false,
-          content: lastMsg.content || t('chat.stopped'),
-        };
-      }
-      return newMessages;
-    });
+    // Get the last message from the current store state (not closure)
+    const currentMessages = useChatStore.getState().sessions[targetSessionId]?.messages;
+    const lastMessage = currentMessages?.[currentMessages.length - 1];
+    if (lastMessage && lastMessage.role === 'assistant') {
+      updateMessage(targetSessionId, lastMessage.id, {
+        content: lastMessage.content || t('chat.stopped'),
+      });
+    }
   };
 
   // Handle approval response
   const handleApprovalResponse = async (choice: 'once' | 'session' | 'always' | 'deny') => {
-    if (!pendingApproval) return;
+    // Get current pending permission from store directly to avoid stale closure
+    const currentPendingPermission = useChatStore.getState().sessions[effectiveSessionId || '']?.pendingPermission;
+    if (!effectiveSessionId || !currentPendingPermission) return;
 
     console.log('[ChatPage] Approval response:', choice);
     try {
-      await respondApproval(pendingApproval.id, choice);
+      await respondApproval(currentPendingPermission.id, choice);
     } catch (error) {
       logger.error('[ChatPage] Failed to send approval response:', error);
     }
-    setPendingApproval(null);
+    clearPendingPermission(effectiveSessionId);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -1045,17 +1096,9 @@ export const ChatPage: React.FC<ChatPageProps> = ({
 
   return (
     <div className="chat-page">
-      {/* Tabs Bar */}
-      <ChatTabs onNewChat={() => {
-        // Generate a new session ID
-        const newId = `new_${Date.now()}`;
-        const { openTab } = useNavigationStore.getState();
-        openTab(newId, '新会话', 'new');
-      }} />
-
       {/* Messages */}
       <div className="chat-page-messages">
-        {messages.length === 0 && !isStreaming && (
+        {sessionState.messages.length === 0 && !sessionState.isStreaming && (
           <div className="chat-welcome">
             <div className="chat-welcome-icon"><ZapIcon size={48} /></div>
             <h2>{t('chat.title')}</h2>
@@ -1068,7 +1111,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({
             )}
           </div>
         )}
-        {messages.map((msg, idx) => {
+        {sessionState.messages.map((msg, idx) => {
           // Check if message has any visible content
           const { cleanContent } = msg.content ? parseToolJson(msg.content) : { cleanContent: '' };
           const hasVisibleContent = cleanContent || msg.reasoning || (msg.tools && msg.tools.length > 0) || msg.thinking;
@@ -1079,7 +1122,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({
           // Find the previous visible message to determine grouping
           let prevVisibleIdx = idx - 1;
           while (prevVisibleIdx >= 0) {
-            const prevMsg = messages[prevVisibleIdx];
+            const prevMsg = sessionState.messages[prevVisibleIdx];
             const prevClean = prevMsg.content ? parseToolJson(prevMsg.content).cleanContent : '';
             if (prevClean || prevMsg.reasoning || (prevMsg.tools && prevMsg.tools.length > 0) || prevMsg.thinking) {
               break;
@@ -1087,18 +1130,19 @@ export const ChatPage: React.FC<ChatPageProps> = ({
             prevVisibleIdx--;
           }
 
-          const isFirstInGroup = prevVisibleIdx < 0 || messages[prevVisibleIdx].role !== msg.role;
+          const isFirstInGroup = prevVisibleIdx < 0 || sessionState.messages[prevVisibleIdx].role !== msg.role;
+          const isStreamingMsg = idx === sessionState.messages.length - 1 && sessionState.isStreaming;
 
           return (
-            <div key={idx} className={`chat-message ${msg.role} ${msg.isStreaming ? 'streaming' : ''} ${!isFirstInGroup ? 'grouped' : ''}`}>
+            <div key={idx} className={`chat-message ${msg.role} ${isStreamingMsg ? 'streaming' : ''} ${!isFirstInGroup ? 'grouped' : ''}`}>
               {isFirstInGroup && (
                 <div className="message-avatar">
                   {msg.role === 'user' ? <UserIcon size={16} /> : <BotIcon size={16} />}
                 </div>
               )}
               <div className="message-content">
-              {/* Thinking indicator for assistant messages */}
-              {msg.role === 'assistant' && msg.thinking && (
+              {/* Thinking indicator for assistant messages - only during streaming */}
+              {msg.role === 'assistant' && msg.thinking && isStreamingMsg && (
                 <div className="thinking-indicator">
                   <div className="thinking-dots">
                     <span></span>
@@ -1115,16 +1159,16 @@ export const ChatPage: React.FC<ChatPageProps> = ({
               )}
               {/* Reasoning display - collapsible thinking block */}
               {msg.role === 'assistant' && msg.reasoning && (
-                <ThinkingBlock content={msg.reasoning} isActive={msg.isStreaming} />
+                <ThinkingBlock content={msg.reasoning} isActive={isStreamingMsg} />
               )}
               {/* Tool calls display - collapsible block */}
               {msg.role === 'assistant' && msg.tools && msg.tools.length > 0 && (
-                <ToolsBlock tools={msg.tools} isStreaming={msg.isStreaming} />
+                <ToolsBlock tools={msg.tools} isStreaming={isStreamingMsg} />
               )}
               {/* Pending approval - inline card */}
-              {msg.role === 'assistant' && msg.isStreaming && pendingApproval && (
+              {msg.role === 'assistant' && isStreamingMsg && sessionState.pendingPermission && (
                 <PermissionCard
-                  approval={pendingApproval}
+                  approval={sessionState.pendingPermission}
                   onRespond={handleApprovalResponse}
                 />
               )}
@@ -1158,7 +1202,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({
                 );
               })()}
               {/* Stats bar for assistant messages (after completion) */}
-              {msg.role === 'assistant' && !msg.isStreaming && (msg.thinkingTime || msg.totalTokens) && msg.content && (
+              {msg.role === 'assistant' && !isStreamingMsg && (msg.thinkingTime || msg.totalTokens) && msg.content && (
                 <div className="message-stats">
                   {msg.thinkingTime && (
                     <span className="stat-item" title={t('chat.thinkingTime')}>
@@ -1176,6 +1220,50 @@ export const ChatPage: React.FC<ChatPageProps> = ({
           </div>
           );
         })}
+
+        {/* Streaming state display - shows real-time thinking/streaming */}
+        {sessionState.isStreaming && (
+          <div className="chat-message assistant streaming">
+            <div className="message-avatar">
+              <BotIcon size={16} />
+            </div>
+            <div className="message-content">
+              {/* Thinking indicator - show if thinking OR if no content yet */}
+              {(sessionState.isThinking || (!sessionState.reasoningText && !sessionState.streamingTools?.length && !sessionState.streamingText)) && (
+                <div className="thinking-indicator">
+                  <div className="thinking-dots">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </div>
+                  <span className="thinking-text">
+                    <ThinkingIcon size={14} /> {sessionState.thinkingText || t('chat.thinking')}
+                  </span>
+                </div>
+              )}
+              {/* Reasoning display - actual AI reasoning content */}
+              {sessionState.reasoningText && (
+                <ThinkingBlock content={sessionState.reasoningText} isActive={true} />
+              )}
+              {/* Tool calls display - show during streaming */}
+              {sessionState.streamingTools && sessionState.streamingTools.length > 0 && (
+                <ToolsBlock tools={sessionState.streamingTools} isStreaming={true} />
+              )}
+              {/* Streaming content */}
+              {sessionState.streamingText && (
+                <div className="message-text">{sessionState.streamingText}</div>
+              )}
+              {/* Pending approval */}
+              {sessionState.pendingPermission && (
+                <PermissionCard
+                  approval={sessionState.pendingPermission}
+                  onRespond={handleApprovalResponse}
+                />
+              )}
+            </div>
+          </div>
+        )}
+
         <div ref={messagesEndRef} />
       </div>
 
@@ -1242,7 +1330,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({
                 <button
                   className="toolbar-add-btn"
                   onClick={() => setShowAddMenu(!showAddMenu)}
-                  disabled={isLoading}
+                  disabled={sessionState.isStreaming}
                 >
                   <PlusIcon size={18} />
                 </button>
@@ -1287,12 +1375,12 @@ export const ChatPage: React.FC<ChatPageProps> = ({
 
             <div className="toolbar-right">
               <button
-                className={`run-action-btn ${isRunning ? 'running' : ''}`}
-                onClick={isRunning ? handleStop : handleSendMessage}
-                disabled={!isRunning && !inputValue.trim()}
+                className={`run-action-btn ${sessionState.isStreaming ? 'running' : ''}`}
+                onClick={sessionState.isStreaming ? handleStop : handleSendMessage}
+                disabled={!sessionState.isStreaming && !inputValue.trim()}
               >
-                {isRunning ? <StopIcon size={14} /> : <PlayIcon size={14} />}
-                <span>{isRunning ? t('chat.stop') : t('chat.run')}</span>
+                {sessionState.isStreaming ? <StopIcon size={14} /> : <PlayIcon size={14} />}
+                <span>{sessionState.isStreaming ? t('chat.stop') : t('chat.run')}</span>
               </button>
             </div>
           </div>

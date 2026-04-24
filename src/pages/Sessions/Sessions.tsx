@@ -27,7 +27,7 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, isSelected, onClick,
       </div>
       <div className="session-info">
         <div className="session-header-row">
-          <span className="session-name">{session.chat_name || `${t('sessions.title').replace('列表', '')} ${session.id.slice(0, 8)}`}</span>
+          <span className="session-name">{session.chat_name || `会话 ${session.id.slice(0, 12)}`}</span>
           <span className="session-model">{session.model.split('/').pop()}</span>
         </div>
         <div className="session-meta">

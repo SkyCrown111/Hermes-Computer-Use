@@ -1,0 +1,170 @@
+/* Session Sidebar Styles */
+.session-sidebar {
+  width: var(--session-sidebar-width);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface-sidebar);
+  border-right: 1px solid var(--color-border);
+  flex-shrink: 0;
+  position: fixed;
+  left: var(--sidebar-width);
+  top: 0;
+  z-index: 99;
+  transition: left var(--duration-normal) var(--ease-out);
+}
+
+/* When main sidebar is collapsed, move session sidebar left */
+.layout.sidebar-collapsed .session-sidebar {
+  left: var(--sidebar-collapsed-width);
+}
+
+.session-sidebar-header {
+  padding: var(--space-3);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.session-sidebar-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.session-sidebar-new-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-md);
+  background: var(--color-primary);
+  border: none;
+  color: white;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.session-sidebar-new-btn:hover {
+  background: var(--color-primary-container);
+  transform: scale(1.05);
+}
+
+.session-sidebar-search {
+  padding: var(--space-2) var(--space-3);
+}
+
+.session-sidebar-search-input {
+  width: 100%;
+  height: 30px;
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.session-sidebar-search-input:focus {
+  border-color: var(--color-border-focus);
+}
+
+.session-sidebar-search-input::placeholder {
+  color: var(--color-text-tertiary);
+}
+
+.session-sidebar-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-2);
+}
+
+.session-sidebar-group {
+  margin-bottom: var(--space-2);
+}
+
+.session-sidebar-group-label {
+  padding: var(--space-2) var(--space-3);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.session-sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background 0.15s;
+  margin-bottom: 2px;
+}
+
+.session-sidebar-item:hover {
+  background: var(--color-surface-hover);
+}
+
+.session-sidebar-item.active {
+  background: var(--color-surface-selected);
+}
+
+.session-sidebar-item-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-text-tertiary);
+  flex-shrink: 0;
+}
+
+.session-sidebar-item.active .session-sidebar-item-dot {
+  background: var(--color-primary);
+}
+
+.session-sidebar-item-title {
+  flex: 1;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-sidebar-item.active .session-sidebar-item-title {
+  color: var(--color-text-primary);
+  font-weight: 500;
+}
+
+.session-sidebar-item-time {
+  font-size: 10px;
+  color: var(--color-text-tertiary);
+  flex-shrink: 0;
+}
+
+.session-sidebar-empty {
+  padding: var(--space-4);
+  text-align: center;
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+}
+
+/* Scrollbar */
+.session-sidebar-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.session-sidebar-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.session-sidebar-list::-webkit-scrollbar-thumb {
+  background: var(--color-outline);
+  border-radius: 9999px;
+  opacity: 0.3;
+}

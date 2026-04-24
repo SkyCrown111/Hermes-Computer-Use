@@ -74,6 +74,14 @@ const translations: Translations = {
   'sessions.total': { zh: '共', en: 'Total' },
   'sessions.items': { zh: '条', en: 'items' },
 
+  // Session Sidebar
+  'sidebar.timeGroup.today': { zh: '今天', en: 'Today' },
+  'sidebar.timeGroup.yesterday': { zh: '昨天', en: 'Yesterday' },
+  'sidebar.timeGroup.last7days': { zh: '最近7天', en: 'Last 7 Days' },
+  'sidebar.timeGroup.older': { zh: '更早', en: 'Older' },
+  'sidebar.searchPlaceholder': { zh: '搜索会话...', en: 'Search sessions...' },
+  'sidebar.noSessions': { zh: '暂无会话', en: 'No sessions' },
+
   // Skills Page
   'skills.title': { zh: 'Skills', en: 'Skills' },
   'skills.search': { zh: '搜索 Skills...', en: 'Search Skills...' },

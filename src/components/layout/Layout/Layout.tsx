@@ -1,6 +1,8 @@
 import React from 'react';
 import { BaseComponentProps } from '../../../types';
 import { Sidebar } from '../Sidebar';
+import { SessionSidebar } from '../SessionSidebar';
+import { useThemeStore, useNavigationStore } from '../../../stores';
 import './Layout.css';
 
 export interface LayoutProps extends BaseComponentProps {
@@ -14,9 +16,27 @@ export const Layout: React.FC<LayoutProps> = ({
   className = '',
   children,
 }) => {
+  const sidebarCollapsed = useThemeStore((s) => s.sidebarCollapsed);
+  const setSidebarCollapsed = useThemeStore((s) => s.setSidebarCollapsed);
+  const activeItem = useNavigationStore((s) => s.activeItem);
+
+  // When entering chat mode, collapse the main sidebar
+  React.useEffect(() => {
+    if (activeItem === 'chat') {
+      setSidebarCollapsed(true);
+    }
+  }, [activeItem, setSidebarCollapsed]);
+
+  const layoutClasses = [
+    'layout',
+    sidebarCollapsed ? 'sidebar-collapsed' : '',
+    'has-session-sidebar', // Session sidebar is always shown
+  ].filter(Boolean).join(' ');
+
   return (
-    <div className="layout">
+    <div className={layoutClasses}>
       <Sidebar />
+      <SessionSidebar />
       <main className="layout-main">
         {(title || actions) && (
           <header className="layout-header">

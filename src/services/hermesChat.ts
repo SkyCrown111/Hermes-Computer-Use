@@ -52,6 +52,7 @@ export interface StreamCallbacks {
   onComplete?: (content: string, sessionId: string, usage?: ChatResult['usage']) => void;
   onError?: (error: Error) => void;
   onApproval?: (approval: { id: string; command: string; description: string; allow_permanent: boolean; choices: string[] }) => void;
+  onSessionCreated?: (sessionId: string) => void; // Called when session is created
 }
 
 /**
@@ -188,10 +189,14 @@ export async function streamChatRealtime(
 
     // Listen for completion
     unlisteners.push(
-      await listen<{ id: string; content: string; usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number } }>('chat:complete', (event) => {
+      await listen<{ id: string; content: string; reasoning?: string; usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number } }>('chat:complete', (event) => {
         console.log('[HermesChat] Complete event:', event.payload);
+        console.log('[HermesChat] Complete content length:', event.payload.content?.length);
+        console.log('[HermesChat] Complete reasoning:', event.payload.reasoning?.substring(0, 100));
         logger.debug('[HermesChat] Complete:', event.payload.id);
-        callbacks.onComplete?.(event.payload.content, event.payload.id, event.payload.usage);
+        // Use accumulated content if event content is empty
+        const finalContent = event.payload.content || fullContent;
+        callbacks.onComplete?.(finalContent, event.payload.id, event.payload.usage);
       })
     );
 
@@ -210,6 +215,15 @@ export async function streamChatRealtime(
         console.log('[HermesChat] Approval event:', event.payload);
         logger.debug('[HermesChat] Approval request:', event.payload);
         callbacks.onApproval?.(event.payload);
+      })
+    );
+
+    // Listen for session creation (emitted immediately when session is created)
+    unlisteners.push(
+      await listen<{ session_id: string; created_at: number }>('chat:session', (event) => {
+        console.log('[HermesChat] Session created:', event.payload);
+        logger.debug('[HermesChat] Session created:', event.payload.session_id);
+        callbacks.onSessionCreated?.(event.payload.session_id);
       })
     );
 

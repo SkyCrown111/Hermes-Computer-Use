@@ -13,7 +13,7 @@
   z-index: 100;
 }
 
-.sidebar-collapsed {
+.sidebar.sidebar-collapsed {
   width: var(--sidebar-collapsed-width);
 }
 

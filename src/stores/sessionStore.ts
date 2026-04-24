@@ -38,10 +38,11 @@ interface SessionState {
   deleteSession: (id: string) => Promise<void>;
   updateSessionTitle: (id: string, title: string) => Promise<void>;
   updateSessionActivity: (sessionId: string) => void; // 实时更新会话活动
+  addSessionOptimistic: (sessionId: string) => void; // 乐观添加新会话（立即显示在列表中）
 
   // Actions - 当前会话
-  fetchSession: (id: string) => Promise<void>;
-  fetchMessages: (sessionId: string) => Promise<void>;
+  fetchSession: (id: string) => Promise<SessionMessage[]>;
+  fetchMessages: (sessionId: string) => Promise<SessionMessage[]>;
   clearCurrentSession: () => void;
 
   // Actions - 消息缓存
@@ -133,8 +134,38 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     set({ sessions: updated });
   },
 
-  // 获取单个会话详情
-  fetchSession: async (id: string) => {
+  // 乐观添加新会话（立即显示在列表中，不等待API）
+  addSessionOptimistic: (sessionId: string) => {
+    const { sessions } = get();
+
+    // 检查是否已存在
+    if (sessions.some(s => s.id === sessionId)) {
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const newSession: Session = {
+      id: sessionId,
+      platform: 'cli',
+      chat_id: '',
+      chat_name: '新会话',
+      started_at: now,
+      last_activity_at: now,
+      message_count: 0,
+      model: '',
+      input_tokens: 0,
+      output_tokens: 0,
+      estimated_cost_usd: 0,
+      status: 'active',
+    };
+
+    // 添加到列表开头
+    set({ sessions: [newSession, ...sessions] });
+    logger.debug('[SessionStore] Optimistically added session:', sessionId);
+  },
+
+  // 获取单个会话详情 - 返回消息数组
+  fetchSession: async (id: string): Promise<SessionMessage[]> => {
     // 先检查缓存
     const cached = get().getCachedMessages(id);
     if (cached && cached.length > 0) {
@@ -156,15 +187,18 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         messages: response.messages || [],
         isLoading: false
       });
+
+      return response.messages || [];
     } catch (err) {
       logger.error('[SessionStore] Error:', err);
       const errorMsg = err instanceof Error ? err.message : String(err);
       set({ error: errorMsg || 'Unknown error', isLoading: false });
+      return [];
     }
   },
 
-  // 获取会话消息
-  fetchMessages: async (sessionId: string) => {
+  // 获取会话消息 - 返回消息数组
+  fetchMessages: async (sessionId: string): Promise<SessionMessage[]> => {
     // 先检查缓存
     const cached = get().getCachedMessages(sessionId);
     if (cached && cached.length > 0) {
@@ -180,7 +214,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           set({ currentSession: session });
         }
       }
-      return;
+      return cached;
     }
 
     set({ isLoadingMessages: true, error: null });
@@ -204,10 +238,13 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       } else {
         set({ messages: response.messages, isLoadingMessages: false });
       }
+
+      return response.messages;
     } catch (err) {
       logger.error('[SessionStore] Error fetching messages:', err);
       const errorMsg = err instanceof Error ? err.message : String(err);
       set({ error: errorMsg || 'Unknown error', isLoadingMessages: false });
+      return [];
     }
   },
 

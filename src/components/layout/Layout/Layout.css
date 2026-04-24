@@ -5,14 +5,32 @@
   overflow: hidden;
 }
 
+/* Main sidebar width variable */
+:root {
+  --sidebar-width: 220px;
+  --sidebar-collapsed-width: 56px;
+  --session-sidebar-width: 240px;
+}
+
 .layout-main {
   flex: 1;
   display: flex;
   flex-direction: column;
   min-width: 0;
   overflow: hidden;
-  margin-left: var(--sidebar-width);
   height: 100vh;
+  transition: margin-left var(--duration-normal) var(--ease-out);
+}
+
+/* Session sidebar is always shown, so always include its width */
+/* Default: main sidebar expanded + session sidebar */
+.layout:not(.sidebar-collapsed) .layout-main {
+  margin-left: calc(var(--sidebar-width) + var(--session-sidebar-width));
+}
+
+/* Main sidebar collapsed + session sidebar */
+.layout.sidebar-collapsed .layout-main {
+  margin-left: calc(var(--sidebar-collapsed-width) + var(--session-sidebar-width));
 }
 
 .layout-header {
