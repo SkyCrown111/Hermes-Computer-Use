@@ -4,7 +4,6 @@
 //! Reads skill metadata from SKILL.md files in WSL.
 
 use serde::{Deserialize, Serialize};
-use std::process::Command;
 use super::utils::create_command;
 
 /// Skill metadata - matches frontend Skill type exactly

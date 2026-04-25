@@ -1,0 +1,142 @@
+/* Global Status Bar — fixed bottom bar */
+.status-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 32px;
+  background: var(--color-surface-container-high);
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-4);
+  gap: var(--space-4);
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  z-index: 1000;
+  user-select: none;
+}
+
+/* Left section */
+.status-bar-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: 1;
+  min-width: 0;
+}
+
+/* Right section */
+.status-bar-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-shrink: 0;
+}
+
+/* Gateway status indicator */
+.status-gateway {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.status-gateway:hover {
+  background: var(--color-surface-hover);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-dot.online {
+  background: var(--color-success);
+  box-shadow: 0 0 4px var(--color-success);
+}
+
+.status-dot.offline {
+  background: var(--color-error);
+}
+
+.status-dot.degraded {
+  background: var(--color-warning);
+}
+
+.status-label {
+  white-space: nowrap;
+  font-size: var(--text-xs);
+}
+
+/* Model badge */
+.status-model {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  background: var(--color-surface-container);
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
+.status-model-icon {
+  font-size: 12px;
+}
+
+/* Token usage */
+.status-tokens {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  white-space: nowrap;
+  color: var(--color-text-tertiary);
+}
+
+.status-tokens-value {
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+/* Background tasks */
+.status-tasks {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  white-space: nowrap;
+}
+
+.status-tasks-spinner {
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: status-spin 0.8s linear infinite;
+}
+
+.status-tasks-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+}
+
+/* Separator */
+.status-separator {
+  width: 1px;
+  height: 14px;
+  background: var(--color-border);
+  flex-shrink: 0;
+}
+
+/* Spinner animation */
+@keyframes status-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

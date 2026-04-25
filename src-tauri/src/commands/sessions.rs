@@ -4,7 +4,6 @@
 //! Queries the Hermes SQLite database directly via WSL.
 
 use serde::{Deserialize, Serialize};
-use std::process::Command;
 use super::utils::create_command;
 
 /// Session metadata - matches frontend Session type
@@ -230,7 +229,7 @@ pub fn list_sessions(platform: Option<String>, limit: Option<usize>, offset: Opt
         let ended_at = row.get("ended_at")
             .and_then(|v| v.as_f64());
 
-        let end_reason = row.get("end_reason")
+        let _end_reason = row.get("end_reason")
             .and_then(|v| v.as_str())
             .unwrap_or("");
 

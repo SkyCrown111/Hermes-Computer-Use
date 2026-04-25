@@ -2,6 +2,7 @@
 import React, { useMemo } from 'react';
 import { useNavigationStore, useChatStore, useSessionStore } from '../stores';
 import { useTranslation } from '../hooks/useTranslation';
+import { formatNumber } from '../utils/format';
 
 // Format relative time
 function formatRelativeTime(timestamp: string | undefined): string {
@@ -21,17 +22,6 @@ function formatRelativeTime(timestamp: string | undefined): string {
   if (diffDay < 7) return `${diffDay}天前`;
 
   return new Date(timestamp).toLocaleDateString('zh-CN');
-}
-
-// Format token count with K/M suffix
-function formatTokenCount(count: number): string {
-  if (count >= 1000000) {
-    return `${(count / 1000000).toFixed(1)}M`;
-  }
-  if (count >= 1000) {
-    return `${(count / 1000).toFixed(1)}K`;
-  }
-  return count.toString();
 }
 
 export const ChatSessionHeader: React.FC = () => {
@@ -128,7 +118,7 @@ export const ChatSessionHeader: React.FC = () => {
         {totalTokens > 0 && (
           <span className="chat-session-tokens">
             <span className="material-symbols-outlined token-icon">token</span>
-            {formatTokenCount(totalTokens)}t
+            {formatNumber(totalTokens)}t
           </span>
         )}
       </div>

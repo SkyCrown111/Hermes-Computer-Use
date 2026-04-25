@@ -113,3 +113,57 @@ export const formatDuration = (seconds: number): string => {
   const mins = Math.floor((seconds % 3600) / 60);
   return `${hours}h ${mins}m`;
 };
+
+// ----- Relative time formatting (compact, no i18n, for constrained spaces) -----
+
+/**
+ * Format relative time as a compact string (e.g. "3m", "2h", "5d").
+ * i18n-free — suitable for sidebars, lists, and other tight layouts.
+ */
+export const formatRelativeTimeShort = (dateStr: string): string => {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return 'now';
+  if (min < 60) return `${min}m`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h`;
+  const day = Math.floor(hr / 24);
+  if (day < 30) return `${day}d`;
+  return `${Math.floor(day / 30)}mo`;
+};
+
+// ----- Session time grouping -----
+
+export type TimeGroup = 'today' | 'yesterday' | 'last7days' | 'older';
+
+export const TIME_GROUP_ORDER: TimeGroup[] = ['today', 'yesterday', 'last7days', 'older'];
+
+export interface TimeGroupItem {
+  id: string;
+  last_activity_at: string;
+}
+
+/**
+ * Group sessions (or any items with last_activity_at) into time-based buckets.
+ */
+export function groupByTime<T extends TimeGroupItem>(items: T[]): Map<TimeGroup, T[]> {
+  const groups = new Map<TimeGroup, T[]>();
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfYesterday = startOfToday - 86400000;
+  const sevenDaysAgo = startOfToday - 7 * 86400000;
+
+  for (const item of items) {
+    const ts = new Date(item.last_activity_at).getTime();
+    let group: TimeGroup;
+    if (ts >= startOfToday) group = 'today';
+    else if (ts >= startOfYesterday) group = 'yesterday';
+    else if (ts >= sevenDaysAgo) group = 'last7days';
+    else group = 'older';
+
+    if (!groups.has(group)) groups.set(group, []);
+    groups.get(group)!.push(item);
+  }
+
+  return groups;
+}

@@ -116,6 +116,7 @@ export const useNavigationStore = create<NavigationState>((set, get) => ({
     if (tab) {
       set({
         activeTabId: id,
+        activeItem: 'chat',
         chatContext: { sessionId: tab.id, sessionTitle: tab.title }
       });
       get().saveTabs();

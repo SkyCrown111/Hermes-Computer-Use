@@ -3,16 +3,16 @@
 //! Commands for log viewing and system monitoring.
 
 use serde::{Deserialize, Serialize};
-use std::process::Command;
 use super::utils::create_command;
 
 /// Log file type
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum LogFile {
-    agent,
-    gateway,
-    cron,
-    mcp,
+    Agent,
+    Gateway,
+    Cron,
+    Mcp,
 }
 
 /// Log line structure

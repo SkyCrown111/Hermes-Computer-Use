@@ -4,7 +4,6 @@
 //! Reads from ~/.hermes/cron/jobs.json in WSL.
 
 use serde::{Deserialize, Serialize};
-use std::process::Command;
 use super::utils::create_command;
 
 /// Schedule type - matches frontend Schedule interface

@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Card, Button, FolderIcon, FileIcon, SearchIcon, AlertIcon, EmptyIcon, ChartIcon, FileTextIcon, SaveIcon, HourglassIcon, SparklesIcon, XIcon, RefreshIcon, ConfirmModal, InputModal } from '../../components';
 import { useFilesStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
+import { filesApi } from '../../services/filesApi';
 import type { FileInfo, CacheItem } from '../../types/files';
 import { formatBytes } from '../../utils/format';
 import './Files.css';
@@ -116,6 +117,15 @@ export const Files: React.FC = () => {
     loadFavorites();
     loadRecentFiles();
   }, []);
+
+  // 切换到缓存 tab 时加载缓存数据
+  useEffect(() => {
+    if (activeTab === 'cache') {
+      filesApi.getCacheItems().then(items => {
+        setCacheItems(items);
+      });
+    }
+  }, [activeTab]);
 
   // 处理错误
   useEffect(() => {
@@ -232,7 +242,8 @@ export const Files: React.FC = () => {
   };
 
   // 清除缓存
-  const handleClearCache = (type?: 'file' | 'search' | 'metadata') => {
+  const handleClearCache = async (type?: 'file' | 'search' | 'metadata') => {
+    await filesApi.clearCache(type);
     if (type) {
       setCacheItems(prev => prev.filter(item => item.type !== type));
     } else {
@@ -241,7 +252,8 @@ export const Files: React.FC = () => {
   };
 
   // 删除缓存项
-  const handleDeleteCacheItem = (key: string) => {
+  const handleDeleteCacheItem = async (key: string) => {
+    await filesApi.deleteCacheItem(key);
     setCacheItems(prev => prev.filter(item => item.key !== key));
   };
 
@@ -257,11 +269,23 @@ export const Files: React.FC = () => {
   // 处理文件操作
   const handleViewFile = async (path: string) => {
     await openFile(path);
+    // Track in cache
+    filesApi.addCacheItem({
+      key: `file://${path}`,
+      size: 0,
+      type: 'file',
+    });
   };
 
   const handleEditFile = async (path: string) => {
     await openFile(path);
     startEdit();
+    // Track in cache
+    filesApi.addCacheItem({
+      key: `file://${path}`,
+      size: 0,
+      type: 'file',
+    });
   };
 
   const handleDeleteFile = async (path: string) => {

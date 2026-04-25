@@ -4,7 +4,6 @@
 //! Queries Hermes Agent state from WSL.
 
 use serde::{Deserialize, Serialize};
-use std::process::Command;
 use super::utils::create_command;
 
 /// Connected platform

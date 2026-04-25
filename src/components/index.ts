@@ -19,5 +19,23 @@ export type { LayoutProps, PageHeaderProps } from './layout';
 
 export { Sidebar } from './layout';
 
+// Toast
+export { ToastContainer } from './ui/Toast';
+
+// Command Palette
+export { CommandPalette } from './ui/CommandPalette';
+
+// Global Search
+export { GlobalSearch } from './ui/GlobalSearch';
+
+// Error Boundary
+export { ErrorBoundary } from './ErrorBoundary';
+
+// Markdown Renderer
+export { MarkdownRenderer } from './ui/MarkdownRenderer';
+
 // Chat Components
 export { ChatSessionHeader } from './ChatSessionHeader';
+
+// Chat feature components
+export * from './chat';

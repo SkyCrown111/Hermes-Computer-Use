@@ -1,4 +1,9 @@
 // API Service Base Configuration
+//
+// DEPRECATED: This HTTP-based API client is no longer used.
+// All services have been migrated to Tauri commands via safeInvoke
+// (see sessionApi.ts, skillsApi.ts, etc.).
+// Kept as reference — do not import from this file for new code.
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -73,42 +78,3 @@ class ApiService {
 }
 
 export const api = new ApiService(API_BASE_URL);
-
-// API Endpoints
-export const endpoints = {
-  // Sessions
-  sessions: {
-    list: () => api.get('/api/sessions'),
-    get: (id: string) => api.get(`/api/sessions/${id}`),
-    create: (data: unknown) => api.post('/api/sessions', data),
-    delete: (id: string) => api.delete(`/api/sessions/${id}`),
-  },
-  
-  // Skills
-  skills: {
-    list: (category?: string) => api.get('/api/skills', category ? { category } : undefined),
-    get: (id: string) => api.get(`/api/skills/${id}`),
-    execute: (id: string, params: unknown) => api.post(`/api/skills/${id}/execute`, params),
-  },
-  
-  // Tasks
-  tasks: {
-    list: () => api.get('/api/tasks'),
-    create: (data: unknown) => api.post('/api/tasks', data),
-    update: (id: string, data: unknown) => api.put(`/api/tasks/${id}`, data),
-    delete: (id: string) => api.delete(`/api/tasks/${id}`),
-    trigger: (id: string) => api.post(`/api/tasks/${id}/trigger`),
-  },
-  
-  // Config
-  config: {
-    get: () => api.get('/api/config'),
-    update: (data: unknown) => api.put('/api/config', data),
-  },
-  
-  // Status
-  status: {
-    get: () => api.get('/api/status'),
-    health: () => api.get('/api/health'),
-  },
-};

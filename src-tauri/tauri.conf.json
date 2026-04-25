@@ -40,5 +40,13 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/Crown-22/Hermes-Computer-Use/releases/latest/download/update.json"
+      ],
+      "pubkey": ""
+    }
   }
 }

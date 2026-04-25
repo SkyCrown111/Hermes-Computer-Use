@@ -143,6 +143,9 @@ interface ChatStore {
 
   // 迁移会话（用于 new_xxx -> real session ID）
   migrateSession: (oldId: string, newId: string) => void;
+
+  // 删除单条消息
+  deleteMessage: (sessionId: string, messageId: string) => void;
 }
 
 // 辅助函数：更新指定会话的状态
@@ -151,8 +154,7 @@ function updateSessionIn(
   sessionId: string,
   updater: (s: PerSessionState) => Partial<PerSessionState>
 ): Record<string, PerSessionState> {
-  const session = sessions[sessionId];
-  if (!session) return sessions;
+  const session = sessions[sessionId] ?? createDefaultSessionState();
   return { ...sessions, [sessionId]: { ...session, ...updater(session) } };
 }
 
@@ -202,9 +204,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   setStreaming: (sessionId, isStreaming) => {
     set((s) => ({
-      sessions: updateSessionIn(s.sessions, sessionId, () => ({
+      sessions: updateSessionIn(s.sessions, sessionId, (session) => ({
         isStreaming,
-        isThinking: isStreaming ? false : get().sessions[sessionId]?.isThinking ?? false,
+        isThinking: isStreaming ? false : session.isThinking,
       })),
     }));
   },
@@ -444,6 +446,22 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // Persist messages after migration
     persistMessages(get().sessions);
   },
+
+  deleteMessage: (sessionId, messageId) => {
+    set((s) => {
+      const session = s.sessions[sessionId];
+      if (!session) return s;
+      return {
+        sessions: {
+          ...s.sessions,
+          [sessionId]: {
+            ...session,
+            messages: session.messages.filter((m) => m.id !== messageId),
+          },
+        },
+      };
+    });
+  },
 }));
 
 // Store a mapping of old session IDs to new session IDs for callbacks that might still use old IDs
@@ -465,7 +483,22 @@ export function resolveSessionId(id: string): string {
   return id;
 }
 
-// Persist messages to localStorage
+// Approximate localStorage limit (most browsers allow ~5MB)
+const LS_LIMIT_BYTES = 5 * 1024 * 1024;
+const LS_WARN_THRESHOLD = 0.8; // warn at 80% usage
+
+// Estimate the byte size of a string
+function estimateByteSize(str: string): number {
+  // Each char is 2 bytes in UTF-16 (what localStorage uses internally),
+  // but the serialized JSON is what matters. Use Blob for accurate measurement.
+  try {
+    return new Blob([str]).size;
+  } catch {
+    return str.length * 2; // fallback estimate
+  }
+}
+
+// Persist messages to localStorage with capacity management
 function persistMessages(sessions: Record<string, PerSessionState>) {
   try {
     // Only persist messages, not streaming state
@@ -475,10 +508,43 @@ function persistMessages(sessions: Record<string, PerSessionState>) {
         messagesToSave[sessionId] = state.messages;
       }
     }
-    localStorage.setItem(CHAT_MESSAGES_KEY, JSON.stringify(messagesToSave));
+
+    const serialized = JSON.stringify(messagesToSave);
+    const byteSize = estimateByteSize(serialized);
+
+    // Warn if approaching the limit
+    if (byteSize > LS_LIMIT_BYTES * LS_WARN_THRESHOLD) {
+      logger.warn(
+        `[ChatStore] localStorage usage: ${(byteSize / 1024 / 1024).toFixed(1)}MB / ${(LS_LIMIT_BYTES / 1024 / 1024).toFixed(0)}MB ` +
+        `(${(byteSize / LS_LIMIT_BYTES * 100).toFixed(0)}%)`
+      );
+    }
+
+    localStorage.setItem(CHAT_MESSAGES_KEY, serialized);
     logger.debug('[ChatStore] Persisted messages for', Object.keys(messagesToSave).length, 'sessions');
   } catch (err) {
-    logger.error('[ChatStore] Failed to persist messages:', err);
+    // If quota exceeded, drop oldest session's messages and retry once
+    if (err instanceof DOMException && err.name === 'QuotaExceededError') {
+      logger.warn('[ChatStore] localStorage quota exceeded, dropping oldest session messages');
+      const sessionIds = Object.keys(sessions);
+      if (sessionIds.length > 0) {
+        // Remove the session with the fewest messages
+        const sorted = sessionIds.sort(
+          (a, b) => (sessions[a]?.messages.length ?? 0) - (sessions[b]?.messages.length ?? 0)
+        );
+        const toRemove = sorted[0];
+        if (toRemove) {
+          logger.warn(`[ChatStore] Dropping messages for session: ${toRemove}`);
+          // Update the in-memory store
+          const { [toRemove]: _removed, ...remaining } = sessions;
+          useChatStore.setState({ sessions: remaining });
+          // Retry persist without the dropped session
+          persistMessages(remaining);
+        }
+      }
+    } else {
+      logger.error('[ChatStore] Failed to persist messages:', err);
+    }
   }
 }
 

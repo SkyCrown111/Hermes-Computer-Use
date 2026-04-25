@@ -8,6 +8,8 @@ mod commands;
 
 // Import Manager trait for webview window access
 use tauri::Manager;
+use tauri::menu::{MenuBuilder, MenuItemBuilder};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 
 // Re-export commands for handler registration
 use commands::{
@@ -37,6 +39,8 @@ use commands::{
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .setup(|app| {
             // Auto-start Hermes Gateway on app launch
             println!("[HermesApp] Auto-starting Gateway...");
@@ -50,6 +54,71 @@ pub fn run() {
                     Err(e) => eprintln!("[HermesApp] Failed to start gateway: {}", e),
                 }
             });
+
+            // Configure system tray
+            let show_item = MenuItemBuilder::with_id("show", "显示窗口")
+                .build(app)?;
+            let quit_item = MenuItemBuilder::with_id("quit", "退出")
+                .build(app)?;
+
+            let menu = MenuBuilder::new(app)
+                .item(&show_item)
+                .separator()
+                .item(&quit_item)
+                .build()?;
+
+            let tray_icon = app.default_window_icon().cloned();
+
+            let mut tray_builder = TrayIconBuilder::new()
+                .menu(&menu)
+                .tooltip("Hermes Computer Use");
+
+            if let Some(icon) = tray_icon {
+                tray_builder = tray_builder.icon(icon);
+            }
+
+            tray_builder
+                .on_menu_event(|app_handle, event| {
+                    match event.id.as_ref() {
+                        "show" => {
+                            if let Some(window) = app_handle.get_webview_window("main") {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                        }
+                        "quit" => {
+                            app_handle.exit(0);
+                        }
+                        _ => {}
+                    }
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        if let Some(window) = tray.app_handle().get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                })
+                .build(app)?;
+
+            // Minimize to tray on close instead of quitting
+            if let Some(window) = app.get_webview_window("main") {
+                let handle = app.handle().clone();
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        if let Some(w) = handle.get_webview_window("main") {
+                            let _ = w.hide();
+                        }
+                        api.prevent_close();
+                    }
+                });
+            }
 
             Ok(())
         })

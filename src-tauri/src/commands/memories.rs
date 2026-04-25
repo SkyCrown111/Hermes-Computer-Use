@@ -4,7 +4,6 @@
 //! Reads from ~/.hermes/memories/ in WSL.
 
 use serde::{Deserialize, Serialize};
-use std::process::Command;
 use super::utils::create_command;
 
 /// Memory section - matches frontend MemorySection

@@ -1,7 +1,8 @@
 // Services 统一导出
 
-// Base API (for HTTP fallback)
-export * from './api';
+// API Client (interceptor layer)
+export { ApiClient, ApiError, apiClient } from './apiClient';
+export type { ApiErrorData, RetryConfig, InvokeOptions } from './apiClient';
 
 // Tauri Command Services
 export * from './sessionApi';
@@ -9,7 +10,10 @@ export * from './skillsApi';
 export * from './cronJobsApi';
 export * from './settingsApi';
 
-// Other services (still using HTTP API)
+// Update service
+export * from './updateApi';
+
+// Other services (all migrated to Tauri invoke)
 export * from './analyticsApi';
 export * from './statusApi';
 export * from './monitorApi';

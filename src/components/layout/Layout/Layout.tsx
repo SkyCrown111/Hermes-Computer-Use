@@ -2,6 +2,7 @@ import React from 'react';
 import { BaseComponentProps } from '../../../types';
 import { Sidebar } from '../Sidebar';
 import { SessionSidebar } from '../SessionSidebar';
+import { StatusBar } from '../StatusBar';
 import { useThemeStore, useNavigationStore } from '../../../stores';
 import './Layout.css';
 
@@ -46,6 +47,7 @@ export const Layout: React.FC<LayoutProps> = ({
         )}
         <div className={`layout-content ${className}`}>{children}</div>
       </main>
+      <StatusBar />
     </div>
   );
 };

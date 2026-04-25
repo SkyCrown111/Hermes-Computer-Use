@@ -3,6 +3,8 @@ import { Card, Button, RocketIcon, ChatIcon, TargetIcon, ClockIcon, ChartIcon, Z
 import { useDashboardStore, useNavigationStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
 import { safeInvoke } from '../../lib/tauri';
+import { checkForUpdates } from '../../services/updateApi';
+import { restartGateway } from '../../services/settingsApi';
 import { formatNumber, formatCurrency, formatTime } from '../../utils/format';
 import { logger } from '../../lib/logger';
 import './Dashboard.css';
@@ -82,6 +84,8 @@ export const Dashboard: React.FC = () => {
 
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [isChecking, setIsChecking] = useState(true);
+  const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
+  const [isRestartingGateway, setIsRestartingGateway] = useState(false);
 
   useEffect(() => {
     logger.component('Dashboard', 'useEffect triggered, checking status...');
@@ -109,6 +113,34 @@ export const Dashboard: React.FC = () => {
       setShowOnboarding(true);
     } finally {
       setIsChecking(false);
+    }
+  };
+
+  const handleCheckUpdates = async () => {
+    setIsCheckingUpdates(true);
+    try {
+      const result = await checkForUpdates();
+      if (result.available) {
+        alert(`Update available: v${result.newVersion}\n${result.releaseNotes || ''}`);
+      } else {
+        alert('You are up to date!');
+      }
+    } catch {
+      alert('Failed to check for updates');
+    } finally {
+      setIsCheckingUpdates(false);
+    }
+  };
+
+  const handleRestartGateway = async () => {
+    setIsRestartingGateway(true);
+    try {
+      await restartGateway();
+      alert('Gateway restart initiated');
+    } catch {
+      alert('Failed to restart gateway');
+    } finally {
+      setIsRestartingGateway(false);
     }
   };
 
@@ -233,6 +265,12 @@ export const Dashboard: React.FC = () => {
               <Button variant="secondary" onClick={() => setActiveItem('skills')}>{t('dashboard.executeSkill')}</Button>
               <Button variant="secondary" onClick={() => setActiveItem('tasks')}>{t('dashboard.createTask')}</Button>
               <Button variant="secondary" onClick={() => setActiveItem('settings')}>{t('dashboard.openSettings')}</Button>
+              <Button variant="secondary" onClick={handleCheckUpdates} disabled={isCheckingUpdates}>
+                {isCheckingUpdates ? 'Checking...' : 'Check for Updates'}
+              </Button>
+              <Button variant="secondary" onClick={handleRestartGateway} disabled={isRestartingGateway}>
+                {isRestartingGateway ? 'Restarting...' : 'Restart Gateway'}
+              </Button>
             </div>
           </Card>
 

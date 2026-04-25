@@ -15,6 +15,7 @@ import type {
   FileSearchRequest,
   FileListRequest,
   FileTreeNode,
+  CacheItem,
 } from '../types/files';
 
 // Backend response types
@@ -364,5 +365,78 @@ export const filesApi = {
   removeFavorite: async (path: string): Promise<FileOperationResult> => {
     logger.debug('[FilesAPI] removeFavorite not implemented:', path);
     return { success: true, message: 'Favorite removed' };
+  },
+
+  // ---- Cache Management ----
+
+  CACHE_STORAGE_KEY: 'hermes-file-cache',
+
+  // 获取所有缓存项
+  getCacheItems: async (): Promise<CacheItem[]> => {
+    try {
+      const raw = localStorage.getItem('hermes-file-cache');
+      return raw ? JSON.parse(raw) : [];
+    } catch (err) {
+      logger.error('[FilesAPI] Failed to get cache items:', err);
+      return [];
+    }
+  },
+
+  // 添加或更新缓存项
+  addCacheItem: async (item: Omit<CacheItem, 'lastAccessed' | 'hits'>): Promise<void> => {
+    try {
+      const items = await filesApi.getCacheItems();
+      const existing = items.find(i => i.key === item.key);
+      if (existing) {
+        existing.hits++;
+        existing.lastAccessed = new Date().toISOString();
+        existing.size = item.size;
+      } else {
+        items.push({
+          ...item,
+          hits: 1,
+          lastAccessed: new Date().toISOString(),
+        });
+      }
+      localStorage.setItem('hermes-file-cache', JSON.stringify(items));
+    } catch (err) {
+      logger.error('[FilesAPI] Failed to add cache item:', err);
+    }
+  },
+
+  // 清除缓存（按类型或全部）
+  clearCache: async (type?: 'file' | 'search' | 'metadata'): Promise<void> => {
+    try {
+      if (type) {
+        const items = await filesApi.getCacheItems();
+        localStorage.setItem('hermes-file-cache', JSON.stringify(items.filter(i => i.type !== type)));
+      } else {
+        localStorage.removeItem('hermes-file-cache');
+      }
+    } catch (err) {
+      logger.error('[FilesAPI] Failed to clear cache:', err);
+    }
+  },
+
+  // 删除单个缓存项
+  deleteCacheItem: async (key: string): Promise<void> => {
+    try {
+      const items = await filesApi.getCacheItems();
+      localStorage.setItem('hermes-file-cache', JSON.stringify(items.filter(i => i.key !== key)));
+    } catch (err) {
+      logger.error('[FilesAPI] Failed to delete cache item:', err);
+    }
+  },
+
+  // 获取缓存统计
+  getCacheStats: async (): Promise<{ totalSize: number; totalHits: number; fileCount: number; searchCount: number; metadataCount: number }> => {
+    const items = await filesApi.getCacheItems();
+    return {
+      totalSize: items.reduce((s, i) => s + i.size, 0),
+      totalHits: items.reduce((s, i) => s + i.hits, 0),
+      fileCount: items.filter(i => i.type === 'file').length,
+      searchCount: items.filter(i => i.type === 'search').length,
+      metadataCount: items.filter(i => i.type === 'metadata').length,
+    };
   },
 };

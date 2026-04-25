@@ -12,16 +12,23 @@ import './Sessions.css';
 interface SessionCardProps {
   session: Session;
   isSelected: boolean;
+  isBatchMode: boolean;
   onClick: () => void;
   onDetail: () => void;
   onDelete: () => void;
   onEdit: () => void;
+  onToggleSelect: () => void;
   t: (key: string) => string;
 }
 
-const SessionCard: React.FC<SessionCardProps> = ({ session, isSelected, onClick, onDetail, onDelete, onEdit, t }) => {
+const SessionCard: React.FC<SessionCardProps> = ({ session, isSelected, isBatchMode, onClick, onDetail, onDelete, onEdit, onToggleSelect, t }) => {
   return (
-    <div className={`session-card ${isSelected ? 'session-card-selected' : ''}`} onClick={onClick}>
+    <div className={`session-card ${isSelected ? 'session-card-selected' : ''}`} onClick={isBatchMode ? onToggleSelect : onClick}>
+      {isBatchMode && (
+        <div className="session-checkbox" onClick={(e) => e.stopPropagation()}>
+          <input type="checkbox" checked={isSelected} onChange={onToggleSelect} />
+        </div>
+      )}
       <div className={`platform-badge platform-${session.platform}`}>
         {getPlatformIcon(session.platform)}
       </div>
@@ -210,6 +217,47 @@ export const Sessions: React.FC = () => {
   const [editingSession, setEditingSession] = useState<Session | null>(null);
   const [editName, setEditName] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<Session | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [batchDeleteConfirm, setBatchDeleteConfirm] = useState(false);
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const handleBatchDelete = async () => {
+    for (const id of selectedIds) {
+      await deleteSession(id);
+    }
+    clearSelection();
+    setBatchDeleteConfirm(false);
+  };
+
+  const handleBatchExport = async () => {
+    for (const id of selectedIds) {
+      const session = sessions.find(s => s.id === id);
+      if (session) {
+        try {
+          const blob = await sessionApi.export('json', id);
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `session-${id}.json`;
+          a.click();
+          URL.revokeObjectURL(url);
+        } catch (err) {
+          console.error('Export failed for', id, err);
+        }
+      }
+    }
+    clearSelection();
+  };
 
   // Calculate page from offset
   const currentPage = Math.floor(offset / limit);
@@ -361,6 +409,22 @@ export const Sessions: React.FC = () => {
         </form>
       </Card>
 
+      {/* Batch Action Bar */}
+      {selectedIds.size > 0 && (
+        <div className="batch-bar">
+          <span className="batch-count">{selectedIds.size} selected</span>
+          <Button variant="error" size="sm" onClick={() => setBatchDeleteConfirm(true)}>
+            Delete Selected
+          </Button>
+          <Button variant="secondary" size="sm" onClick={handleBatchExport}>
+            Export Selected
+          </Button>
+          <Button variant="ghost" size="sm" onClick={clearSelection}>
+            Clear Selection
+          </Button>
+        </div>
+      )}
+
       {/* Error */}
       {error && (
         <div className="error-message">
@@ -380,11 +444,13 @@ export const Sessions: React.FC = () => {
             <SessionCard
               key={session.id}
               session={session}
-              isSelected={currentSession?.id === session.id}
+              isSelected={selectedIds.has(session.id)}
+              isBatchMode={selectedIds.size > 0}
               onClick={() => handleSessionClick(session)}
               onDetail={() => handleShowDetail(session)}
               onDelete={() => handleDeleteSession(session)}
               onEdit={() => handleEditSession(session)}
+              onToggleSelect={() => toggleSelect(session.id)}
               t={t}
             />
           ))}
@@ -556,6 +622,18 @@ export const Sessions: React.FC = () => {
         variant="danger"
         onConfirm={confirmDeleteSession}
         onCancel={() => setDeleteConfirm(null)}
+      />
+
+      {/* Batch Delete Confirmation */}
+      <ConfirmModal
+        isOpen={batchDeleteConfirm}
+        title="Delete Sessions"
+        message={`Are you sure you want to delete ${selectedIds.size} sessions? This action cannot be undone.`}
+        confirmText="Delete All"
+        cancelText="Cancel"
+        variant="danger"
+        onConfirm={handleBatchDelete}
+        onCancel={() => setBatchDeleteConfirm(false)}
       />
     </div>
   );

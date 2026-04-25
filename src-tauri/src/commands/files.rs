@@ -3,7 +3,6 @@
 //! Commands for file system operations via WSL.
 
 use serde::{Deserialize, Serialize};
-use std::process::Command;
 use super::utils::create_command;
 
 /// File type
@@ -123,7 +122,7 @@ pub async fn list_directory(
     let sort_order = sort_order.unwrap_or_else(|| "asc".to_string());
 
     // Build ls command
-    let mut cmd = if recursive {
+    let cmd = if recursive {
         format!("find {} -maxdepth 5 -type f -o -type d 2>/dev/null | head -1000", path)
     } else {
         format!("ls -la {} 2>/dev/null", path)

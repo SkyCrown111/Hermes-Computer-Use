@@ -1,25 +1,23 @@
 // Session Chat Interface Component
 // Allows continuing a conversation with Hermes Agent
+// Uses ChatInput + MessageContent from the shared chat component library
 
 import React, { useState, useRef, useEffect } from 'react';
-import { sendChatMessage, streamChatMessage, checkHermesApiHealth, type ChatMessage } from '../../services/hermesChat';
+import { streamChatRealtime, checkHermesApiHealth, respondApproval, abortChat } from '../../services/hermesChat';
 import { useTranslation } from '../../hooks/useTranslation';
+import { ChatInput, MessageContent, ThinkingBlock } from '../../components/chat';
+import type { ChatInputHandle, AttachedFile, SessionSearchResult } from '../../components/chat';
+import type { ChatMessage, ToolCallInfo } from '../../stores/chatStore';
+import { MarkdownRenderer, BotIcon, ThinkingIcon } from '../../components';
 import type { Session, SessionMessage } from '../../types';
 import './SessionChat.css';
 
-// Hermes Agent slash commands - descriptions set in component
-const getHermesCommands = (t: (key: string) => string) => [
-  { command: '/help', description: t('chat.cmd.help') },
-  { command: '/status', description: t('chat.cmd.status') },
-  { command: '/clear', description: t('chat.cmd.clear') },
-  { command: '/export', description: t('chat.cmd.export') },
-  { command: '/model', description: t('chat.cmd.model') },
-  { command: '/skill', description: t('chat.cmd.skill') },
-  { command: '/memory', description: t('chat.cmd.memory') },
-  { command: '/task', description: t('chat.cmd.task') },
-  { command: '/file', description: t('chat.cmd.file') },
-  { command: '/search', description: t('chat.cmd.search') },
-];
+// ---- Helpers ----
+
+let msgCounter = 0;
+const nextId = () => `sc-${++msgCounter}-${Date.now()}`;
+
+// ---- Types ----
 
 interface SessionChatProps {
   session: Session;
@@ -27,36 +25,43 @@ interface SessionChatProps {
   onClose: () => void;
 }
 
+// ---- Component ----
+
 export const SessionChat: React.FC<SessionChatProps> = ({
   session,
   initialMessages,
   onClose,
 }) => {
   const { t } = useTranslation();
-  const HERMES_COMMANDS = getHermesCommands(t);
 
+  // ---- Message State ----
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [inputValue, setInputValue] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [isRunning, setIsRunning] = useState(false);
-  const [apiAvailable, setApiAvailable] = useState<boolean | null>(null);
-  const [streamingContent, setStreamingContent] = useState('');
-  const [showAddMenu, setShowAddMenu] = useState(false);
-  const [showCommands, setShowCommands] = useState(false);
-  const [filteredCommands, setFilteredCommands] = useState(HERMES_COMMANDS);
-  const [attachedFiles, setAttachedFiles] = useState<string[]>([]);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
-  const isStoppedRef = useRef<boolean>(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const addMenuRef = useRef<HTMLDivElement>(null);
+  const [editMessageId, setEditMessageId] = useState<string | null>(null);
+  const [editMessageContent, setEditMessageContent] = useState('');
 
-  // Convert SessionMessage to ChatMessage format
+  // ---- Streaming State ----
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamingContent, setStreamingContent] = useState('');
+  const [streamingReasoning, setStreamingReasoning] = useState('');
+  const [streamingTools, setStreamingTools] = useState<ToolCallInfo[]>([]);
+  const [apiAvailable, setApiAvailable] = useState<boolean | null>(null);
+
+  // ---- Refs (avoid stale closures in stream callbacks) ----
+  const isStoppedRef = useRef(false);
+  const streamingContentRef = useRef('');
+  const streamingReasoningRef = useRef('');
+  const streamingToolsRef = useRef<ToolCallInfo[]>([]);
+  const chatInputRef = useRef<ChatInputHandle>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // ---- Effects ----
+
+  // Convert SessionMessage[] to ChatMessage[] on mount
   useEffect(() => {
     const converted: ChatMessage[] = initialMessages
       .filter(m => m.role === 'user' || m.role === 'assistant')
       .map(m => ({
+        id: nextId(),
         role: m.role as 'user' | 'assistant',
         content: m.content,
         timestamp: m.timestamp,
@@ -68,179 +73,223 @@ export const SessionChat: React.FC<SessionChatProps> = ({
   useEffect(() => {
     checkHermesApiHealth().then(available => {
       setApiAvailable(available);
-      console.log('[SessionChat] Hermes API available:', available);
     });
   }, []);
 
-  // Auto-scroll to bottom
+  // Auto-scroll to bottom on new messages or streaming content
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamingContent]);
 
-  // Close menus when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (addMenuRef.current && !addMenuRef.current.contains(e.target as Node)) {
-        setShowAddMenu(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  // ---- Send / Stop ----
 
-  // Handle slash command filtering
-  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const value = e.target.value;
-    setInputValue(value);
+  const handleSendMessage = async (text: string, _files?: AttachedFile[]) => {
+    if (!text.trim() || isStreaming) return;
 
-    // Check for slash command
-    if (value.startsWith('/')) {
-      const query = value.toLowerCase();
-      const filtered = HERMES_COMMANDS.filter(cmd =>
-        cmd.command.toLowerCase().startsWith(query)
-      );
-      setFilteredCommands(filtered);
-      setShowCommands(filtered.length > 0);
-    } else {
-      setShowCommands(false);
-    }
-  };
-
-  // Insert command
-  const insertCommand = (command: string) => {
-    setInputValue(command + ' ');
-    setShowCommands(false);
-    inputRef.current?.focus();
-  };
-
-  // Handle file selection
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files) {
-      const fileNames = Array.from(files).map(f => f.name);
-      setAttachedFiles(prev => [...prev, ...fileNames]);
-    }
-    setShowAddMenu(false);
-  };
-
-  // Remove attached file
-  const removeAttachedFile = (index: number) => {
-    setAttachedFiles(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const handleSendMessage = async () => {
-    if (!inputValue.trim() || isLoading || isStreaming) return;
-
-    const userMessage = inputValue.trim();
-    setInputValue('');
-    setIsLoading(true);
-    setIsRunning(true);
-    isStoppedRef.current = false; // Reset stop flag
+    isStoppedRef.current = false;
 
     // Add user message immediately
-    const newUserMessage: ChatMessage = {
+    const userMsg: ChatMessage = {
+      id: nextId(),
       role: 'user',
-      content: userMessage,
+      content: text.trim(),
       timestamp: new Date().toISOString(),
     };
-    setMessages(prev => [...prev, newUserMessage]);
+    setMessages(prev => [...prev, userMsg]);
 
-    // Track streaming content
-    let accumulatedContent = '';
+    // Reset streaming accumulators
+    setIsStreaming(true);
+    setStreamingContent('');
+    setStreamingReasoning('');
+    setStreamingTools([]);
+    streamingContentRef.current = '';
+    streamingReasoningRef.current = '';
+    streamingToolsRef.current = [];
+
+    // Build API history from current messages
+    const historyForApi = messages.slice(-20).map(m => ({
+      role: m.role,
+      content: m.content,
+    }));
 
     try {
-      // Try streaming first
-      setIsStreaming(true);
-      setStreamingContent('');
+      await streamChatRealtime(text.trim(), session.id, historyForApi, {
+        onChunk: (_chunk, accumulated) => {
+          if (isStoppedRef.current) return;
+          streamingContentRef.current = accumulated;
+          setStreamingContent(accumulated);
+        },
+        onReasoning: (_reasoningText, accumulated) => {
+          if (isStoppedRef.current) return;
+          streamingReasoningRef.current = accumulated;
+          setStreamingReasoning(accumulated);
+        },
+        onTool: (tool) => {
+          if (isStoppedRef.current) return;
+          streamingToolsRef.current = [...streamingToolsRef.current, tool];
+          setStreamingTools([...streamingToolsRef.current]);
+        },
+        onComplete: (content, _newSessionId, usage) => {
+          if (isStoppedRef.current) return;
+          setIsStreaming(false);
 
-      const historyForApi = messages.slice(-20); // Last 20 messages for context
+          const finalContent = content || streamingContentRef.current;
+          const finalReasoning = streamingReasoningRef.current;
+          const finalTools = streamingToolsRef.current.length > 0
+            ? [...streamingToolsRef.current]
+            : undefined;
 
-      await new Promise<void>((resolve) => {
-        streamChatMessage(
-          userMessage,
-          session.id,
-          historyForApi,
-          (chunk) => {
-            if (isStoppedRef.current) return;
-            accumulatedContent += chunk;
-            setStreamingContent(accumulatedContent);
-          },
-          (_sessionId) => {
-            if (isStoppedRef.current) return;
-            setIsStreaming(false);
-            setStreamingContent('');
-            const assistantMessage: ChatMessage = {
-              role: 'assistant',
-              content: accumulatedContent,
-              timestamp: new Date().toISOString(),
-            };
-            setMessages(prev => [...prev, assistantMessage]);
-            setIsLoading(false);
-            setIsRunning(false);
-            resolve();
-          },
-          (error) => {
-            if (isStoppedRef.current) return;
-            console.error('[SessionChat] Stream error:', error);
-            setIsStreaming(false);
-            // Fallback to non-streaming
-            sendChatMessage(userMessage, session.id, historyForApi)
-              .then(({ response }) => {
-                const assistantMessage: ChatMessage = {
-                  role: 'assistant',
-                  content: response,
-                  timestamp: new Date().toISOString(),
-                };
-                setMessages(prev => [...prev, assistantMessage]);
-              })
-              .catch(err => {
-                console.error('[SessionChat] Fallback error:', err);
-                const errorMsg = err instanceof Error ? err.message : String(err);
-                const errorMessage: ChatMessage = {
-                  role: 'assistant',
-                  content: `Error: ${errorMsg || 'Unknown error'}. Please check if Hermes Gateway is running.`,
-                  timestamp: new Date().toISOString(),
-                };
-                setMessages(prev => [...prev, errorMessage]);
-              })
-              .finally(() => {
-                setIsLoading(false);
-                setIsRunning(false);
-                resolve();
-              });
-          }
-        );
+          const assistantMsg: ChatMessage = {
+            id: nextId(),
+            role: 'assistant',
+            content: finalContent,
+            reasoning: finalReasoning || undefined,
+            tools: finalTools,
+            timestamp: new Date().toISOString(),
+            inputTokens: usage?.prompt_tokens,
+            outputTokens: usage?.completion_tokens,
+            totalTokens: usage?.total_tokens,
+          };
+          setMessages(prev => [...prev, assistantMsg]);
+
+          // Reset streaming state
+          streamingContentRef.current = '';
+          streamingReasoningRef.current = '';
+          streamingToolsRef.current = [];
+          setStreamingContent('');
+          setStreamingReasoning('');
+          setStreamingTools([]);
+        },
+        onError: (error) => {
+          if (isStoppedRef.current) return;
+          setIsStreaming(false);
+          const errorMsg: ChatMessage = {
+            id: nextId(),
+            role: 'assistant',
+            content: `${t('chat.error')}: ${error.message}. ${t('chat.ensureGateway')}`,
+            timestamp: new Date().toISOString(),
+          };
+          setMessages(prev => [...prev, errorMsg]);
+          streamingContentRef.current = '';
+          streamingReasoningRef.current = '';
+          streamingToolsRef.current = [];
+          setStreamingContent('');
+          setStreamingReasoning('');
+          setStreamingTools([]);
+        },
+        onApproval: (approval) => {
+          if (isStoppedRef.current) return;
+          // Auto-deny for SessionChat (no permission UI)
+          respondApproval(approval.id, 'deny').catch(() => {});
+        },
       });
     } catch (error) {
-      console.error('[SessionChat] Error:', error);
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      const errorMessage: ChatMessage = {
+      setIsStreaming(false);
+      const errorMsg: ChatMessage = {
+        id: nextId(),
         role: 'assistant',
-        content: `Error: ${errorMsg || 'Unknown error'}`,
+        content: `${t('chat.error')}: ${(error as Error).message}`,
         timestamp: new Date().toISOString(),
       };
-      setMessages(prev => [...prev, errorMessage]);
-      setIsLoading(false);
-      setIsStreaming(false);
-      setIsRunning(false);
+      setMessages(prev => [...prev, errorMsg]);
+      streamingContentRef.current = '';
+      streamingReasoningRef.current = '';
+      streamingToolsRef.current = [];
+      setStreamingContent('');
+      setStreamingReasoning('');
+      setStreamingTools([]);
     }
   };
 
-  // Stop running
-  const handleStop = () => {
+  const handleStop = async () => {
     isStoppedRef.current = true;
-    setIsLoading(false);
     setIsStreaming(false);
-    setIsRunning(false);
+    try {
+      await abortChat();
+    } catch (error) {
+      console.error('[SessionChat] Failed to abort chat:', error);
+    }
+    streamingContentRef.current = '';
+    streamingReasoningRef.current = '';
+    streamingToolsRef.current = [];
     setStreamingContent('');
+    setStreamingReasoning('');
+    setStreamingTools([]);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
+  // ---- Message Operations ----
+
+  const copyMessage = async (content: string) => {
+    try {
+      await navigator.clipboard.writeText(content);
+    } catch (err) {
+      console.error('[SessionChat] Failed to copy:', err);
     }
   };
+
+  const handleDeleteMessage = (messageId: string) => {
+    setMessages(prev => prev.filter(m => m.id !== messageId));
+  };
+
+  const handleRegenerate = () => {
+    // Find the last user message
+    let lastUserMsgIdx = -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i]?.role === 'assistant') continue;
+      if (messages[i]?.role === 'user') { lastUserMsgIdx = i; break; }
+    }
+    if (lastUserMsgIdx < 0) return;
+    const userMsg = messages[lastUserMsgIdx];
+    if (!userMsg?.content) return;
+
+    // Remove all assistant messages after this user message
+    let assistantIdx = -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i]?.role === 'assistant') { assistantIdx = i; break; }
+    }
+    if (assistantIdx >= 0) {
+      setMessages(prev => prev.slice(0, assistantIdx));
+    }
+
+    // Fill the input to resend
+    chatInputRef.current?.triggerSend(userMsg.content);
+  };
+
+  const startEditMessage = (messageId: string, content: string) => {
+    setEditMessageId(messageId);
+    setEditMessageContent(content);
+  };
+
+  const cancelEditMessage = () => {
+    setEditMessageId(null);
+    setEditMessageContent('');
+  };
+
+  const saveEditMessage = (messageId: string) => {
+    if (!editMessageContent.trim()) return;
+    setMessages(prev => prev.map(m =>
+      m.id === messageId ? { ...m, content: editMessageContent.trim() } : m
+    ));
+    setEditMessageId(null);
+    setEditMessageContent('');
+  };
+
+  // ---- Stub callbacks (features not applicable in SessionChat) ----
+
+  const noop = () => {};
+  const noopToggle = (_msgId: string, _sessionId: string) => {};
+  const noopToggleAll = (_msgId: string, _sessionIds: string[]) => {};
+  const noopBatchDelete = (_msgId: string) => {};
+  const noopBatchExport = (_msgId: string, _sessions: SessionSearchResult[]) => {};
+
+  // ---- Helpers ----
+
+  const isFirstInGroup = (msg: ChatMessage, idx: number): boolean => {
+    if (idx === 0) return true;
+    return messages[idx - 1]?.role !== msg.role;
+  };
+
+  // ---- Render ----
 
   return (
     <div className="session-chat-overlay" onClick={onClose}>
@@ -248,178 +297,116 @@ export const SessionChat: React.FC<SessionChatProps> = ({
         {/* Header */}
         <div className="chat-header">
           <div className="chat-header-info">
-            <h2>💬 {t('sessions.continue')}</h2>
+            <h2>{t('sessions.continue')}</h2>
             <span className="chat-session-id">{session.id.slice(0, 12)}...</span>
           </div>
           <div className="chat-header-actions">
             {apiAvailable === false && (
-              <span className="api-status offline">⚠️ API {t('dashboard.offline')}</span>
+              <span className="api-status offline">{t('dashboard.offline')}</span>
             )}
             {apiAvailable === true && (
-              <span className="api-status online">✅ API {t('dashboard.online')}</span>
+              <span className="api-status online">{t('dashboard.online')}</span>
             )}
             <button className="chat-close-btn" onClick={onClose}>✕</button>
           </div>
         </div>
 
-        {/* Messages */}
+        {/* Messages Area */}
         <div className="chat-messages">
-          {messages.length === 0 && (
+          {messages.length === 0 && !isStreaming && (
             <div className="chat-empty">
               <p>{t('common.noData')}, {t('chat.startConversation').toLowerCase()}</p>
             </div>
           )}
+
           {messages.map((msg, idx) => (
-            <div key={idx} className={`chat-message ${msg.role}`}>
+            <MessageContent
+              key={msg.id}
+              message={msg}
+              isFirstInGroup={isFirstInGroup(msg, idx)}
+              messageSearchQuery=""
+              pendingPermission={null}
+              editMessageId={editMessageId}
+              editMessageContent={editMessageContent}
+              selectedSearchResults={{}}
+              onToggleSearchResult={noopToggle}
+              onToggleSelectAll={noopToggleAll}
+              onBatchDelete={noopBatchDelete}
+              onBatchExport={noopBatchExport}
+              onCopyMessage={copyMessage}
+              onDeleteMessage={handleDeleteMessage}
+              onRegenerate={handleRegenerate}
+              onStartEdit={startEditMessage}
+              onCancelEdit={cancelEditMessage}
+              onSaveEdit={saveEditMessage}
+              onEditContentChange={setEditMessageContent}
+              onApprovalResponse={noop}
+              t={t}
+            />
+          ))}
+
+          {/* Streaming display - real-time reasoning + tools + content */}
+          {isStreaming && (
+            <div className="chat-message assistant streaming">
               <div className="message-avatar">
-                {msg.role === 'user' ? '👤' : '🤖'}
+                <BotIcon size={16} />
               </div>
-              <div className="message-bubble">
-                <div className="message-text">{msg.content}</div>
-                {msg.timestamp && (
-                  <div className="message-time">
-                    {new Date(msg.timestamp).toLocaleTimeString('zh-CN', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
+              <div className="message-content">
+                {/* Thinking dots while waiting for first content */}
+                {!streamingReasoning && !streamingContent && (
+                  <div className="thinking-indicator">
+                    <div className="thinking-dots">
+                      <span></span>
+                      <span></span>
+                      <span></span>
+                    </div>
+                    <span className="thinking-text">
+                      <ThinkingIcon size={14} /> {t('chat.thinking')}
+                    </span>
+                  </div>
+                )}
+
+                {/* Reasoning block (collapsible) */}
+                {streamingReasoning && (
+                  <ThinkingBlock content={streamingReasoning} isActive={true} />
+                )}
+
+                {/* Tool calls */}
+                {streamingTools.length > 0 && (
+                  <div className="tools-block">
+                    {streamingTools.map((tool, i) => (
+                      <div key={i} className={`tool-item ${tool.is_error ? 'tool-error' : ''}`}>
+                        <span className="tool-name">{tool.name}</span>
+                        <span className="tool-status">
+                          {tool.is_error ? 'error' : tool.event_type === 'tool.completed' ? 'done' : 'running'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Streamed content with Markdown */}
+                {streamingContent && (
+                  <div className="message-text">
+                    <MarkdownRenderer content={streamingContent} searchQuery="" />
                   </div>
                 )}
               </div>
             </div>
-          ))}
-          {isStreaming && streamingContent && (
-            <div className="chat-message assistant streaming">
-              <div className="message-avatar">🤖</div>
-              <div className="message-bubble">
-                <div className="message-text">{streamingContent}</div>
-              </div>
-            </div>
           )}
-          {isLoading && !isStreaming && (
-            <div className="chat-message assistant loading">
-              <div className="message-avatar">🤖</div>
-              <div className="message-bubble">
-                <div className="message-text">
-                  <span className="typing-indicator">{t('chat.thinking')}</span>
-                </div>
-              </div>
-            </div>
-          )}
+
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input Area */}
-        <div className="chat-input-area">
-          {/* Attached Files */}
-          {attachedFiles.length > 0 && (
-            <div className="attached-files">
-              {attachedFiles.map((file, idx) => (
-                <div key={idx} className="attached-file">
-                  <span className="file-icon">📄</span>
-                  <span className="file-name">{file}</span>
-                  <button
-                    className="file-remove"
-                    onClick={() => removeAttachedFile(idx)}
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Input Container */}
-          <div className="input-container">
-            {/* Add Button (Left) */}
-            <div className="add-button-wrapper" ref={addMenuRef}>
-              <button
-                className="add-button"
-                onClick={() => setShowAddMenu(!showAddMenu)}
-                disabled={isLoading}
-              >
-                +
-              </button>
-              {showAddMenu && (
-                <div className="add-menu">
-                  <button
-                    className="add-menu-item"
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    <span className="menu-icon">📁</span>
-                    <span>{t('chat.addFile')}</span>
-                  </button>
-                  <button
-                    className="add-menu-item"
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    <span className="menu-icon">🖼️</span>
-                    <span>{t('chat.addImage')}</span>
-                  </button>
-                  <button
-                    className="add-menu-item"
-                    onClick={() => {
-                      setInputValue('/');
-                      inputRef.current?.focus();
-                      setShowAddMenu(false);
-                    }}
-                  >
-                    <span className="menu-icon">⚡</span>
-                    <span>{t('chat.slashCommands')}</span>
-                  </button>
-                </div>
-              )}
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                style={{ display: 'none' }}
-                onChange={handleFileSelect}
-              />
-            </div>
-
-            {/* Textarea */}
-            <div className="textarea-wrapper">
-              <textarea
-                ref={inputRef}
-                className="chat-input"
-                value={inputValue}
-                onChange={handleInputChange}
-                onKeyDown={handleKeyDown}
-                placeholder={t('chat.inputPlaceholder')}
-                rows={3}
-                disabled={apiAvailable === false}
-              />
-
-              {/* Slash Commands Dropdown */}
-              {showCommands && (
-                <div className="commands-dropdown">
-                  {filteredCommands.map((cmd) => (
-                    <button
-                      key={cmd.command}
-                      className="command-item"
-                      onClick={() => insertCommand(cmd.command)}
-                    >
-                      <span className="command-name">{cmd.command}</span>
-                      <span className="command-desc">{cmd.description}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Run/Stop Button (Right) */}
-            <button
-              className={`run-button ${isRunning ? 'running' : ''}`}
-              onClick={isRunning ? handleStop : handleSendMessage}
-              disabled={!isRunning && (!inputValue.trim() || apiAvailable === false)}
-            >
-              {isRunning ? (
-                <span className="stop-icon">■</span>
-              ) : (
-                <span className="run-icon">▶</span>
-              )}
-            </button>
-          </div>
+        {/* ChatInput (from shared component library) */}
+        <div className="session-chat-input">
+          <ChatInput
+            ref={chatInputRef}
+            onSendMessage={handleSendMessage}
+            onStop={handleStop}
+            isStreaming={isStreaming}
+            disabled={apiAvailable === false}
+          />
         </div>
       </div>
     </div>

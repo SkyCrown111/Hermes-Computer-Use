@@ -1,15 +1,14 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card } from '../../components';
 import { useThemeStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
+import { getCurrentVersion } from '../../services/updateApi';
 import './Preferences.css';
 
-// About info - 用户可以自定义这些信息
 const aboutInfo = {
   author: 'Crown_22',
   email: 'akangx@foxmail.com',
   github: 'https://github.com/SkyCrown111',
-  version: '0.1.0',
   description: {
     zh: 'Hermes Console - AI Agent 管理控制台',
     en: 'Hermes Console - AI Agent Management Console',
@@ -19,6 +18,11 @@ const aboutInfo = {
 export const Preferences: React.FC = () => {
   const { mode, language, setLanguage } = useThemeStore();
   const { t } = useTranslation();
+  const [version, setVersion] = useState('0.1.0');
+
+  useEffect(() => {
+    getCurrentVersion().then(setVersion).catch(() => setVersion('0.1.0'));
+  }, []);
 
   return (
     <div className="preferences-page">
@@ -100,7 +104,7 @@ export const Preferences: React.FC = () => {
               <span className="logo-icon">👑</span>
               <div className="logo-text">
                 <h3>Hermes Crown</h3>
-                <span className="version">v{aboutInfo.version}</span>
+                <span className="version">v{version}</span>
               </div>
             </div>
 

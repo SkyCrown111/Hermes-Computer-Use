@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Button, Input, Textarea, PlusIcon, ClockIcon, TargetIcon, ExportIcon, AlertIcon, EmptyIcon } from '../../components';
+import { Card, Button, Input, Textarea, PlusIcon, ClockIcon, TargetIcon, ExportIcon, AlertIcon, EmptyIcon, ConfirmModal } from '../../components';
 import { useCronJobsStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
 import type { CronJob } from '../../types/cron';
@@ -107,9 +107,16 @@ export const CronJobs: React.FC = () => {
   };
 
   // 删除任务
+  const [deleteConfirmJob, setDeleteConfirmJob] = useState<string | null>(null);
+
   const handleDeleteJob = async (jobId: string) => {
-    if (confirm(t('common.confirm') + '?')) {
-      await deleteJob(jobId);
+    setDeleteConfirmJob(jobId);
+  };
+
+  const confirmDeleteJob = async () => {
+    if (deleteConfirmJob) {
+      await deleteJob(deleteConfirmJob);
+      setDeleteConfirmJob(null);
     }
   };
 
@@ -495,6 +502,18 @@ export const CronJobs: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* Delete Confirmation Modal */}
+        <ConfirmModal
+          isOpen={deleteConfirmJob !== null}
+          title={t('tasks.delete')}
+          message={`${t('common.confirm')}?`}
+          confirmText={t('tasks.delete')}
+          cancelText={t('common.cancel')}
+          variant="danger"
+          onConfirm={confirmDeleteJob}
+          onCancel={() => setDeleteConfirmJob(null)}
+        />
       </div>
   );
 };

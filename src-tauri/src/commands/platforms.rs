@@ -4,7 +4,6 @@
 //! Reads from gateway_state.json in WSL.
 
 use serde::{Deserialize, Serialize};
-use std::process::Command;
 use super::utils::create_command;
 
 /// Platform status - matches frontend Platform type exactly

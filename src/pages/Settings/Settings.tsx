@@ -2,6 +2,11 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Card, Button, Input } from '../../components';
 import { useSettingsStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
+import {
+  checkForUpdates,
+  installPendingUpdate,
+  type UpdateInfo,
+} from '../../services/updateApi';
 import type {
   ModelConfig,
   AgentConfig,
@@ -12,7 +17,7 @@ import type {
 import './Settings.css';
 
 // 配置节类型
-type ConfigSection = 'model' | 'agent' | 'terminal' | 'compression' | 'checkpoint';
+type ConfigSection = 'model' | 'agent' | 'terminal' | 'compression' | 'checkpoint' | 'update';
 
 // 配置节标题
 const getSectionTitles = (t: (key: string) => string): Record<ConfigSection, { title: string; icon: string; description: string }> => ({
@@ -21,6 +26,7 @@ const getSectionTitles = (t: (key: string) => string): Record<ConfigSection, { t
   terminal: { title: t('settings.terminalConfig'), icon: '💻', description: t('settings.terminalConfigDesc') },
   compression: { title: t('settings.compressionConfig'), icon: '📦', description: t('settings.compressionConfigDesc') },
   checkpoint: { title: t('settings.checkpointConfig'), icon: '💾', description: t('settings.checkpointConfigDesc') },
+  update: { title: t('settings.update'), icon: '🔄', description: t('settings.updateDesc') },
 });
 
 // 模型配置表单
@@ -426,7 +432,120 @@ const CheckpointConfigForm: React.FC<{
   );
 };
 
-// YAML 编辑器
+// 更新配置
+const UpdateSection: React.FC<{ t: (key: string) => string }> = ({ t }) => {
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [isChecking, setIsChecking] = useState(false);
+
+  const handleCheck = async () => {
+    setIsChecking(true);
+    setUpdateInfo(null);
+    try {
+      setUpdateInfo(prev => prev ? { ...prev, status: 'checking' } : null);
+      const info = await checkForUpdates();
+      setUpdateInfo(info);
+    } finally {
+      setIsChecking(false);
+    }
+  };
+
+  const handleInstall = async () => {
+    setUpdateInfo(prev => prev ? { ...prev, status: 'downloading' } : null);
+    try {
+      await installPendingUpdate();
+      setUpdateInfo(prev => prev ? { ...prev, status: 'installing' } : null);
+    } catch (err) {
+      setUpdateInfo(prev =>
+        prev ? { ...prev, status: 'error', error: err instanceof Error ? err.message : 'Install failed' } : null
+      );
+    }
+  };
+
+  useEffect(() => {
+    checkForUpdates().then(info => {
+      setUpdateInfo(info);
+    });
+  }, []);
+
+  return (
+    <div className="update-section">
+      <div className="update-info">
+        <div className="update-info-row">
+          <span className="update-label">{t('settings.currentVersion')}</span>
+          <span className="update-value">{updateInfo?.currentVersion || '...'}</span>
+        </div>
+
+        {updateInfo?.status === 'checking' && (
+          <div className="update-status checking">
+            <div className="update-spinner" />
+            <span>{t('settings.checkingUpdates')}</span>
+          </div>
+        )}
+
+        {updateInfo?.status === 'uptodate' && (
+          <div className="update-status uptodate">
+            <span className="update-status-icon">✓</span>
+            <span>{t('settings.appUptodate')}</span>
+          </div>
+        )}
+
+        {updateInfo?.available && (
+          <div className="update-available">
+            <div className="update-available-header">
+              <span className="update-status-icon update-icon-new">🔄</span>
+              <span>{t('settings.updateAvailable')}</span>
+            </div>
+            <div className="update-info-row">
+              <span className="update-label">{t('settings.newVersion')}</span>
+              <span className="update-value">{updateInfo.newVersion}</span>
+            </div>
+            {updateInfo.releaseDate && (
+              <div className="update-info-row">
+                <span className="update-label">{t('settings.releaseDate')}</span>
+                <span className="update-value">{updateInfo.releaseDate}</span>
+              </div>
+            )}
+            {updateInfo.releaseNotes && (
+              <div className="update-release-notes">
+                <span className="update-label">{t('settings.releaseNotes')}</span>
+                <pre className="update-notes-text">{updateInfo.releaseNotes}</pre>
+              </div>
+            )}
+          </div>
+        )}
+
+        {updateInfo?.status === 'downloading' && (
+          <div className="update-status downloading">
+            <div className="update-spinner" />
+            <span>{t('settings.downloadingUpdate')}</span>
+          </div>
+        )}
+
+        {updateInfo?.status === 'error' && (
+          <div className="update-status error">
+            <span className="update-status-icon">⚠</span>
+            <span>{updateInfo.error || t('settings.updateCheckFailed')}</span>
+          </div>
+        )}
+      </div>
+
+      <div className="update-actions">
+        <Button
+          variant="secondary"
+          onClick={handleCheck}
+          disabled={isChecking}
+        >
+          {isChecking ? t('settings.checking') : t('settings.checkForUpdates')}
+        </Button>
+        {updateInfo?.available && (
+          <Button variant="primary" onClick={handleInstall}>
+            {t('settings.installUpdate')}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+};
 const YamlEditor: React.FC<{
   yaml: string;
   onChange: (yaml: string) => void;
@@ -593,6 +712,8 @@ export const Settings: React.FC = () => {
             t={t}
           />
         );
+      case 'update':
+        return <UpdateSection t={t} />;
       default:
         return null;
     }

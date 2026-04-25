@@ -61,7 +61,7 @@
   padding: var(--space-6);
   overflow-y: auto;
   background: var(--color-surface);
-  height: calc(100vh - 64px);
+  height: calc(100vh - 64px - 32px); /* 64px header + 32px status bar */
 }
 
 /* Page Header */

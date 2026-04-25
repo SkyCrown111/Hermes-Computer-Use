@@ -419,6 +419,26 @@ const translations: Translations = {
   'chat.cmd.file': { zh: '文件操作', en: 'File operations' },
   'chat.cmd.search': { zh: '搜索内容', en: 'Search content' },
 
+  // Gateway Page
+  'gateway.title': { zh: 'Gateway 管理', en: 'Gateway' },
+  'gateway.refresh': { zh: '刷新', en: 'Refresh' },
+  'gateway.restart': { zh: '重启 Gateway', en: 'Restart Gateway' },
+  'gateway.restarting': { zh: '重启中...', en: 'Restarting...' },
+  'gateway.refreshing': { zh: '刷新中...', en: 'Refreshing...' },
+  'gateway.statusOverview': { zh: '状态概览', en: 'Status Overview' },
+  'gateway.version': { zh: '版本', en: 'Version' },
+  'gateway.uptime': { zh: '运行时间', en: 'Uptime' },
+  'gateway.totalMessages': { zh: '总消息数', en: 'Total Messages' },
+  'gateway.messagesPerMin': { zh: '消息/分钟', en: 'Msg/min' },
+  'gateway.platformConnections': { zh: '平台连接', en: 'Platform Connections' },
+  'gateway.noConnections': { zh: '暂无平台连接', en: 'No platform connections' },
+  'gateway.notRunning': { zh: 'Gateway 未运行。请通过命令行启动或点击"重启 Gateway"。', en: 'Gateway is not running. Start it from the command line or click "Restart Gateway".' },
+  'gateway.fetchFailed': { zh: '获取 Gateway 状态失败', en: 'Failed to fetch gateway status' },
+  'gateway.restartFailed': { zh: '重启 Gateway 失败', en: 'Failed to restart gateway' },
+  'gateway.online': { zh: '在线', en: 'Online' },
+  'gateway.offline': { zh: '离线', en: 'Offline' },
+  'gateway.degraded': { zh: '降级', en: 'Degraded' },
+
   // Chat Session Header
   'chat.streaming': { zh: '会话活跃中', en: 'Streaming' },
   'chat.active': { zh: '会话活跃', en: 'Active' },

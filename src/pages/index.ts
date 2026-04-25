@@ -9,3 +9,4 @@ export { Platforms } from './Platforms';
 export { Files } from './Files';
 export { ChatPage } from './Chat';
 export { Preferences } from './Preferences';
+export { Gateway } from './Gateway';

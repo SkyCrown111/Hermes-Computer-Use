@@ -4,6 +4,8 @@ import { useSessionStore, useNavigationStore, useChatStore } from '../../../stor
 import { useTranslation } from '../../../hooks/useTranslation';
 import { PlusIcon } from '../../index';
 import { InputModal } from '../../ui/Modal';
+import { formatRelativeTimeShort, groupByTime, type TimeGroup, TIME_GROUP_ORDER } from '../../../utils/format';
+import { FOCUS_SEARCH_EVENT } from '../../../hooks/useKeyboardShortcuts';
 import './SessionSidebar.css';
 
 // Context menu position type
@@ -13,47 +15,6 @@ interface ContextMenuState {
   y: number;
   sessionId: string;
   sessionName: string;
-}
-
-// Time group type for session list
-type TimeGroup = 'today' | 'yesterday' | 'last7days' | 'older';
-
-const TIME_GROUP_ORDER: TimeGroup[] = ['today', 'yesterday', 'last7days', 'older'];
-
-// Group sessions by time
-function groupSessionsByTime(sessions: { id: string; last_activity_at: string; chat_name: string }[]): Map<TimeGroup, typeof sessions> {
-  const groups = new Map<TimeGroup, typeof sessions>();
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const startOfYesterday = startOfToday - 86400000;
-  const sevenDaysAgo = startOfToday - 7 * 86400000;
-
-  for (const session of sessions) {
-    const ts = new Date(session.last_activity_at).getTime();
-    let group: TimeGroup;
-    if (ts >= startOfToday) group = 'today';
-    else if (ts >= startOfYesterday) group = 'yesterday';
-    else if (ts >= sevenDaysAgo) group = 'last7days';
-    else group = 'older';
-
-    if (!groups.has(group)) groups.set(group, []);
-    groups.get(group)!.push(session);
-  }
-
-  return groups;
-}
-
-// Format relative time
-function formatRelativeTime(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const min = Math.floor(diff / 60000);
-  if (min < 1) return 'now';
-  if (min < 60) return `${min}m`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h`;
-  const day = Math.floor(hr / 24);
-  if (day < 30) return `${day}d`;
-  return `${Math.floor(day / 30)}mo`;
 }
 
 export const SessionSidebar: React.FC = () => {
@@ -69,6 +30,17 @@ export const SessionSidebar: React.FC = () => {
   const chatSessions = useChatStore((s) => s.sessions);
 
   const [searchQuery, setSearchQuery] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Listen for global focus-search event (Ctrl+K)
+  useEffect(() => {
+    const handler = () => {
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    };
+    window.addEventListener(FOCUS_SEARCH_EVENT, handler);
+    return () => window.removeEventListener(FOCUS_SEARCH_EVENT, handler);
+  }, []);
 
   // Track previous streaming state to detect when streaming ends
   const wasStreamingRef = useRef(false);
@@ -131,7 +103,7 @@ export const SessionSidebar: React.FC = () => {
   }, [sessions, searchQuery]);
 
   // Group by time
-  const timeGroups = useMemo(() => groupSessionsByTime(filteredSessions), [filteredSessions]);
+  const timeGroups = useMemo(() => groupByTime(filteredSessions), [filteredSessions]);
 
   const { t } = useTranslation();
 
@@ -241,6 +213,7 @@ export const SessionSidebar: React.FC = () => {
       {/* Search */}
       <div className="session-sidebar-search">
         <input
+          ref={searchInputRef}
           type="text"
           className="session-sidebar-search-input"
           placeholder={t('sidebar.searchPlaceholder') || '搜索会话...'}
@@ -278,7 +251,7 @@ export const SessionSidebar: React.FC = () => {
                       {displayTitle}
                     </span>
                     <span className="session-sidebar-item-time">
-                      {formatRelativeTime(session.last_activity_at)}
+                      {formatRelativeTimeShort(session.last_activity_at)}
                     </span>
                   </div>
                 );

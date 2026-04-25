@@ -1,4 +1,5 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { ConfirmModal } from '../../components';
 import { usePlatformStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
 import type { Platform, PlatformType } from '../../types/platform';
@@ -80,11 +81,20 @@ export default function Platforms() {
   const selectedPlatformData = platforms.find(p => p.type === selectedPlatform);
   const configFields = selectedPlatform ? platformConfigFields[selectedPlatform] : [];
 
+  const [disableConfirm, setDisableConfirm] = useState<Platform | null>(null);
+
   const handleTogglePlatform = async (platform: Platform) => {
     if (platform.enabled) {
-      await disablePlatform(platform.type);
+      setDisableConfirm(platform);
     } else {
       await enablePlatform(platform.type);
+    }
+  };
+
+  const confirmDisable = async () => {
+    if (disableConfirm) {
+      await disablePlatform(disableConfirm.type);
+      setDisableConfirm(null);
     }
   };
 
@@ -225,6 +235,18 @@ export default function Platforms() {
           </div>
         </div>
       )}
+
+      {/* Disable Confirmation Modal */}
+      <ConfirmModal
+        isOpen={disableConfirm !== null}
+        title={t('platforms.disableConfirmTitle') || 'Disable Platform'}
+        message={`${t('platforms.disableConfirm') || 'Are you sure you want to disable this platform?'}`}
+        confirmText={t('platforms.disable') || 'Disable'}
+        cancelText={t('common.cancel')}
+        variant="warning"
+        onConfirm={confirmDisable}
+        onCancel={() => setDisableConfirm(null)}
+      />
     </div>
   );
 }
