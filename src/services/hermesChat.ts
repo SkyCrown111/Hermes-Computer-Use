@@ -140,7 +140,7 @@ export async function streamChatRealtime(
   callbacks: StreamCallbacks
 ): Promise<void> {
   logger.debug('[HermesChat] Starting realtime stream:', message.substring(0, 50));
-  console.log('[HermesChat] Starting realtime stream, sessionId:', sessionId);
+  logger.debug('[HermesChat] Starting realtime stream, sessionId:', sessionId);
 
   const messages = [
     ...history.map(m => ({ role: m.role, content: m.content })),
@@ -161,8 +161,7 @@ export async function streamChatRealtime(
     // Listen for status updates
     unlisteners.push(
       await listen<{ status: string; message: string }>('chat:status', (event) => {
-        console.log('[HermesChat] Status event:', event.payload);
-        logger.debug('[HermesChat] Status:', event.payload);
+        logger.debug('[HermesChat] Status event:', event.payload);
         callbacks.onStatus?.(event.payload.status, event.payload.message);
       })
     );
@@ -170,7 +169,7 @@ export async function streamChatRealtime(
     // Listen for content chunks
     unlisteners.push(
       await listen<{ content: string; accumulated: string }>('chat:chunk', (event) => {
-        console.log('[HermesChat] Chunk event:', event.payload);
+        logger.debug('[HermesChat] Chunk event:', event.payload);
         fullContent = event.payload.accumulated;
         callbacks.onChunk?.(event.payload.content, fullContent);
       })
@@ -179,7 +178,7 @@ export async function streamChatRealtime(
     // Listen for reasoning
     unlisteners.push(
       await listen<{ text: string; accumulated: string }>('chat:reasoning', (event) => {
-        console.log('[HermesChat] Reasoning event:', event.payload);
+        logger.debug('[HermesChat] Reasoning event:', event.payload);
         callbacks.onReasoning?.(event.payload.text, event.payload.accumulated);
       })
     );
@@ -187,7 +186,7 @@ export async function streamChatRealtime(
     // Listen for tool calls
     unlisteners.push(
       await listen<{ event_type: string; name: string; preview?: string; args?: Record<string, unknown>; duration?: number; is_error?: boolean }>('chat:tool', (event) => {
-        console.log('[HermesChat] Tool event:', event.payload);
+        logger.debug('[HermesChat] Tool event:', event.payload);
         callbacks.onTool?.(event.payload);
       })
     );
@@ -195,8 +194,7 @@ export async function streamChatRealtime(
     // Listen for usage updates
     unlisteners.push(
       await listen<{ prompt_tokens: number; completion_tokens: number; total_tokens: number }>('chat:usage', (event) => {
-        console.log('[HermesChat] Usage event:', event.payload);
-        logger.debug('[HermesChat] Usage:', event.payload);
+        logger.debug('[HermesChat] Usage event:', event.payload);
         callbacks.onUsage?.(event.payload);
       })
     );
@@ -204,10 +202,9 @@ export async function streamChatRealtime(
     // Listen for completion
     unlisteners.push(
       await listen<{ id: string; content: string; reasoning?: string; usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number } }>('chat:complete', (event) => {
-        console.log('[HermesChat] Complete event:', event.payload);
-        console.log('[HermesChat] Complete content length:', event.payload.content?.length);
-        console.log('[HermesChat] Complete reasoning:', event.payload.reasoning?.substring(0, 100));
-        logger.debug('[HermesChat] Complete:', event.payload.id);
+        logger.debug('[HermesChat] Complete event:', event.payload);
+        logger.debug('[HermesChat] Complete content length:', event.payload.content?.length);
+        logger.debug('[HermesChat] Complete reasoning:', event.payload.reasoning?.substring(0, 100));
         // Use accumulated content if event content is empty
         const finalContent = event.payload.content || fullContent;
         callbacks.onComplete?.(finalContent, event.payload.id, event.payload.usage);
@@ -219,7 +216,6 @@ export async function streamChatRealtime(
     // Listen for errors
     unlisteners.push(
       await listen<{ error: string }>('chat:error', (event) => {
-        console.error('[HermesChat] Error event:', event.payload);
         logger.error('[HermesChat] Error event:', event.payload);
         callbacks.onError?.(new Error(event.payload.error));
         // Also resolve on error to avoid hanging
@@ -230,8 +226,7 @@ export async function streamChatRealtime(
     // Listen for approval requests
     unlisteners.push(
       await listen<{ id: string; command: string; description: string; allow_permanent: boolean; choices: string[] }>('chat:approval', (event) => {
-        console.log('[HermesChat] Approval event:', event.payload);
-        logger.debug('[HermesChat] Approval request:', event.payload);
+        logger.debug('[HermesChat] Approval event:', event.payload);
         callbacks.onApproval?.(event.payload);
       })
     );
@@ -239,26 +234,24 @@ export async function streamChatRealtime(
     // Listen for session creation (emitted immediately when session is created)
     unlisteners.push(
       await listen<{ session_id: string; created_at: number }>('chat:session', (event) => {
-        console.log('[HermesChat] Session created:', event.payload);
-        logger.debug('[HermesChat] Session created:', event.payload.session_id);
+        logger.debug('[HermesChat] Session created:', event.payload);
         callbacks.onSessionCreated?.(event.payload.session_id);
       })
     );
 
-    console.log('[HermesChat] Invoking stream_chat_realtime command...');
+    logger.debug('[HermesChat] Invoking stream_chat_realtime command...');
     // Call the streaming command
     const result = await invoke<string>('stream_chat_realtime', {
       messages,
       sessionId: sessionId || null,
     });
-    console.log('[HermesChat] Command returned:', result);
+    logger.debug('[HermesChat] Command returned:', result);
 
     // Wait for the chat:complete event before cleaning up listeners
     // This ensures we don't miss the final event
     await completePromise;
 
   } catch (error) {
-    console.error('[HermesChat] Stream error:', error);
     logger.error('[HermesChat] Stream error:', error);
     callbacks.onError?.(error as Error);
   } finally {

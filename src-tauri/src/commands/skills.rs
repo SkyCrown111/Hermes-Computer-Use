@@ -27,6 +27,24 @@ pub struct SkillCategory {
     pub skill_count: usize,
 }
 
+/// Parameters for creating a new skill
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateSkillParams {
+    pub name: String,
+    pub category: String,
+    pub description: String,
+    pub content: String,
+    pub metadata: Option<SkillMetadata>,
+}
+
+/// Skill metadata
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillMetadata {
+    pub version: Option<String>,
+    pub author: Option<String>,
+    pub tags: Option<Vec<String>>,
+}
+
 /// List all skills - reads real data from WSL using Python
 #[tauri::command]
 pub fn list_skills() -> Result<Vec<Skill>, String> {
@@ -312,10 +330,113 @@ pub fn save_skill(_skill: Skill) -> Result<(), String> {
     Ok(())
 }
 
+/// Create a new skill with content
+#[tauri::command]
+pub fn create_skill(params: CreateSkillParams) -> Result<(), String> {
+    println!("[Skills] Creating skill: {} in category {}", params.name, params.category);
+
+    let version = params.metadata.as_ref().and_then(|m| m.version.clone()).unwrap_or_else(|| "1.0.0".to_string());
+    let author = params.metadata.as_ref().and_then(|m| m.author.clone()).unwrap_or_else(|| "User".to_string());
+    let tags = params.metadata.as_ref().and_then(|m| m.tags.clone()).unwrap_or_default();
+    let tags_str = if tags.is_empty() {
+        "".to_string()
+    } else {
+        format!("tags: [{}]", tags.iter().map(|t| format!("\"{}\"", t)).collect::<Vec<_>>().join(", "))
+    };
+
+    // Escape the content for Python string
+    let content_escaped = params.content.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
+
+    let script = format!(
+        r#"
+import os
+import json
+
+skill_dir = os.path.expanduser("~/.hermes/skills/{}/{}")
+os.makedirs(skill_dir, exist_ok=True)
+
+skill_file = os.path.join(skill_dir, "SKILL.md")
+
+# Build frontmatter
+frontmatter = f"""---
+name: "{name}"
+description: "{description}"
+version: "{version}"
+author: "{author}"
+{tags}
+---
+
+{content}
+"""
+
+with open(skill_file, 'w', encoding='utf-8') as f:
+    f.write(frontmatter)
+
+print(json.dumps({{"success": True, "path": skill_file}}))
+"#,
+        params.category, params.name,
+        name = params.name.replace("\"", "\\\""),
+        description = params.description.replace("\"", "\\\"").replace("\n", " "),
+        version = version,
+        author = author,
+        tags = tags_str,
+        content = content_escaped
+    );
+
+    if let Ok(output) = create_command("wsl")
+        .args(["python3", "-c", &script])
+        .output()
+    {
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            println!("[Skills] Create skill output: {}", stdout);
+            return Ok(());
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            println!("[Skills] Create skill error: {}", stderr);
+            return Err(format!("Failed to create skill: {}", stderr));
+        }
+    }
+
+    Err("Failed to execute WSL command".to_string())
+}
+
 /// Delete a skill
 #[tauri::command]
-pub fn delete_skill(_name: String) -> Result<(), String> {
-    Ok(())
+pub fn delete_skill(category: String, name: String) -> Result<(), String> {
+    println!("[Skills] Deleting skill: {}/{}", category, name);
+
+    let script = format!(
+        r#"
+import os
+import shutil
+
+skill_dir = os.path.expanduser("~/.hermes/skills/{}/{}")
+
+if os.path.exists(skill_dir):
+    shutil.rmtree(skill_dir)
+    print("deleted")
+else:
+    print("not_found")
+"#,
+        category, name
+    );
+
+    if let Ok(output) = create_command("wsl")
+        .args(["python3", "-c", &script])
+        .output()
+    {
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            println!("[Skills] Delete output: {}", stdout);
+            return Ok(());
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("Failed to delete skill: {}", stderr));
+        }
+    }
+
+    Err("Failed to execute WSL command".to_string())
 }
 
 /// Toggle skill enabled status

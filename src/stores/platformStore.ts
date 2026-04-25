@@ -87,7 +87,7 @@ interface PlatformState {
   updateConfig: (type: PlatformType, config: Record<string, any>) => Promise<boolean>;
   enablePlatform: (type: PlatformType) => Promise<boolean>;
   disablePlatform: (type: PlatformType) => Promise<boolean>;
-  testConnection: (type: PlatformType) => Promise<{ ok: boolean; message?: string }>;
+  testConnection: (type: PlatformType) => Promise<{ ok: boolean; message?: string; details?: string }>;
   reconnect: (type: PlatformType) => Promise<boolean>;
 }
 
@@ -186,7 +186,7 @@ export const usePlatformStore = create<PlatformState>((set, get) => ({
       }
       return result;
     } catch (err) {
-      return { ok: false, message: (err as Error).message };
+      return { ok: false, message: (err as Error).message, details: undefined };
     }
   },
 

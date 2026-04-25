@@ -10,11 +10,14 @@ export interface UpdateInfo {
   newVersion?: string;
   releaseDate?: string;
   releaseNotes?: string;
-  status: 'idle' | 'checking' | 'available' | 'downloading' | 'installing' | 'uptodate' | 'error';
+  status: 'idle' | 'checking' | 'available' | 'downloading' | 'installing' | 'ready' | 'uptodate' | 'error';
   error?: string;
+  downloadProgress?: number; // 0-100
+  downloadedBytes?: number;
+  totalBytes?: number;
 }
 
-export type ProgressCallback = (progress: number) => void;
+export type ProgressCallback = (progress: UpdateInfo) => void;
 
 let _currentVersion: string | null = null;
 let _pendingUpdate: Update | null = null;
@@ -71,6 +74,7 @@ export async function checkForUpdates(): Promise<UpdateInfo> {
 
 /**
  * Install the pending update (stored from the last check).
+ * Calls onProgress with progress updates.
  */
 export async function installPendingUpdate(
   onProgress?: ProgressCallback
@@ -81,9 +85,40 @@ export async function installPendingUpdate(
 
   logger.info('[UpdateApi] Downloading update...');
 
+  let downloaded = 0;
+  const currentVersion = await getCurrentVersion();
+
   await _pendingUpdate.downloadAndInstall((event: DownloadEvent) => {
-    if (event.event === 'Progress' && onProgress) {
-      onProgress(event.data.chunkLength);
+    if (event.event === 'Started') {
+      downloaded = 0;
+      onProgress?.({
+        available: true,
+        currentVersion,
+        newVersion: _pendingUpdate?.version,
+        status: 'downloading',
+        downloadProgress: 0,
+        totalBytes: event.data.contentLength,
+      });
+    } else if (event.event === 'Progress') {
+      downloaded += event.data.chunkLength;
+      const total = _pendingUpdate?.version ? 50 * 1024 * 1024 : undefined; // Estimate if not available
+      onProgress?.({
+        available: true,
+        currentVersion,
+        newVersion: _pendingUpdate?.version,
+        status: 'downloading',
+        downloadProgress: total ? Math.round((downloaded / total) * 100) : undefined,
+        downloadedBytes: downloaded,
+        totalBytes: total,
+      });
+    } else if (event.event === 'Finished') {
+      onProgress?.({
+        available: true,
+        currentVersion,
+        newVersion: _pendingUpdate?.version,
+        status: 'ready',
+        downloadProgress: 100,
+      });
     }
   });
 

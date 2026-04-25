@@ -1,5 +1,5 @@
 import './styles/globals.css';
-import React, { useEffect, Suspense, lazy } from 'react';
+import { useEffect, Suspense, lazy } from 'react';
 import { useNavigationStore, useThemeStore, useSessionStore } from './stores';
 import { initializeChatStore } from './stores/chatStore';
 import { Layout, ToastContainer, ErrorBoundary, CommandPalette, GlobalSearch } from './components';

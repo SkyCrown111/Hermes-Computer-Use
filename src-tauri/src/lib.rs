@@ -18,7 +18,7 @@ use commands::{
     // Session commands
     list_sessions, get_session, delete_session, get_sessions_path, update_session_title,
     // Skill commands
-    list_skills, get_skill, get_skill_detail, get_skill_categories, save_skill, delete_skill, toggle_skill, get_skills_path,
+    list_skills, get_skill, get_skill_detail, get_skill_categories, save_skill, create_skill, delete_skill, toggle_skill, get_skills_path,
     // Cron job commands
     list_cron_jobs, get_cron_job, save_cron_job, delete_cron_job, toggle_cron_job, get_cron_path, trigger_cron_job, get_cron_outputs,
     // System commands
@@ -32,7 +32,7 @@ use commands::{
     // Monitor commands
     get_logs, get_log_stats, get_gateway_status, get_performance_metrics, get_log_components, clear_logs,
     // Files commands
-    list_directory, read_file, write_file, create_directory, delete_file, move_file, copy_file, file_exists, get_file_tree,
+    list_directory, read_file, write_file, create_directory, delete_file, move_file, copy_file, file_exists, get_file_tree, read_file_binary, write_file_binary,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -140,6 +140,7 @@ pub fn run() {
             get_skill_detail,
             get_skill_categories,
             save_skill,
+            create_skill,
             delete_skill,
             toggle_skill,
             get_skills_path,
@@ -195,6 +196,8 @@ pub fn run() {
             copy_file,
             file_exists,
             get_file_tree,
+            read_file_binary,
+            write_file_binary,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -2,10 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { Card, Button, ChatIcon, UserIcon, BotIcon, ToolIcon, ExportIcon, SearchIcon, ClockIcon, TrashIcon, SettingsIcon, AlertIcon, EditIcon, ConfirmModal } from '../../components';
 import { useSessionStore, useNavigationStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
+import { toast } from '../../stores/toastStore';
 import type { Session, SessionMessage } from '../../types';
 import { sessionApi } from '../../services';
 import { formatNumber, formatCurrency, formatDateTime, formatRelativeTime, getPlatformIcon, getPlatformName } from '../../utils/format';
 import { logger } from '../../lib/logger';
+import JSZip from 'jszip';
 import './Sessions.css';
 
 // Session Card Component
@@ -17,11 +19,12 @@ interface SessionCardProps {
   onDetail: () => void;
   onDelete: () => void;
   onEdit: () => void;
+  onExport: () => void;
   onToggleSelect: () => void;
   t: (key: string) => string;
 }
 
-const SessionCard: React.FC<SessionCardProps> = ({ session, isSelected, isBatchMode, onClick, onDetail, onDelete, onEdit, onToggleSelect, t }) => {
+const SessionCard: React.FC<SessionCardProps> = ({ session, isSelected, isBatchMode, onClick, onDetail, onDelete, onEdit, onExport, onToggleSelect, t }) => {
   return (
     <div className={`session-card ${isSelected ? 'session-card-selected' : ''}`} onClick={isBatchMode ? onToggleSelect : onClick}>
       {isBatchMode && (
@@ -75,7 +78,14 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, isSelected, isBatchM
         >
           <EditIcon size={14} />
         </button>
-        <button className="action-btn" title={t('sessions.export')} onClick={(e) => { e.stopPropagation(); }}>
+        <button
+          className="action-btn"
+          title={t('sessions.export')}
+          onClick={(e) => {
+            e.stopPropagation();
+            onExport();
+          }}
+        >
           <ExportIcon size={14} />
         </button>
         <button
@@ -232,30 +242,91 @@ export const Sessions: React.FC = () => {
   const clearSelection = () => setSelectedIds(new Set());
 
   const handleBatchDelete = async () => {
-    for (const id of selectedIds) {
-      await deleteSession(id);
+    const ids = Array.from(selectedIds);
+    const results = await Promise.allSettled(
+      ids.map(id => deleteSession(id))
+    );
+
+    const failed = results.filter(r => r.status === 'rejected');
+    const succeeded = results.filter(r => r.status === 'fulfilled');
+
+    if (failed.length > 0) {
+      toast.error(`Deleted ${succeeded.length}/${ids.length} sessions. ${failed.length} failed.`);
+    } else {
+      toast.success(`Successfully deleted ${succeeded.length} sessions`);
     }
+
     clearSelection();
     setBatchDeleteConfirm(false);
   };
 
   const handleBatchExport = async () => {
-    for (const id of selectedIds) {
-      const session = sessions.find(s => s.id === id);
-      if (session) {
-        try {
-          const blob = await sessionApi.export('json', id);
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `session-${id}.json`;
-          a.click();
-          URL.revokeObjectURL(url);
-        } catch (err) {
-          console.error('Export failed for', id, err);
-        }
-      }
+    const ids = Array.from(selectedIds);
+
+    if (ids.length === 0) {
+      toast.error('No sessions selected');
+      return;
     }
+
+    toast.info(`Exporting ${ids.length} sessions...`);
+
+    try {
+      const zip = new JSZip();
+      const sessionsFolder = zip.folder('sessions');
+
+      if (!sessionsFolder) {
+        throw new Error('Failed to create ZIP folder');
+      }
+
+      // Fetch all sessions and add to ZIP
+      const results = await Promise.allSettled(
+        ids.map(async (id, index) => {
+          const blob = await sessionApi.export('json', id);
+          const text = await blob.text();
+          return { id, text, index };
+        })
+      );
+
+      const succeeded = results.filter(r => r.status === 'fulfilled') as PromiseFulfilledResult<{ id: string; text: string; index: number }>[];
+      const failed = results.filter(r => r.status === 'rejected');
+
+      // Add each successful session to the ZIP
+      for (const result of succeeded) {
+        const { id, text } = result.value;
+        sessionsFolder.file(`session-${id}.json`, text);
+      }
+
+      // Add a summary file
+      const summary = {
+        exportDate: new Date().toISOString(),
+        totalSessions: ids.length,
+        succeeded: succeeded.length,
+        failed: failed.length,
+        sessions: succeeded.map(r => r.value.id),
+      };
+      zip.file('export-summary.json', JSON.stringify(summary, null, 2));
+
+      // Generate ZIP file
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+
+      // Download ZIP
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `sessions-export-${new Date().toISOString().split('T')[0]}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      if (failed.length > 0) {
+        toast.warning(`Exported ${succeeded.length}/${ids.length} sessions. ${failed.length} failed.`);
+      } else {
+        toast.success(`Successfully exported ${succeeded.length} sessions as ZIP`);
+      }
+    } catch (err) {
+      logger.error('[Sessions] Batch export failed:', err);
+      toast.error('Failed to export sessions');
+    }
+
     clearSelection();
   };
 
@@ -299,6 +370,7 @@ export const Sessions: React.FC = () => {
       await fetchSession(session.id);
     } catch (err) {
       logger.error('[Sessions] Error fetching session:', err);
+      toast.error('Failed to load session details');
     }
   };
 
@@ -349,8 +421,10 @@ export const Sessions: React.FC = () => {
       a.download = `session-${selectedSessionForExport.id}.${format}`;
       a.click();
       URL.revokeObjectURL(url);
+      toast.success('Session exported successfully');
     } catch (err) {
-      console.error('Export failed:', err);
+      logger.error('[Sessions] Export failed:', err);
+      toast.error('Failed to export session');
     }
 
     setShowExportModal(false);
@@ -368,11 +442,16 @@ export const Sessions: React.FC = () => {
       <div className="sessions-header">
         <h1 className="sessions-title">{t('sessions.title')}</h1>
         <div className="sessions-actions">
-          <Button variant="secondary" icon="📤" onClick={() => {
-            setSelectedSessionForExport(null);
-            setShowExportModal(true);
-          }}>
-            {t('sessions.batchExport')}
+          <Button
+            variant="secondary"
+            icon="📤"
+            disabled={selectedIds.size === 0}
+            onClick={() => {
+              setSelectedSessionForExport(null);
+              setShowExportModal(true);
+            }}
+          >
+            {t('sessions.batchExport')}{selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}
           </Button>
         </div>
       </div>
@@ -450,6 +529,10 @@ export const Sessions: React.FC = () => {
               onDetail={() => handleShowDetail(session)}
               onDelete={() => handleDeleteSession(session)}
               onEdit={() => handleEditSession(session)}
+              onExport={() => {
+                setSelectedSessionForExport(session);
+                setShowExportModal(true);
+              }}
               onToggleSelect={() => toggleSelect(session.id)}
               t={t}
             />
@@ -506,8 +589,8 @@ export const Sessions: React.FC = () => {
                       <div className="loading-spinner" />
                     </div>
                   ) : messages.length > 0 ? (
-                    messages.map((message: SessionMessage, index: number) => (
-                      <MessageItem key={index} message={message} t={t} />
+                    messages.map((message: SessionMessage) => (
+                      <MessageItem key={`${message.timestamp}-${message.role}`} message={message} t={t} />
                     ))
                   ) : (
                     <div className="empty-state">

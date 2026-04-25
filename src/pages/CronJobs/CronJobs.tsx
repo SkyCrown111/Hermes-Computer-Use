@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Button, Input, Textarea, PlusIcon, ClockIcon, TargetIcon, ExportIcon, AlertIcon, EmptyIcon, ConfirmModal } from '../../components';
+import { Card, Button, Input, Textarea, PlusIcon, ClockIcon, TargetIcon, ExportIcon, AlertIcon, EmptyIcon, ConfirmModal, ChevronDownIcon, ChevronUpIcon } from '../../components';
 import { useCronJobsStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
+import { toast } from '../../stores/toastStore';
+import { validateSchedule } from '../../utils/validation';
 import type { CronJob } from '../../types/cron';
 import type { CreateCronJobParams } from '../../stores/cronJobsStore';
 import './CronJobs.css';
@@ -74,6 +76,20 @@ export const CronJobs: React.FC = () => {
     skills: [],
   });
   const [skillInput, setSkillInput] = useState('');
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
+
+  // 展开的输出索引
+  const [expandedOutputs, setExpandedOutputs] = useState<Set<number>>(new Set());
+
+  // 切换输出展开状态
+  const toggleOutputExpand = (index: number) => {
+    setExpandedOutputs(prev => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  };
 
   useEffect(() => {
     fetchJobs();
@@ -87,9 +103,18 @@ export const CronJobs: React.FC = () => {
   // 创建任务
   const handleCreateJob = async () => {
     if (!formData.name || !formData.prompt || !formData.schedule) return;
-    
+
+    // Validate schedule
+    const validation = validateSchedule(formData.schedule);
+    if (!validation.valid) {
+      setScheduleError(validation.error || 'Invalid schedule');
+      toast.error(validation.error || 'Invalid schedule format');
+      return;
+    }
+
     const result = await createJob(formData);
     if (result) {
+      toast.success('Task created successfully');
       setShowCreateForm(false);
       setFormData({
         name: '',
@@ -97,13 +122,27 @@ export const CronJobs: React.FC = () => {
         schedule: 'every 1h',
         skills: [],
       });
+      setScheduleError(null);
     }
   };
 
   // 更新任务
   const handleUpdateJob = async () => {
     if (!editingJob) return;
-    await updateJob(editingJob.id, formData);
+
+    // Validate schedule
+    const validation = validateSchedule(formData.schedule);
+    if (!validation.valid) {
+      setScheduleError(validation.error || 'Invalid schedule');
+      toast.error(validation.error || 'Invalid schedule format');
+      return;
+    }
+
+    const result = await updateJob(editingJob.id, formData);
+    if (result) {
+      toast.success('Task updated successfully');
+      setScheduleError(null);
+    }
   };
 
   // 删除任务
@@ -139,6 +178,7 @@ export const CronJobs: React.FC = () => {
       skills: job.skills || [],
       deliver: job.deliver,
     });
+    setScheduleError(null);
   };
 
   // 添加技能
@@ -385,10 +425,19 @@ export const CronJobs: React.FC = () => {
                   label={t('tasks.schedule')}
                   placeholder="例如: every 1h, every 30m, 0 9 * * *"
                   value={formData.schedule}
-                  onChange={(e) =>
-                    setFormData({ ...formData, schedule: e.target.value })
-                  }
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setFormData({ ...formData, schedule: value });
+                    // Real-time validation
+                    if (value.trim()) {
+                      const validation = validateSchedule(value);
+                      setScheduleError(validation.valid ? null : validation.error || null);
+                    } else {
+                      setScheduleError(null);
+                    }
+                  }}
                   hint={t('tasks.scheduleHint')}
+                  error={scheduleError || undefined}
                 />
 
                 <div className="form-field">
@@ -469,28 +518,52 @@ export const CronJobs: React.FC = () => {
                     <div className="loading-spinner" />
                   </div>
                 ) : (
-                  jobOutputs.map((output, index) => (
-                    <div key={index} className="output-item">
-                      <div className="output-header">
-                        <span
-                          className={`output-status ${
-                            output.status === 'success'
-                              ? 'status-success'
-                              : 'status-error'
-                          }`}
-                        >
-                          {output.status === 'success' ? '✅ ' + t('tasks.success') : '❌ ' + t('tasks.failed')}
-                        </span>
-                        <span className="output-time">
-                          {formatDateTime(output.started_at)}
-                        </span>
-                        <span className="output-duration">
-                          {t('tasks.duration')}: {output.duration_ms ? formatDuration(output.duration_ms / 1000) : '-'}
-                        </span>
+                  jobOutputs.map((output, index) => {
+                    const isExpanded = expandedOutputs.has(index);
+                    const outputText = output.output || '-';
+                    const hasLongOutput = outputText.length > 100;
+
+                    return (
+                      <div key={index} className="output-item">
+                        <div className="output-header">
+                          <span
+                            className={`output-status ${
+                              output.status === 'success'
+                                ? 'status-success'
+                                : 'status-error'
+                            }`}
+                          >
+                            {output.status === 'success' ? '✅ ' + t('tasks.success') : '❌ ' + t('tasks.failed')}
+                          </span>
+                          <span className="output-time">
+                            {formatDateTime(output.started_at)}
+                          </span>
+                          <span className="output-duration">
+                            {t('tasks.duration')}: {output.duration_ms ? formatDuration(output.duration_ms / 1000) : '-'}
+                          </span>
+                        </div>
+                        <div className="output-content-wrapper">
+                          <div className={`output-file ${isExpanded ? 'output-expanded' : ''}`}>
+                            {isExpanded ? outputText : (hasLongOutput ? outputText.slice(0, 100) + '...' : outputText)}
+                          </div>
+                          {hasLongOutput && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="output-expand-btn"
+                              onClick={() => toggleOutputExpand(index)}
+                            >
+                              {isExpanded ? (
+                                <><ChevronUpIcon size={14} /> 收起</>
+                              ) : (
+                                <><ChevronDownIcon size={14} /> 展开全部</>
+                              )}
+                            </Button>
+                          )}
+                        </div>
                       </div>
-                      <div className="output-file">{output.output?.slice(0, 100) || '-'}</div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
 

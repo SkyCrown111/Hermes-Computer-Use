@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Card, Button, Input } from '../../components';
-import { PlusIcon, XIcon } from '../../components';
-import { useSkillsStore } from '../../stores';
+import { Card, Button, Input, ConfirmModal } from '../../components';
+import { PlusIcon, XIcon, EditIcon, TrashIcon } from '../../components';
+import { useSkillsStore, useNavigationStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
+import { logger } from '../../lib/logger';
+import { toast } from '../../stores/toastStore';
 import './Skills.css';
 
 // 格式化类别名称
@@ -15,6 +17,7 @@ const formatCategoryName = (name: string): string => {
 
 export const Skills: React.FC = () => {
   const { t } = useTranslation();
+  const { openTab, setActiveItem } = useNavigationStore();
 
   const {
     skills,
@@ -31,6 +34,8 @@ export const Skills: React.FC = () => {
     fetchSkillDetail,
     toggleSkill,
     createSkill,
+    updateSkill,
+    deleteSkill,
     setSearchQuery,
     setSelectedCategory,
     clearSelectedSkill,
@@ -45,14 +50,100 @@ export const Skills: React.FC = () => {
     content: '',
   });
 
+  // 编辑 Skill 模态框状态
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingSkill, setEditingSkill] = useState<{
+    originalName: string;
+    originalCategory: string;
+    name: string;
+    category: string;
+    description: string;
+    content: string;
+  }>({
+    originalName: '',
+    originalCategory: '',
+    name: '',
+    category: '',
+    description: '',
+    content: '',
+  });
+
+  // 删除确认状态
+  const [deleteConfirm, setDeleteConfirm] = useState<{ category: string; name: string } | null>(null);
+
   useEffect(() => {
     fetchSkills();
     fetchCategories();
   }, [fetchSkills, fetchCategories]);
 
+  // Execute skill - starts a new chat session with skill context
+  const handleExecuteSkill = (skill: typeof selectedSkill) => {
+    if (!skill) return;
+
+    // Create a new session
+    const sessionId = `skill_${skill.name}_${Date.now()}`;
+
+    // Open a new chat tab
+    openTab(sessionId, skill.name, 'new');
+
+    // Navigate to chat
+    setActiveItem('chat');
+
+    // Close the detail panel
+    clearSelectedSkill();
+
+    logger.debug('[Skills] Executing skill:', skill.name, 'Session:', sessionId);
+  };
+
+  // Handle edit skill
+  const handleEditSkill = (skill: typeof selectedSkill) => {
+    if (!skill) return;
+    setEditingSkill({
+      originalName: skill.name,
+      originalCategory: skill.category,
+      name: skill.name,
+      category: skill.category,
+      description: skill.metadata.description,
+      content: skill.content,
+    });
+    setShowEditModal(true);
+  };
+
+  // Handle delete skill
+  const handleDeleteSkill = async () => {
+    if (!deleteConfirm) return;
+    const success = await deleteSkill(deleteConfirm.category, deleteConfirm.name);
+    if (success) {
+      toast.success(`Skill "${deleteConfirm.name}" 已删除`);
+    } else {
+      toast.error('删除失败');
+    }
+    setDeleteConfirm(null);
+  };
+
+  // Save edited skill
+  const handleSaveEdit = async () => {
+    const success = await updateSkill(
+      editingSkill.originalCategory,
+      editingSkill.originalName,
+      {
+        name: editingSkill.name,
+        category: editingSkill.category,
+        description: editingSkill.description,
+        content: editingSkill.content,
+      }
+    );
+    if (success) {
+      toast.success(`Skill "${editingSkill.name}" 已更新`);
+      setShowEditModal(false);
+    } else {
+      toast.error('更新失败');
+    }
+  };
+
   // Debug log for categories
   useEffect(() => {
-    console.log('[Skills] categories:', categories);
+    logger.debug('[Skills] categories:', categories);
   }, [categories]);
 
   // 过滤后的 Skills
@@ -206,7 +297,18 @@ export const Skills: React.FC = () => {
                           >
                             {t('skills.viewDetail')}
                           </Button>
-                          <Button variant="primary" size="sm" disabled={!skill.enabled}>
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            disabled={!skill.enabled}
+                            onClick={() => {
+                              // Create a minimal skill object for execution
+                              const sessionId = `skill_${skill.name}_${Date.now()}`;
+                              openTab(sessionId, skill.name, 'new');
+                              setActiveItem('chat');
+                              logger.debug('[Skills] Quick execute skill:', skill.name);
+                            }}
+                          >
                             {t('skills.execute')}
                           </Button>
                         </div>
@@ -285,10 +387,23 @@ export const Skills: React.FC = () => {
                     </div>
 
                     <div className="detail-actions">
+                      <Button variant="ghost" onClick={() => {
+                        setDeleteConfirm({ category: selectedSkill.category, name: selectedSkill.name });
+                      }}>
+                        <TrashIcon size={14} /> {t('common.delete')}
+                      </Button>
+                      <Button variant="secondary" onClick={() => handleEditSkill(selectedSkill)}>
+                        <EditIcon size={14} /> {t('common.edit')}
+                      </Button>
                       <Button variant="secondary" onClick={clearSelectedSkill}>
                         {t('skills.close')}
                       </Button>
-                      <Button variant="primary">{t('skills.executeSkill')}</Button>
+                      <Button
+                        variant="primary"
+                        onClick={() => handleExecuteSkill(selectedSkill)}
+                      >
+                        {t('skills.executeSkill')}
+                      </Button>
                     </div>
                   </>
                 )}
@@ -353,6 +468,7 @@ export const Skills: React.FC = () => {
                   onClick={async () => {
                     const success = await createSkill(newSkill);
                     if (success) {
+                      toast.success(`Skill "${newSkill.name}" 已创建`);
                       setShowAddModal(false);
                       setNewSkill({ name: '', category: '', description: '', content: '' });
                     }
@@ -364,6 +480,80 @@ export const Skills: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* Edit Skill Modal */}
+        {showEditModal && (
+          <div className="add-skill-modal-overlay" onClick={() => setShowEditModal(false)}>
+            <div className="add-skill-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>{t('skills.editSkill') || '编辑 Skill'}</h2>
+                <button className="close-button" onClick={() => setShowEditModal(false)}>
+                  <XIcon size={18} />
+                </button>
+              </div>
+              <div className="modal-content">
+                <div className="form-group">
+                  <label>{t('skills.addModal.name')}</label>
+                  <Input
+                    placeholder={t('skills.addModal.name') + '...'}
+                    value={editingSkill.name}
+                    onChange={(e) => setEditingSkill({ ...editingSkill, name: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>{t('skills.addModal.category')}</label>
+                  <Input
+                    placeholder={t('skills.addModal.category') + '...'}
+                    value={editingSkill.category}
+                    onChange={(e) => setEditingSkill({ ...editingSkill, category: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>{t('skills.addModal.description')}</label>
+                  <Input
+                    placeholder={t('skills.addModal.description') + '...'}
+                    value={editingSkill.description}
+                    onChange={(e) => setEditingSkill({ ...editingSkill, description: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>{t('skills.addModal.content')}</label>
+                  <textarea
+                    className="skill-content-textarea"
+                    placeholder={t('skills.addModal.placeholder')}
+                    value={editingSkill.content}
+                    onChange={(e) => setEditingSkill({ ...editingSkill, content: e.target.value })}
+                    rows={10}
+                  />
+                </div>
+              </div>
+              <div className="modal-actions">
+                <Button variant="secondary" onClick={() => setShowEditModal(false)}>
+                  {t('common.cancel')}
+                </Button>
+                <Button
+                  variant="primary"
+                  disabled={!editingSkill.name || !editingSkill.category}
+                  onClick={handleSaveEdit}
+                >
+                  {t('common.save')}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Delete Confirmation Modal */}
+        <ConfirmModal
+          isOpen={deleteConfirm !== null}
+          title={t('skills.delete') || '删除 Skill'}
+          message={t('skills.deleteConfirm') || `确定要删除这个 Skill 吗？此操作无法撤销。`}
+          confirmText={t('common.delete')}
+          cancelText={t('common.cancel')}
+          variant="danger"
+          onConfirm={handleDeleteSkill}
+          onCancel={() => setDeleteConfirm(null)}
+        />
       </div>
   );
 };

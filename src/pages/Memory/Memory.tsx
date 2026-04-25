@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Card, Button, BrainIcon, UserIcon, BookIcon, SearchIcon, EmptyIcon, AlertIcon } from '../../components';
 import { useMemoryStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
-import type { MemoryFileType, MemorySection, MemoryFile } from '../../types/memory';
+import { toast } from '../../stores/toastStore';
+import type { MemoryFileType, MemorySection, MemoryFile, MemorySearchResult } from '../../types/memory';
 import './Memory.css';
 
 // 格式化字符数
@@ -59,14 +60,85 @@ const MemoryFileView: React.FC<MemoryFileViewProps> = ({
   t,
 }) => {
   const [isSaving, setIsSaving] = useState(false);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSavedContentRef = useRef<string>(editingContent);
+
   const usage = getCharUsage(file.char_count, file.char_limit);
   const progressClass = getCharProgressClass(usage);
   const countClass = getCharCountClass(usage);
 
+  // Auto-save with debounce (2 seconds)
+  useEffect(() => {
+    if (!isEditing) return;
+
+    // Clear previous timer
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
+
+    // Check if content changed
+    if (editingContent === lastSavedContentRef.current) {
+      setAutoSaveStatus('idle');
+      return;
+    }
+
+    // Set saving indicator
+    setAutoSaveStatus('saving');
+
+    // Debounce auto-save
+    autoSaveTimerRef.current = setTimeout(async () => {
+      if (editingContent !== lastSavedContentRef.current) {
+        setIsSaving(true);
+        const success = await onSave();
+        setIsSaving(false);
+
+        if (success) {
+          lastSavedContentRef.current = editingContent;
+          setAutoSaveStatus('saved');
+          toast.success(t('memory.saved') || 'Memory saved');
+
+          // Clear "saved" indicator after 2 seconds
+          setTimeout(() => setAutoSaveStatus('idle'), 2000);
+        }
+      }
+    }, 2000);
+
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+    };
+  }, [editingContent, isEditing, onSave, t]);
+
+  // Update lastSavedContent when entering edit mode
+  useEffect(() => {
+    if (isEditing) {
+      lastSavedContentRef.current = editingContent;
+      setAutoSaveStatus('idle');
+    }
+  }, [isEditing]);
+
   const handleSave = async () => {
     setIsSaving(true);
-    await onSave();
+    const success = await onSave();
     setIsSaving(false);
+
+    if (success) {
+      lastSavedContentRef.current = editingContent;
+      setAutoSaveStatus('saved');
+    }
+  };
+
+  // Show auto-save status
+  const getAutoSaveIndicator = () => {
+    if (autoSaveStatus === 'saving') {
+      return <span className="auto-save-indicator saving">⏳ Saving...</span>;
+    }
+    if (autoSaveStatus === 'saved') {
+      return <span className="auto-save-indicator saved">✓ Saved</span>;
+    }
+    return null;
   };
 
   return (
@@ -104,7 +176,8 @@ const MemoryFileView: React.FC<MemoryFileViewProps> = ({
             />
             <div className="edit-footer">
               <div className="edit-status">
-                {editingContent.length !== file.char_count && (
+                {getAutoSaveIndicator()}
+                {editingContent.length !== file.char_count && autoSaveStatus === 'idle' && (
                   <span className="edit-dirty">● {t('memory.unsaved')}</span>
                 )}
                 <span>{formatCharCount(editingContent.length)} {t('memory.chars')}</span>
@@ -232,14 +305,83 @@ export const Memory: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<MemoryFileType | 'both'>('both');
 
+  // Advanced search options
+  const [searchCaseSensitive, setSearchCaseSensitive] = useState(false);
+  const [searchRegex, setSearchRegex] = useState(false);
+  const [localSearchResults, setLocalSearchResults] = useState<MemorySearchResult[]>([]);
+
   // 初始化数据
   useEffect(() => {
     fetchMemory();
   }, [fetchMemory]);
 
-  // 搜索处理
+  // 搜索处理 - supports case sensitivity and regex
   const handleSearch = (query: string) => {
-    searchMemory(query);
+    if (!query.trim()) {
+      searchMemory('');
+      setLocalSearchResults([]);
+      return;
+    }
+
+    // Use advanced search with case sensitivity or regex
+    if (searchCaseSensitive || searchRegex) {
+      performAdvancedSearch(query);
+    } else {
+      // Use API search for simple queries
+      searchMemory(query);
+      setLocalSearchResults([]);
+    }
+  };
+
+  // Advanced search implementation
+  const performAdvancedSearch = (query: string) => {
+    if (!memoryData) return;
+
+    const results: MemorySearchResult[] = [];
+
+    const searchInContent = (content: string, type: MemoryFileType, fileName: string) => {
+      const lines = content.split('\n');
+
+      lines.forEach((line, index) => {
+        let isMatch = false;
+
+        try {
+          if (searchRegex) {
+            const regex = new RegExp(query, searchCaseSensitive ? 'g' : 'gi');
+            isMatch = regex.test(line);
+          } else {
+            isMatch = searchCaseSensitive
+              ? line.includes(query)
+              : line.toLowerCase().includes(query.toLowerCase());
+          }
+        } catch {
+          // Invalid regex, treat as literal
+          isMatch = searchCaseSensitive
+            ? line.includes(query)
+            : line.toLowerCase().includes(query.toLowerCase());
+        }
+
+        if (isMatch) {
+          results.push({
+            type,
+            fileName,
+            lineNumber: index + 1,
+            matchedContent: query, // The matched search term
+            context: line,
+          });
+        }
+      });
+    };
+
+    // Search in both files or filtered by activeTab
+    if (activeTab === 'both' || activeTab === 'memory') {
+      searchInContent(memoryData.memory.content, 'memory', memoryData.memory.file);
+    }
+    if (activeTab === 'both' || activeTab === 'user_profile') {
+      searchInContent(memoryData.user_profile.content, 'user_profile', memoryData.user_profile.file);
+    }
+
+    setLocalSearchResults(results);
   };
 
   // 开始编辑
@@ -306,16 +448,43 @@ export const Memory: React.FC = () => {
 
           <div className="memory-actions">
             {/* Search */}
-            <div className="memory-search">
-              <span className="search-icon"><SearchIcon size={16} /></span>
-              <input
-                type="text"
-                className="memory-search-input"
-                placeholder={t('memory.searchMemory')}
-                value={searchQuery}
-                onChange={(e) => handleSearch(e.target.value)}
-              />
-              {isSearching && <span className="loading-spinner" style={{ width: 16, height: 16 }} />}
+            <div className="memory-search-wrapper">
+              <div className="memory-search">
+                <span className="search-icon"><SearchIcon size={16} /></span>
+                <input
+                  type="text"
+                  className="memory-search-input"
+                  placeholder={t('memory.searchMemory')}
+                  value={searchQuery}
+                  onChange={(e) => handleSearch(e.target.value)}
+                />
+                {isSearching && <span className="loading-spinner" style={{ width: 16, height: 16 }} />}
+              </div>
+              {/* Advanced Search Options */}
+              <div className="search-options">
+                <label className="search-option" title="Case sensitive">
+                  <input
+                    type="checkbox"
+                    checked={searchCaseSensitive}
+                    onChange={(e) => {
+                      setSearchCaseSensitive(e.target.checked);
+                      if (searchQuery) handleSearch(searchQuery);
+                    }}
+                  />
+                  <span>Aa</span>
+                </label>
+                <label className="search-option" title="Regular expression">
+                  <input
+                    type="checkbox"
+                    checked={searchRegex}
+                    onChange={(e) => {
+                      setSearchRegex(e.target.checked);
+                      if (searchQuery) handleSearch(searchQuery);
+                    }}
+                  />
+                  <span>.*</span>
+                </label>
+              </div>
             </div>
 
             {/* Expand/Collapse Controls */}
@@ -347,14 +516,23 @@ export const Memory: React.FC = () => {
         )}
 
         {/* Search Results */}
-        {searchQuery && searchResults.length > 0 && (
+        {searchQuery && ((searchCaseSensitive || searchRegex) ? localSearchResults.length > 0 : searchResults.length > 0) && (
           <Card className="search-results">
             <div className="search-results-header">
-              <span className="search-results-title">{t('memory.searchResults')}</span>
-              <span className="search-results-count">{searchResults.length} {t('memory.matches')}</span>
+              <span className="search-results-title">
+                {t('memory.searchResults')}
+                {(searchCaseSensitive || searchRegex) && (
+                  <span className="search-mode-badge">
+                    {searchRegex ? 'Regex' : searchCaseSensitive ? 'Case-sensitive' : ''}
+                  </span>
+                )}
+              </span>
+              <span className="search-results-count">
+                {(searchCaseSensitive || searchRegex ? localSearchResults.length : searchResults.length)} {t('memory.matches')}
+              </span>
             </div>
             <div className="search-result-list">
-              {searchResults.map((result, index) => (
+              {(searchCaseSensitive || searchRegex ? localSearchResults : searchResults).map((result, index) => (
                 <div key={index} className="search-result-item">
                   <div className="search-result-header">
                     <span className="search-result-file">
@@ -363,14 +541,18 @@ export const Memory: React.FC = () => {
                     <span className="search-result-line">{t('memory.line')} {result.lineNumber}</span>
                   </div>
                   <div className="search-result-context">
-                    {result.context.split(searchQuery).map((part, i, arr) => (
-                      <React.Fragment key={i}>
-                        {part}
-                        {i < arr.length - 1 && (
-                          <span className="search-highlight">{searchQuery}</span>
-                        )}
-                      </React.Fragment>
-                    ))}
+                    {!searchRegex ? (
+                      result.context.split(new RegExp(`(${searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, searchCaseSensitive ? '' : 'i')).map((part, i, arr) => (
+                        <React.Fragment key={i}>
+                          {part}
+                          {i < arr.length - 1 && i % 2 === 0 && (
+                            <span className="search-highlight">{arr[i + 1]}</span>
+                          )}
+                        </React.Fragment>
+                      ))
+                    ) : (
+                      result.context
+                    )}
                   </div>
                 </div>
               ))}

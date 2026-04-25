@@ -1,4 +1,5 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { Card, Button, RefreshIcon, EmptyIcon, GlobeIcon, ChartIcon, TrendingUpIcon, AlertIcon, FileTextIcon } from '../../components';
 import { useMonitorStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
@@ -74,6 +75,7 @@ export const Monitor: React.FC = () => {
 
   const logContentRef = useRef<HTMLDivElement>(null);
   const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [isPageVisible, setIsPageVisible] = useState(true);
 
   // 初始化数据
   useEffect(() => {
@@ -83,9 +85,22 @@ export const Monitor: React.FC = () => {
     fetchComponents();
   }, []);
 
-  // 自动刷新
+  // Page Visibility API - pause refresh when page is hidden
   useEffect(() => {
-    if (autoRefresh) {
+    const handleVisibilityChange = () => {
+      setIsPageVisible(!document.hidden);
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
+  // 自动刷新 - respects page visibility
+  useEffect(() => {
+    // Only run interval when autoRefresh is on AND page is visible
+    if (autoRefresh && isPageVisible) {
       refreshIntervalRef.current = setInterval(() => {
         fetchLogs();
         fetchGatewayStatus();
@@ -94,6 +109,7 @@ export const Monitor: React.FC = () => {
     } else {
       if (refreshIntervalRef.current) {
         clearInterval(refreshIntervalRef.current);
+        refreshIntervalRef.current = null;
       }
     }
 
@@ -102,7 +118,7 @@ export const Monitor: React.FC = () => {
         clearInterval(refreshIntervalRef.current);
       }
     };
-  }, [autoRefresh, refreshInterval, fetchLogs, fetchGatewayStatus, fetchPerformanceMetrics]);
+  }, [autoRefresh, isPageVisible, refreshInterval, fetchLogs, fetchGatewayStatus, fetchPerformanceMetrics]);
 
   // 切换日志文件
   const handleFileChange = (file: LogFile) => {
@@ -131,6 +147,14 @@ export const Monitor: React.FC = () => {
 
   const avgCpu = performanceMetrics ? getAverageMetric(performanceMetrics.cpu) : 0;
   const avgMemory = performanceMetrics ? getAverageMetric(performanceMetrics.memory) : 0;
+
+  // Virtual list for logs (only enable for large lists > 200 lines)
+  const logVirtualizer = useVirtualizer({
+    count: logs.length,
+    getScrollElement: () => logContentRef.current,
+    estimateSize: () => 24, // Approximate log line height
+    overscan: 20,
+  });
 
   return (
     <div className="monitor">
@@ -196,9 +220,16 @@ export const Monitor: React.FC = () => {
             <button
               className={`refresh-toggle ${autoRefresh ? 'refresh-toggle-active' : ''}`}
               onClick={() => setAutoRefresh(!autoRefresh)}
+              title={autoRefresh && !isPageVisible ? 'Auto-refresh paused (page hidden)' : undefined}
             >
-              <span className={`refresh-icon ${autoRefresh ? 'refresh-icon-spinning' : ''}`}><RefreshIcon size={14} /></span>
-              <span>{autoRefresh ? t('monitor.autoRefreshing') : t('monitor.autoRefresh')}</span>
+              <span className={`refresh-icon ${autoRefresh && isPageVisible ? 'refresh-icon-spinning' : ''}`}><RefreshIcon size={14} /></span>
+              <span>
+                {autoRefresh
+                  ? isPageVisible
+                    ? t('monitor.autoRefreshing')
+                    : 'Auto-refresh (paused)'
+                  : t('monitor.autoRefresh')}
+              </span>
             </button>
 
             <Button variant="secondary" onClick={handleRefresh}>
@@ -240,7 +271,48 @@ export const Monitor: React.FC = () => {
                 <div className="loading-container">
                   <div className="loading-spinner" />
                 </div>
+              ) : logs.length > 200 ? (
+                // Virtualized list for large log files
+                <div
+                  style={{
+                    height: `${logVirtualizer.getTotalSize()}px`,
+                    width: '100%',
+                    position: 'relative',
+                  }}
+                >
+                  {logVirtualizer.getVirtualItems().map(virtualRow => {
+                    const line = logs[virtualRow.index];
+                    return (
+                      <div
+                        key={virtualRow.index}
+                        className={`log-line ${getLogLineClass(line)}`}
+                        style={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          width: '100%',
+                          height: `${virtualRow.size}px`,
+                          transform: `translateY(${virtualRow.start}px)`,
+                        }}
+                      >
+                        {line.timestamp && (
+                          <span className="log-timestamp">{line.timestamp}</span>
+                        )}
+                        {line.level && (
+                          <span className={`log-level ${getLogLevelClass(line.level)}`}>
+                            {line.level}
+                          </span>
+                        )}
+                        {line.component && (
+                          <span className="log-component">[{line.component}]</span>
+                        )}
+                        <span className="log-message">{line.message || line.raw}</span>
+                      </div>
+                    );
+                  })}
+                </div>
               ) : logs.length > 0 ? (
+                // Normal rendering for small logs
                 logs.map((line, index) => (
                   <div key={index} className={`log-line ${getLogLineClass(line)}`}>
                     {line.timestamp && (

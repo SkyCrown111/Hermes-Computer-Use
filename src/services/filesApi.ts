@@ -439,4 +439,43 @@ export const filesApi = {
       metadataCount: items.filter(i => i.type === 'metadata').length,
     };
   },
+
+  // ---- File Upload/Download ----
+
+  // Download file as base64
+  downloadFile: async (path: string): Promise<{ content: string; mimeType: string; filename: string }> => {
+    try {
+      logger.debug('[FilesAPI] Downloading file:', path);
+      const response = await safeInvoke<{
+        path: string;
+        content: string;
+        size: number;
+        mime_type?: string;
+      }>('read_file_binary', { path });
+
+      const filename = path.split('/').pop() || 'download';
+      return {
+        content: response.content,
+        mimeType: response.mime_type || 'application/octet-stream',
+        filename,
+      };
+    } catch (err) {
+      logger.error('[FilesAPI] Failed to download file:', err);
+      throw err;
+    }
+  },
+
+  // Upload file (base64 content)
+  uploadFile: async (path: string, content: string): Promise<FileOperationResult> => {
+    try {
+      logger.debug('[FilesAPI] Uploading file:', path);
+      return await safeInvoke<FileOperationResult>('write_file_binary', {
+        path,
+        content,
+      });
+    } catch (err) {
+      logger.error('[FilesAPI] Failed to upload file:', err);
+      throw err;
+    }
+  },
 };

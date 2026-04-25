@@ -32,13 +32,20 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   };
 
   return (
-    <div className="modal-overlay" onClick={onCancel}>
-      <div className="modal-content confirm-modal" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay" onClick={onCancel} role="presentation">
+      <div
+        className="modal-content confirm-modal"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirm-modal-title"
+        aria-describedby="confirm-modal-message"
+      >
         <div className={`modal-icon modal-icon-${variant}`}>
           {icons[variant]}
         </div>
-        <h3 className="modal-title">{title}</h3>
-        <p className="modal-message">{message}</p>
+        <h3 className="modal-title" id="confirm-modal-title">{title}</h3>
+        <p className="modal-message" id="confirm-modal-message">{message}</p>
         <div className="modal-actions">
           <Button variant="ghost" onClick={onCancel}>
             {cancelText}
@@ -94,9 +101,15 @@ export const InputModal: React.FC<InputModalProps> = ({
   };
 
   return (
-    <div className="modal-overlay" onClick={onCancel}>
-      <div className="modal-content input-modal" onClick={(e) => e.stopPropagation()}>
-        <h3 className="modal-title">{title}</h3>
+    <div className="modal-overlay" onClick={onCancel} role="presentation">
+      <div
+        className="modal-content input-modal"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="input-modal-title"
+      >
+        <h3 className="modal-title" id="input-modal-title">{title}</h3>
         <form onSubmit={handleSubmit}>
           <input
             type="text"
@@ -104,6 +117,7 @@ export const InputModal: React.FC<InputModalProps> = ({
             value={value}
             onChange={(e) => setValue(e.target.value)}
             placeholder={placeholder}
+            aria-label={title}
             autoFocus
           />
           <div className="modal-actions">

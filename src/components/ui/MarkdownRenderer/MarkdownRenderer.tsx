@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import type { Components } from 'react-markdown';
+import { Lightbox } from '../Lightbox';
 import './MarkdownRenderer.css';
 
 interface MarkdownRendererProps {
@@ -56,6 +57,7 @@ function HighlightText({ text, query }: { text: string; query: string }) {
 
 export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, searchQuery = '' }) => {
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const [lightboxImage, setLightboxImage] = useState<{ src: string; alt: string } | null>(null);
 
   const handleCopy = useCallback(async (code: string) => {
     try {
@@ -75,6 +77,14 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, sea
       setCopiedCode(code);
       setTimeout(() => setCopiedCode(null), 2000);
     }
+  }, []);
+
+  const handleImageClick = useCallback((src: string, alt: string) => {
+    setLightboxImage({ src, alt });
+  }, []);
+
+  const closeLightbox = useCallback(() => {
+    setLightboxImage(null);
   }, []);
 
   const components: Components = {
@@ -142,13 +152,15 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, sea
       </a>
     ),
 
-    // Images
+    // Images - clickable for lightbox preview
     img: ({ src, alt, ...props }) => (
       <img
-        className="md-image"
+        className="md-image md-image-clickable"
         src={src}
         alt={alt || ''}
         loading="lazy"
+        onClick={() => handleImageClick(src || '', alt || '')}
+        style={{ cursor: 'pointer' }}
         {...props}
       />
     ),
@@ -190,14 +202,22 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, sea
   };
 
   return (
-    <div className="markdown-content">
-      <ReactMarkdown
-        components={components}
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeHighlight]}
-      >
-        {content}
-      </ReactMarkdown>
-    </div>
+    <>
+      <div className="markdown-content">
+        <ReactMarkdown
+          components={components}
+          remarkPlugins={[remarkGfm]}
+          rehypePlugins={[rehypeHighlight]}
+        >
+          {content}
+        </ReactMarkdown>
+      </div>
+      <Lightbox
+        src={lightboxImage?.src || ''}
+        alt={lightboxImage?.alt}
+        isOpen={lightboxImage !== null}
+        onClose={closeLightbox}
+      />
+    </>
   );
 };

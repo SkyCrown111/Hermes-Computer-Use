@@ -2,6 +2,7 @@ import React from 'react';
 import { NavItem } from '../../../types';
 import { useNavigationStore, useThemeStore } from '../../../stores';
 import { useTranslation } from '../../../hooks/useTranslation';
+import { logger } from '../../../lib/logger';
 import './Sidebar.css';
 
 // SVG Icons
@@ -164,6 +165,7 @@ export const Sidebar: React.FC = () => {
           className="new-chat-btn"
           onClick={() => openChat()}
           title={t('nav.newChat')}
+          aria-label={t('nav.newChat')}
         >
           <span className="new-chat-icon"><PlusIcon /></span>
           {!sidebarCollapsed && <span className="new-chat-label">{t('nav.newChat')}</span>}
@@ -171,18 +173,20 @@ export const Sidebar: React.FC = () => {
       </div>
 
       {/* Navigation */}
-      <nav className="sidebar-nav">
-        <ul className="nav-list">
+      <nav className="sidebar-nav" role="navigation" aria-label={t('nav.home') === 'Home' ? 'Main navigation' : '主导航'}>
+        <ul className="nav-list" role="list">
           {navItems.map((item) => (
             <li key={item.id} className="nav-item">
               <button
                 className={`nav-link ${activeItem === item.id ? 'nav-link-active' : ''}`}
                 onClick={() => {
-                  console.log('[Sidebar] Clicking nav item:', item.id);
+                  logger.debug('[Sidebar] Clicking nav item:', item.id);
                   setActiveItem(item.id);
                 }}
+                aria-current={activeItem === item.id ? 'page' : undefined}
+                aria-label={item.label}
               >
-                <span className="nav-icon">{item.icon}</span>
+                <span className="nav-icon" aria-hidden="true">{item.icon}</span>
                 {!sidebarCollapsed && (
                   <>
                     <span className="nav-label">{item.label}</span>
@@ -196,18 +200,20 @@ export const Sidebar: React.FC = () => {
       </nav>
 
       {/* Bottom Navigation */}
-      <nav className="sidebar-nav-bottom">
-        <ul className="nav-list">
+      <nav className="sidebar-nav-bottom" role="navigation" aria-label={t('nav.home') === 'Home' ? 'Settings navigation' : '设置导航'}>
+        <ul className="nav-list" role="list">
           {bottomNavItems.map((item) => (
             <li key={item.id} className="nav-item">
               <button
                 className={`nav-link ${activeItem === item.id ? 'nav-link-active' : ''}`}
                 onClick={() => {
-                  console.log('[Sidebar] Clicking nav item:', item.id);
+                  logger.debug('[Sidebar] Clicking nav item:', item.id);
                   setActiveItem(item.id);
                 }}
+                aria-current={activeItem === item.id ? 'page' : undefined}
+                aria-label={item.label}
               >
-                <span className="nav-icon">{item.icon}</span>
+                <span className="nav-icon" aria-hidden="true">{item.icon}</span>
                 {!sidebarCollapsed && (
                   <>
                     <span className="nav-label">{item.label}</span>

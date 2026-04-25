@@ -10,6 +10,7 @@ export interface ButtonProps extends BaseComponentProps {
   icon?: React.ReactNode;
   onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void;
   type?: 'button' | 'submit' | 'reset';
+  ariaLabel?: string;
 }
 
 const sizeClasses: Record<Size, string> = {
@@ -38,6 +39,7 @@ export const Button: React.FC<ButtonProps> = ({
   children,
   onClick,
   type = 'button',
+  ariaLabel,
 }) => {
   const classes = [
     'btn',
@@ -53,9 +55,12 @@ export const Button: React.FC<ButtonProps> = ({
       className={classes}
       disabled={disabled || loading}
       onClick={onClick}
+      aria-label={ariaLabel}
+      aria-busy={loading}
+      aria-disabled={disabled || loading}
     >
-      {loading && <span className="btn-spinner" />}
-      {icon && !loading && <span className="btn-icon">{icon}</span>}
+      {loading && <span className="btn-spinner" aria-hidden="true" />}
+      {icon && !loading && <span className="btn-icon" aria-hidden="true">{icon}</span>}
       {children && <span className="btn-text">{children}</span>}
     </button>
   );

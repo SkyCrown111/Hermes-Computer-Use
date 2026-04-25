@@ -2,7 +2,7 @@
 
 import { safeInvoke } from '../lib/tauri';
 import { logger } from '../lib/logger';
-import type { Skill, SkillDetail, SkillCategory } from '../types/skill';
+import type { Skill, SkillDetail, SkillCategory, CreateSkillParams } from '../types/skill';
 
 export interface SkillListResponse {
   skills: Skill[];
@@ -51,9 +51,14 @@ export async function saveSkill(skill: Skill): Promise<void> {
   await safeInvoke('save_skill', { skill });
 }
 
+// Create a new skill with content
+export async function createSkill(params: CreateSkillParams): Promise<void> {
+  await safeInvoke('create_skill', { params });
+}
+
 // Delete a skill
-export async function deleteSkill(name: string): Promise<void> {
-  await safeInvoke('delete_skill', { name });
+export async function deleteSkill(category: string, name: string): Promise<void> {
+  await safeInvoke('delete_skill', { category, name });
 }
 
 // Get skills directory path
@@ -69,6 +74,7 @@ export const skillsApi = {
   getCategories,
   toggleSkill,
   saveSkill,
+  createSkill,
   deleteSkill,
   getSkillsPath,
 };

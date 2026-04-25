@@ -168,6 +168,16 @@
   margin: 0.5em 0;
 }
 
+.markdown-content .md-image-clickable {
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.markdown-content .md-image-clickable:hover {
+  transform: scale(1.02);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
 /* ─── Lists ─── */
 .markdown-content .md-ul,
 .markdown-content .md-ol {

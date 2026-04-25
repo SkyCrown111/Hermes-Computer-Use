@@ -6,6 +6,7 @@ import { PlusIcon } from '../../index';
 import { InputModal } from '../../ui/Modal';
 import { formatRelativeTimeShort, groupByTime, type TimeGroup, TIME_GROUP_ORDER } from '../../../utils/format';
 import { FOCUS_SEARCH_EVENT } from '../../../hooks/useKeyboardShortcuts';
+import { logger } from '../../../lib/logger';
 import './SessionSidebar.css';
 
 // Context menu position type
@@ -174,7 +175,7 @@ export const SessionSidebar: React.FC = () => {
     try {
       await updateSessionTitle(renameModal.sessionId, newName);
     } catch (error) {
-      console.error('Failed to rename session:', error);
+      logger.error('[SessionSidebar] Failed to rename session:', error);
     }
     setRenameModal({ isOpen: false, sessionId: '', currentName: '' });
   }, [renameModal.sessionId, updateSessionTitle]);
@@ -196,7 +197,7 @@ export const SessionSidebar: React.FC = () => {
       // Delete the session from server
       await deleteSession(sessionId);
     } catch (error) {
-      console.error('Failed to delete session:', error);
+      logger.error('[SessionSidebar] Failed to delete session:', error);
     }
   }, [contextMenu.sessionId, closeTab, deleteSession]);
 

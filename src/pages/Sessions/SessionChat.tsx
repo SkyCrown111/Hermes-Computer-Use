@@ -5,10 +5,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { streamChatRealtime, checkHermesApiHealth, respondApproval, abortChat } from '../../services/hermesChat';
 import { useTranslation } from '../../hooks/useTranslation';
-import { ChatInput, MessageContent, ThinkingBlock } from '../../components/chat';
+import { ChatInput, MessageContent, ThinkingBlock, ToolsBlock } from '../../components/chat';
 import type { ChatInputHandle, AttachedFile, SessionSearchResult } from '../../components/chat';
 import type { ChatMessage, ToolCallInfo } from '../../stores/chatStore';
 import { MarkdownRenderer, BotIcon, ThinkingIcon } from '../../components';
+import { logger } from '../../lib/logger';
 import type { Session, SessionMessage } from '../../types';
 import './SessionChat.css';
 
@@ -207,7 +208,7 @@ export const SessionChat: React.FC<SessionChatProps> = ({
     try {
       await abortChat();
     } catch (error) {
-      console.error('[SessionChat] Failed to abort chat:', error);
+      logger.error('[SessionChat] Failed to abort chat:', error);
     }
     streamingContentRef.current = '';
     streamingReasoningRef.current = '';
@@ -223,7 +224,7 @@ export const SessionChat: React.FC<SessionChatProps> = ({
     try {
       await navigator.clipboard.writeText(content);
     } catch (err) {
-      console.error('[SessionChat] Failed to copy:', err);
+      logger.error('[SessionChat] Failed to copy:', err);
     }
   };
 
@@ -373,16 +374,7 @@ export const SessionChat: React.FC<SessionChatProps> = ({
 
                 {/* Tool calls */}
                 {streamingTools.length > 0 && (
-                  <div className="tools-block">
-                    {streamingTools.map((tool, i) => (
-                      <div key={i} className={`tool-item ${tool.is_error ? 'tool-error' : ''}`}>
-                        <span className="tool-name">{tool.name}</span>
-                        <span className="tool-status">
-                          {tool.is_error ? 'error' : tool.event_type === 'tool.completed' ? 'done' : 'running'}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                  <ToolsBlock tools={streamingTools} isStreaming={true} />
                 )}
 
                 {/* Streamed content with Markdown */}

@@ -352,7 +352,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({
 
     // If currently streaming, stop it first then send new message
     if (currentIsStreaming) {
-      console.log('[ChatPage] Stopping current stream to send new message');
+      logger.debug('[ChatPage] Stopping current stream to send new message');
       isStoppedRef.current = true;
       setStreaming(effectiveSessionId, false);
       setThinking(effectiveSessionId, false);
@@ -438,7 +438,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({
           },
           onTool: (tool) => {
             if (isStoppedRef.current || !isMountedRef.current) return;
-            console.log('[ChatPage] Tool call:', tool);
+            logger.debug('[ChatPage] Tool call:', tool);
             // Get current session ID from navigation store (in case tab was switched)
             const currentTabId = useNavigationStore.getState().activeTabId;
             if (currentTabId) {
@@ -476,10 +476,10 @@ export const ChatPage: React.FC<ChatPageProps> = ({
               targetSessionId = resolveSessionId(currentActiveTabId);
             }
 
-            console.log('[ChatPage] onComplete - effectiveSessionId:', effectiveSessionId);
-            console.log('[ChatPage] onComplete - newSessionId:', newSessionId);
-            console.log('[ChatPage] onComplete - currentActiveTabId:', currentActiveTabId);
-            console.log('[ChatPage] onComplete - resolved targetSessionId:', targetSessionId);
+            logger.debug('[ChatPage] onComplete - effectiveSessionId:', effectiveSessionId);
+            logger.debug('[ChatPage] onComplete - newSessionId:', newSessionId);
+            logger.debug('[ChatPage] onComplete - currentActiveTabId:', currentActiveTabId);
+            logger.debug('[ChatPage] onComplete - resolved targetSessionId:', targetSessionId);
 
             setStreaming(targetSessionId, false);
             setThinking(targetSessionId, false);
@@ -506,12 +506,12 @@ export const ChatPage: React.FC<ChatPageProps> = ({
                 outputTokens: usage?.completion_tokens,
                 totalTokens: usage?.total_tokens,
               });
-              console.log('[ChatPage] onComplete - Updated message:', lastMessage.id, 'content length:', finalContent.length);
+              logger.debug('[ChatPage] onComplete - Updated message:', lastMessage.id, 'content length:', finalContent.length);
             } else {
-              console.log('[ChatPage] onComplete - No last message found for session:', targetSessionId);
+              logger.debug('[ChatPage] onComplete - No last message found for session:', targetSessionId);
               // Log all available sessions for debugging
               const allSessions = useChatStore.getState().sessions;
-              console.log('[ChatPage] Available sessions:', Object.keys(allSessions));
+              logger.debug('[ChatPage] Available sessions:', Object.keys(allSessions));
             }
 
             // Clear streaming state after saving to message
@@ -561,24 +561,24 @@ export const ChatPage: React.FC<ChatPageProps> = ({
           },
           onApproval: (approval) => {
             if (!isMountedRef.current) return;
-            console.log('[ChatPage] Approval request:', approval);
+            logger.debug('[ChatPage] Approval request:', approval);
             // Get current session ID from navigation store (in case tab was switched)
             const currentTabId = useNavigationStore.getState().activeTabId;
             if (currentTabId) setChatPendingPermission(currentTabId, approval);
           },
           onSessionCreated: (newSessionId) => {
             if (!isMountedRef.current) return;
-            console.log('[ChatPage] Session created:', newSessionId);
+            logger.debug('[ChatPage] Session created:', newSessionId);
 
             // Get current tab ID from navigation store (in case tab was switched)
             const currentTabId = useNavigationStore.getState().activeTabId;
 
-            console.log('[ChatPage] onSessionCreated - currentTabId:', currentTabId);
-            console.log('[ChatPage] onSessionCreated - effectiveSessionId:', effectiveSessionId);
+            logger.debug('[ChatPage] onSessionCreated - currentTabId:', currentTabId);
+            logger.debug('[ChatPage] onSessionCreated - effectiveSessionId:', effectiveSessionId);
 
             // If current tab is a temporary "new_" tab, replace it with the real session ID
             if (currentTabId && currentTabId.startsWith('new_')) {
-              console.log('[ChatPage] Migrating session from', currentTabId, 'to', newSessionId);
+              logger.debug('[ChatPage] Migrating session from', currentTabId, 'to', newSessionId);
 
               // Register the migration so onComplete can find the new ID
               registerSessionMigration(currentTabId, newSessionId);
@@ -589,7 +589,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({
               // Then update the tab with the new session ID
               useNavigationStore.getState().replaceTabId(currentTabId, newSessionId, '新会话');
 
-              console.log('[ChatPage] Session migration complete');
+              logger.debug('[ChatPage] Session migration complete');
             }
 
             // Optimistically add session to list immediately
@@ -624,15 +624,15 @@ export const ChatPage: React.FC<ChatPageProps> = ({
     const targetSessionId = currentTabId || effectiveSessionId;
     if (!targetSessionId) return;
 
-    console.log('[ChatPage] Stopping chat...');
+    logger.debug('[ChatPage] Stopping chat...');
     isStoppedRef.current = true;
 
     // Abort the backend process
     try {
       await abortChat();
-      console.log('[ChatPage] Backend process aborted');
+      logger.debug('[ChatPage] Backend process aborted');
     } catch (error) {
-      console.error('[ChatPage] Failed to abort chat:', error);
+      logger.error('[ChatPage] Failed to abort chat:', error);
     }
 
     setStreaming(targetSessionId, false);
@@ -658,7 +658,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({
     const currentPendingPermission = useChatStore.getState().sessions[effectiveSessionId || '']?.pendingPermission;
     if (!effectiveSessionId || !currentPendingPermission) return;
 
-    console.log('[ChatPage] Approval response:', choice);
+    logger.debug('[ChatPage] Approval response:', choice);
     try {
       await respondApproval(currentPendingPermission.id, choice);
     } catch (error) {

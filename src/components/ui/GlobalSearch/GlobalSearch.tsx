@@ -1,5 +1,5 @@
 // Global Search Overlay — triggered by Ctrl+Shift+F
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigationStore } from '../../../stores';
 import { logger } from '../../../lib/logger';
 import './GlobalSearch.css';
@@ -18,8 +18,7 @@ export const GlobalSearch: React.FC = () => {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
-  const { setActiveItem } = useNavigationStore();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const close = useCallback(() => {
     setIsOpen(false);
@@ -133,7 +132,7 @@ export const GlobalSearch: React.FC = () => {
             Object.entries(grouped).map(([category, items]) => (
               <div key={category} className="globalsearch-group">
                 <div className="globalsearch-group-title">{category}</div>
-                {items.map((r, i) => {
+                {items.map((r) => {
                   const globalIdx = results.indexOf(r);
                   return (
                     <div

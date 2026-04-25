@@ -7,6 +7,7 @@ import { checkForUpdates } from '../../services/updateApi';
 import { restartGateway } from '../../services/settingsApi';
 import { formatNumber, formatCurrency, formatTime } from '../../utils/format';
 import { logger } from '../../lib/logger';
+import { toast } from '../../stores/toastStore';
 import './Dashboard.css';
 
 // 引导界面组件
@@ -67,7 +68,7 @@ const OnboardingGuide: React.FC<{ onRetry: () => void; t: (key: string) => strin
 };
 
 export const Dashboard: React.FC = () => {
-  const { setActiveItem } = useNavigationStore();
+  const { setActiveItem, openTab } = useNavigationStore();
   const { t } = useTranslation();
   const {
     systemStatus,
@@ -121,12 +122,12 @@ export const Dashboard: React.FC = () => {
     try {
       const result = await checkForUpdates();
       if (result.available) {
-        alert(`Update available: v${result.newVersion}\n${result.releaseNotes || ''}`);
+        toast.info(t('dashboard.updateAvailable'), `v${result.newVersion}${result.releaseNotes ? ` - ${result.releaseNotes.slice(0, 100)}...` : ''}`);
       } else {
-        alert('You are up to date!');
+        toast.success(t('dashboard.upToDate'));
       }
     } catch {
-      alert('Failed to check for updates');
+      toast.error(t('dashboard.updateCheckFailed'));
     } finally {
       setIsCheckingUpdates(false);
     }
@@ -136,9 +137,9 @@ export const Dashboard: React.FC = () => {
     setIsRestartingGateway(true);
     try {
       await restartGateway();
-      alert('Gateway restart initiated');
+      toast.success(t('dashboard.gatewayRestarted'));
     } catch {
-      alert('Failed to restart gateway');
+      toast.error(t('dashboard.gatewayRestartFailed'));
     } finally {
       setIsRestartingGateway(false);
     }
@@ -261,7 +262,12 @@ export const Dashboard: React.FC = () => {
           {/* Quick Actions */}
           <Card title={t('dashboard.quickActions')} icon={<ZapIcon size={18} />} className="quick-actions">
             <div className="action-grid">
-              <Button variant="primary" onClick={() => setActiveItem('sessions')}>{t('dashboard.newSession')}</Button>
+              <Button variant="primary" onClick={() => {
+                // Create a new chat session and navigate to it
+                const sessionId = `new_${Date.now()}`;
+                openTab(sessionId, t('dashboard.newSession'), 'new');
+                setActiveItem('chat');
+              }}>{t('dashboard.newSession')}</Button>
               <Button variant="secondary" onClick={() => setActiveItem('skills')}>{t('dashboard.executeSkill')}</Button>
               <Button variant="secondary" onClick={() => setActiveItem('tasks')}>{t('dashboard.createTask')}</Button>
               <Button variant="secondary" onClick={() => setActiveItem('settings')}>{t('dashboard.openSettings')}</Button>

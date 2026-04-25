@@ -57,6 +57,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     // ---- Refs ----
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const imageInputRef = useRef<HTMLInputElement>(null);
     const addMenuRef = useRef<HTMLDivElement>(null);
 
     // ---- Imperative handle for parent (handleRegenerate) ----
@@ -282,7 +283,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                     <button
                       className="add-menu-item"
                       onClick={() => {
-                        fileInputRef.current?.click();
+                        imageInputRef.current?.click();
                         setShowAddMenu(false);
                       }}
                     >
@@ -322,6 +323,15 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             ref={fileInputRef}
             type="file"
             multiple
+            style={{ display: 'none' }}
+            onChange={handleFileSelect}
+          />
+          {/* Hidden Image Input - only accepts images */}
+          <input
+            ref={imageInputRef}
+            type="file"
+            multiple
+            accept="image/*"
             style={{ display: 'none' }}
             onChange={handleFileSelect}
           />

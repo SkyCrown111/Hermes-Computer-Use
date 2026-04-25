@@ -3,6 +3,7 @@ import { BaseComponentProps } from '../../../types';
 import { Sidebar } from '../Sidebar';
 import { SessionSidebar } from '../SessionSidebar';
 import { StatusBar } from '../StatusBar';
+import { KeyboardShortcutsHelp } from '../../ui/KeyboardShortcutsHelp';
 import { useThemeStore, useNavigationStore } from '../../../stores';
 import './Layout.css';
 
@@ -48,6 +49,7 @@ export const Layout: React.FC<LayoutProps> = ({
         <div className={`layout-content ${className}`}>{children}</div>
       </main>
       <StatusBar />
+      <KeyboardShortcutsHelp />
     </div>
   );
 };

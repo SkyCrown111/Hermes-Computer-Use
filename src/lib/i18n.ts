@@ -1,4 +1,5 @@
 // Internationalization (i18n) System
+import { logger } from './logger';
 
 type Language = 'zh' | 'en';
 
@@ -256,6 +257,11 @@ const translations: Translations = {
   'settings.selectFile': { zh: '选择文件', en: 'Select File' },
   'settings.pasteJson': { zh: '或粘贴 JSON 配置:', en: 'Or paste JSON config:' },
   'settings.import': { zh: '导入', en: 'Import' },
+  'settings.update': { zh: '自动更新', en: 'Auto Update' },
+  'settings.updateDesc': { zh: '检查并安装应用更新', en: 'Check and install app updates' },
+  'settings.currentVersion': { zh: '当前版本', en: 'Current Version' },
+  'settings.checkForUpdates': { zh: '检查更新', en: 'Check for Updates' },
+  'settings.installUpdate': { zh: '安装更新', en: 'Install Update' },
 
   // Monitor Page
   'monitor.logFile': { zh: '日志文件', en: 'Log File' },
@@ -306,6 +312,7 @@ const translations: Translations = {
   'memory.unsaved': { zh: '未保存', en: 'Unsaved' },
   'memory.saving': { zh: '保存中...', en: 'Saving...' },
   'memory.save': { zh: '保存', en: 'Save' },
+  'memory.saved': { zh: '已保存', en: 'Saved' },
   'memory.cancel': { zh: '取消', en: 'Cancel' },
 
   // Files Page
@@ -444,13 +451,34 @@ const translations: Translations = {
   'chat.active': { zh: '会话活跃', en: 'Active' },
   'chat.idle': { zh: '新会话', en: 'New Session' },
   'chat.lastUpdate': { zh: '最后更新', en: 'Last update' },
+
+  // Keyboard Shortcuts
+  'shortcuts.title': { zh: '键盘快捷键', en: 'Keyboard Shortcuts' },
+  'shortcuts.global': { zh: '全局', en: 'Global' },
+  'shortcuts.chat': { zh: '聊天', en: 'Chat' },
+  'shortcuts.slashCommands': { zh: '斜杠命令', en: 'Slash Commands' },
+  'shortcuts.newChat': { zh: '新建会话', en: 'New chat' },
+  'shortcuts.closeTab': { zh: '关闭标签页', en: 'Close tab' },
+  'shortcuts.nextTab': { zh: '下一个标签页', en: 'Next tab' },
+  'shortcuts.prevTab': { zh: '上一个标签页', en: 'Previous tab' },
+  'shortcuts.commandPalette': { zh: '命令面板', en: 'Command palette' },
+  'shortcuts.globalSearch': { zh: '全局搜索', en: 'Global search' },
+  'shortcuts.showHelp': { zh: '显示快捷键帮助', en: 'Show keyboard shortcuts' },
+  'shortcuts.searchMessages': { zh: '搜索消息', en: 'Search messages' },
+  'shortcuts.sendMessage': { zh: '发送消息', en: 'Send message' },
+  'shortcuts.newLine': { zh: '换行', en: 'New line' },
+  'shortcuts.close': { zh: '关闭/取消', en: 'Close / Cancel' },
+  'shortcuts.startCommand': { zh: '开始斜杠命令', en: 'Start slash command' },
+  'shortcuts.navigateCommands': { zh: '导航命令列表', en: 'Navigate commands' },
+  'shortcuts.selectCommand': { zh: '选择命令', en: 'Select command' },
+  'shortcuts.toClose': { zh: '关闭', en: 'to close' },
 };
 
 // Get translation for a key
 export function t(key: string, lang: Language): string {
   const translation = translations[key];
   if (!translation) {
-    console.warn(`[i18n] Missing translation for key: ${key}`);
+    logger.warn(`[i18n] Missing translation for key: ${key}`);
     return key;
   }
   return translation[lang] || translation['zh'];

@@ -324,3 +324,100 @@
   background: var(--bg-tertiary);
   color: var(--text-primary);
 }
+
+/* Connection Error Modal */
+.connection-error-modal {
+  max-width: 600px;
+}
+
+.connection-error-platform {
+  padding: var(--space-3);
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-4);
+  font-size: var(--text-sm);
+}
+
+.connection-error-platform strong {
+  color: var(--text-secondary);
+  margin-right: var(--space-2);
+}
+
+.connection-error-message {
+  margin-bottom: var(--space-4);
+}
+
+.connection-error-message strong {
+  display: block;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin-bottom: var(--space-2);
+}
+
+.connection-error-message pre {
+  padding: var(--space-4);
+  background: rgba(255, 69, 58, 0.1);
+  border: 1px solid rgba(255, 69, 58, 0.2);
+  border-radius: var(--radius-md);
+  color: #ff453a;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+}
+
+.connection-error-details {
+  margin-bottom: var(--space-4);
+}
+
+.connection-error-details strong {
+  display: block;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin-bottom: var(--space-2);
+}
+
+.connection-error-details pre {
+  padding: var(--space-4);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.connection-error-tips {
+  padding: var(--space-4);
+  background: rgba(90, 200, 250, 0.1);
+  border: 1px solid rgba(90, 200, 250, 0.2);
+  border-radius: var(--radius-md);
+}
+
+.connection-error-tips strong {
+  display: block;
+  font-size: var(--text-sm);
+  color: var(--color-primary);
+  margin-bottom: var(--space-3);
+}
+
+.connection-error-tips ul {
+  margin: 0;
+  padding-left: var(--space-5);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.connection-error-tips li {
+  margin-bottom: var(--space-2);
+}
+
+.connection-error-tips li:last-child {
+  margin-bottom: 0;
+}

@@ -186,6 +186,176 @@ function getMockData(cmd: string): unknown {
       };
     case 'health_check':
       return { status: 'ok' };
+
+    // ===== Cron Jobs =====
+    case 'get_cron_job':
+      return {
+        id: 'cron_001',
+        name: 'Daily Backup',
+        schedule: '0 2 * * *',
+        command: 'backup.sh',
+        enabled: true,
+        last_run: new Date(Date.now() - 86400000).toISOString(),
+        next_run: new Date(Date.now() + 86400000).toISOString(),
+        created_at: new Date(Date.now() - 604800000).toISOString(),
+      };
+    case 'save_cron_job':
+    case 'delete_cron_job':
+    case 'toggle_cron_job':
+    case 'trigger_cron_job':
+      return { success: true };
+    case 'get_cron_path':
+      return '~/.hermes/cron';
+    case 'get_cron_outputs':
+      return [
+        {
+          id: 'output_001',
+          job_id: 'cron_001',
+          timestamp: new Date().toISOString(),
+          exit_code: 0,
+          stdout: 'Backup completed successfully',
+          stderr: '',
+        },
+      ];
+
+    // ===== Files =====
+    case 'list_directory':
+      return {
+        path: '/home/user',
+        entries: [
+          { name: 'Documents', is_dir: true, size: 0, modified: new Date().toISOString() },
+          { name: 'Downloads', is_dir: true, size: 0, modified: new Date().toISOString() },
+          { name: 'readme.txt', is_dir: false, size: 1024, modified: new Date().toISOString() },
+          { name: 'config.json', is_dir: false, size: 256, modified: new Date().toISOString() },
+        ],
+      };
+    case 'read_file':
+      return {
+        path: '/home/user/readme.txt',
+        content: '# Welcome to Hermes\n\nThis is a sample file for browser development.\n\n## Features\n- Feature 1\n- Feature 2\n- Feature 3\n',
+        encoding: 'utf-8',
+        size: 120,
+      };
+    case 'create_directory':
+    case 'write_file':
+    case 'delete_file':
+    case 'move_file':
+    case 'copy_file':
+      return { success: true, message: 'Operation completed' };
+    case 'file_exists':
+      return { exists: true, type: 'file' };
+
+    // ===== Monitor =====
+    case 'get_logs':
+      return {
+        file: 'hermes.log',
+        lines: [
+          `[${new Date().toISOString()}] INFO: Application started`,
+          `[${new Date().toISOString()}] INFO: Gateway connected`,
+          `[${new Date().toISOString()}] DEBUG: Processing request`,
+          `[${new Date().toISOString()}] INFO: Session created: session_123`,
+          `[${new Date().toISOString()}] WARN: High memory usage detected`,
+        ],
+      };
+    case 'get_log_files':
+      return {
+        files: [
+          { name: 'hermes.log', path: '~/.hermes/logs/hermes.log', size: 102400 },
+          { name: 'gateway.log', path: '~/.hermes/logs/gateway.log', size: 51200 },
+          { name: 'error.log', path: '~/.hermes/logs/error.log', size: 2048 },
+        ],
+      };
+    case 'get_log_components':
+      return ['gateway', 'chat', 'cron', 'platform', 'skill'];
+    case 'clear_logs':
+      return { success: true };
+
+    // ===== Platforms =====
+    case 'get_platforms':
+      return [
+        {
+          type: 'cli',
+          name: 'CLI',
+          enabled: true,
+          status: 'connected',
+          description: 'Command Line Interface',
+        },
+        {
+          type: 'weixin',
+          name: 'WeChat',
+          enabled: false,
+          status: 'disconnected',
+          description: 'WeChat Official Account',
+        },
+        {
+          type: 'web',
+          name: 'Web',
+          enabled: true,
+          status: 'connected',
+          description: 'Web Chat Interface',
+        },
+      ];
+    case 'get_platform_status':
+      return {
+        type: 'cli',
+        enabled: true,
+        status: 'connected',
+        last_activity: new Date().toISOString(),
+        message_count: 42,
+        config: { auto_reconnect: true },
+      };
+    case 'update_platform_config':
+    case 'enable_platform':
+    case 'disable_platform':
+    case 'test_platform_connection':
+    case 'reconnect_platform':
+      return { success: true };
+
+    // ===== Skills =====
+    case 'get_skill_detail':
+      return {
+        name: 'code_review',
+        path: 'skills/code_review.md',
+        description: 'Perform code review on source files',
+        enabled: true,
+        category: 'development',
+        version: '1.0.0',
+        author: 'system',
+        tags: ['code', 'review', 'quality'],
+        content: '# Code Review Skill\n\nReview code for best practices, bugs, and improvements.',
+        created_at: new Date(Date.now() - 2592000000).toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+    case 'toggle_skill':
+    case 'save_skill':
+    case 'delete_skill':
+      return { success: true };
+    case 'get_skills_path':
+      return '~/.hermes/skills';
+
+    // ===== Sessions =====
+    case 'search_sessions':
+      return [
+        {
+          id: 'session_search_001',
+          session_id: '20260420_123015_abc123',
+          platform: 'cli',
+          chat_name: 'Recent CLI Session',
+          relevance_score: 0.95,
+          matched_content: 'This is the matched content from the session...',
+          timestamp: new Date().toISOString(),
+        },
+      ];
+    case 'delete_session':
+    case 'update_session_title':
+      return { success: true };
+    case 'get_sessions_path':
+      return '~/.hermes/sessions';
+
+    // ===== Memory =====
+    case 'save_memory':
+      return { success: true, message: 'Memory saved successfully' };
+
     default:
       logger.warn(`[Tauri] No mock data for command: ${cmd}`);
       return null;

@@ -37,7 +37,7 @@ export const platformApi = {
   },
 
   // 测试平台连接
-  async testConnection(type: PlatformType): Promise<{ ok: boolean; message?: string }> {
+  async testConnection(type: PlatformType): Promise<{ ok: boolean; message?: string; details?: string }> {
     return safeInvoke('test_platform_connection', { platformType: type });
   },
 

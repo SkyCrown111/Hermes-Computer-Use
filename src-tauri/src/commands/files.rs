@@ -558,3 +558,94 @@ pub async fn get_file_tree(path: String, depth: Option<u32>) -> Result<serde_jso
         "children": tree
     }))
 }
+
+/// Binary file content for upload/download
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BinaryFileContent {
+    pub path: String,
+    pub content: String, // Base64 encoded
+    pub size: u64,
+    pub mime_type: Option<String>,
+}
+
+/// Read file as binary (base64 encoded)
+#[tauri::command]
+pub async fn read_file_binary(path: String) -> Result<BinaryFileContent, String> {
+    println!("[Files] Reading binary file: {}", path);
+
+    // Use base64 command to encode the file
+    let cmd = format!("base64 -w 0 {} 2>/dev/null", path);
+    let output = create_command("wsl")
+        .args(["bash", "-c", &cmd])
+        .output()
+        .map_err(|e| format!("Failed to read binary file: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to read binary file: {}", stderr));
+    }
+
+    let content = String::from_utf8_lossy(&output.stdout).to_string();
+    let size = (content.len() * 3 / 4) as u64; // Approximate original size from base64
+
+    // Get mime type from extension
+    let extension = path.rsplit('.').next().map(|s| s.to_lowercase());
+    let mime_type = extension.as_ref().and_then(|e| match e.as_str() {
+        "txt" => Some("text/plain"),
+        "md" => Some("text/markdown"),
+        "json" => Some("application/json"),
+        "yaml" | "yml" => Some("text/yaml"),
+        "pdf" => Some("application/pdf"),
+        "png" => Some("image/png"),
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "gif" => Some("image/gif"),
+        "svg" => Some("image/svg+xml"),
+        "zip" => Some("application/zip"),
+        "tar" => Some("application/x-tar"),
+        "gz" => Some("application/gzip"),
+        "mp3" => Some("audio/mpeg"),
+        "mp4" => Some("video/mp4"),
+        "js" | "jsx" => Some("text/javascript"),
+        "ts" | "tsx" => Some("text/typescript"),
+        "py" => Some("text/x-python"),
+        "rs" => Some("text/x-rust"),
+        _ => Some("application/octet-stream"),
+    }).map(|s| s.to_string());
+
+    Ok(BinaryFileContent {
+        path,
+        content,
+        size,
+        mime_type,
+    })
+}
+
+/// Write binary file (base64 encoded content)
+#[tauri::command]
+pub async fn write_file_binary(path: String, content: String) -> Result<FileOperationResult, String> {
+    println!("[Files] Writing binary file: {} ({} bytes base64)", path, content.len());
+
+    // Create parent directory if needed
+    let parent_cmd = format!("mkdir -p $(dirname '{}')", path);
+    let _ = create_command("wsl")
+        .args(["bash", "-c", &parent_cmd])
+        .output();
+
+    // Decode base64 and write to file
+    let cmd = format!("echo '{}' | base64 -d > '{}' 2>/dev/null", content, path);
+    let output = create_command("wsl")
+        .args(["bash", "-c", &cmd])
+        .output()
+        .map_err(|e| format!("Failed to write binary file: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to write binary file: {}", stderr));
+    }
+
+    Ok(FileOperationResult {
+        success: true,
+        message: "Binary file written successfully".to_string(),
+        path: Some(path),
+    })
+}

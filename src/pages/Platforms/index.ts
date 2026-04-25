@@ -1,1 +1,1 @@
-export { default as Platforms } from './Platforms';
+export { Platforms } from './Platforms';

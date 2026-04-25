@@ -18,7 +18,7 @@ interface ThemeState {
 export const useThemeStore = create<ThemeState>()(
   persist(
     (set) => ({
-      mode: 'light', // Default to light theme (warm brown design)
+      mode: 'dark', // Default to dark theme (matches ErrorBoundary fallback styling)
       language: 'en', // Default to English
       accentColor: '#8F482F',
       sidebarCollapsed: false,

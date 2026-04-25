@@ -138,16 +138,16 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set({ isLoadingModel: true, error: null });
     try {
       const config = await settingsApi.loadConfig() as ConfigResponse;
-      console.log('[Settings] Raw API response:', JSON.stringify(config, null, 2));
+      logger.debug('[Settings] Raw API response:', config);
       logger.debug('[Settings] Loaded config:', config);
-      console.log('[Settings] config.model:', config.model);
+      logger.debug('[Settings] config.model:', config.model);
       const modelConfig: ModelConfig = {
         default: config.model?.default || '',
         provider: config.model?.provider || 'auto',
         api_key: config.model?.api_key || '',
         base_url: config.model?.base_url || '',
       };
-      console.log('[Settings] Computed modelConfig:', modelConfig);
+      logger.debug('[Settings] Computed modelConfig:', modelConfig);
       logger.debug('[Settings] Model config:', modelConfig);
       set({ modelConfig, isLoadingModel: false });
     } catch (err) {

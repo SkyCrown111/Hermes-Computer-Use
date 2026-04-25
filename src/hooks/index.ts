@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { logger } from '../lib/logger';
 
 interface AsyncState<T> {
   data: T | null;
@@ -54,7 +55,7 @@ export function useLocalStorage<T>(
       setStoredValue(valueToStore);
       window.localStorage.setItem(key, JSON.stringify(valueToStore));
     } catch (error) {
-      console.error('Error saving to localStorage:', error);
+      logger.error('[useLocalStorage] Error saving to localStorage:', error);
     }
   };
 

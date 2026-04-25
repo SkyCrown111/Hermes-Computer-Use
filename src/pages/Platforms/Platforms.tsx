@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ConfirmModal } from '../../components';
 import { usePlatformStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
+import { toast } from '../../stores/toastStore';
 import type { Platform, PlatformType } from '../../types/platform';
 import './Platforms.css';
 
@@ -57,7 +58,7 @@ const StatusBadge = ({ status, t }: { status: Platform['status']; t: (key: strin
   return <span className={`status-badge ${config.className}`}>{config.label}</span>;
 };
 
-export default function Platforms() {
+export function Platforms() {
   const { t } = useTranslation();
 
   const {
@@ -74,14 +75,31 @@ export default function Platforms() {
     reconnect,
   } = usePlatformStore();
 
+  // Controlled form state for config modal
+  const [configForm, setConfigForm] = useState<Record<string, string>>({});
+
   useEffect(() => {
     fetchPlatforms();
   }, [fetchPlatforms]);
+
+  // Sync form state when modal opens or selected platform changes
+  useEffect(() => {
+    if (isConfigModalOpen && selectedPlatform) {
+      const platformData = platforms.find(p => p.type === selectedPlatform);
+      const initialConfig: Record<string, string> = {};
+      const fields = platformConfigFields[selectedPlatform] || [];
+      for (const field of fields) {
+        initialConfig[field.key] = platformData?.config?.[field.key] || '';
+      }
+      setConfigForm(initialConfig);
+    }
+  }, [isConfigModalOpen, selectedPlatform, platforms]);
 
   const selectedPlatformData = platforms.find(p => p.type === selectedPlatform);
   const configFields = selectedPlatform ? platformConfigFields[selectedPlatform] : [];
 
   const [disableConfirm, setDisableConfirm] = useState<Platform | null>(null);
+  const [connectionError, setConnectionError] = useState<{ platform: PlatformType; error: string; details?: string } | null>(null);
 
   const handleTogglePlatform = async (platform: Platform) => {
     if (platform.enabled) {
@@ -99,25 +117,29 @@ export default function Platforms() {
   };
 
   const handleTestConnection = async (type: PlatformType) => {
+    setConnectionError(null);
     const result = await testConnection(type);
     if (result.ok) {
-      alert(t('platforms.testConnection') + ' ' + (t('nav.home') === 'Home' ? 'successful!' : '成功！'));
+      toast.success(t('platforms.testConnection') + ' ' + (t('nav.home') === 'Home' ? 'successful!' : '成功！'));
     } else {
-      alert(`${t('platforms.testConnection')} ${t('nav.home') === 'Home' ? 'failed' : '失败'}: ${result.message || (t('nav.home') === 'Home' ? 'Unknown error' : '未知错误')}`);
+      toast.error(`${t('platforms.testConnection')} ${t('nav.home') === 'Home' ? 'failed' : '失败'}`);
+      setConnectionError({
+        platform: type,
+        error: result.message || (t('nav.home') === 'Home' ? 'Unknown error' : '未知错误'),
+        details: result.details,
+      });
     }
+  };
+
+  const handleConfigChange = (key: string, value: string) => {
+    setConfigForm(prev => ({ ...prev, [key]: value }));
   };
 
   const handleSaveConfig = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!selectedPlatform) return;
 
-    const formData = new FormData(e.currentTarget);
-    const config: Record<string, string> = {};
-    formData.forEach((value, key) => {
-      config[key] = value.toString();
-    });
-
-    const success = await updateConfig(selectedPlatform, config);
+    const success = await updateConfig(selectedPlatform, configForm);
     if (success) {
       closeConfigModal();
     }
@@ -217,7 +239,8 @@ export default function Platforms() {
                       name={field.key}
                       type={field.type}
                       placeholder={field.placeholder}
-                      defaultValue={selectedPlatformData.config?.[field.key] || ''}
+                      value={configForm[field.key] || ''}
+                      onChange={(e) => handleConfigChange(field.key, e.target.value)}
                     />
                   </div>
                 ))}
@@ -247,6 +270,47 @@ export default function Platforms() {
         onConfirm={confirmDisable}
         onCancel={() => setDisableConfirm(null)}
       />
+
+      {/* Connection Error Details Modal */}
+      {connectionError && (
+        <div className="modal-overlay" onClick={() => setConnectionError(null)}>
+          <div className="modal-content glass-card connection-error-modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>⚠️ {t('platforms.testConnection')} {t('nav.home') === 'Home' ? 'Failed' : '失败'}</h2>
+              <button className="modal-close" onClick={() => setConnectionError(null)}>×</button>
+            </div>
+            <div className="modal-body">
+              <div className="connection-error-platform">
+                <strong>Platform:</strong> {connectionError.platform}
+              </div>
+              <div className="connection-error-message">
+                <strong>Error:</strong>
+                <pre>{connectionError.error}</pre>
+              </div>
+              {connectionError.details && (
+                <div className="connection-error-details">
+                  <strong>Details:</strong>
+                  <pre>{connectionError.details}</pre>
+                </div>
+              )}
+              <div className="connection-error-tips">
+                <strong>Troubleshooting:</strong>
+                <ul>
+                  <li>Check that your API credentials are correct</li>
+                  <li>Verify network connectivity</li>
+                  <li>Ensure the service is not rate-limiting your requests</li>
+                  <li>Check the service status page for outages</li>
+                </ul>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setConnectionError(null)}>
+                {t('common.close')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

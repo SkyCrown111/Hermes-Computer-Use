@@ -35,6 +35,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
   ) => {
     const inputId = id || `input-${Math.random().toString(36).substr(2, 9)}`;
     const hasError = !!error;
+    const messageId = `${inputId}-message`;
 
     const wrapperClasses = [
       'input-wrapper',
@@ -52,16 +53,18 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           </label>
         )}
         <div className={wrapperClasses}>
-          {icon && <span className="input-icon">{icon}</span>}
+          {icon && <span className="input-icon" aria-hidden="true">{icon}</span>}
           <input
             ref={ref}
             id={inputId}
             className="input-field"
+            aria-invalid={hasError}
+            aria-describedby={(error || hint) ? messageId : undefined}
             {...props}
           />
         </div>
         {(error || hint) && (
-          <p className={`input-message ${hasError ? 'input-message-error' : ''}`}>
+          <p id={messageId} className={`input-message ${hasError ? 'input-message-error' : ''}`} role={hasError ? 'alert' : undefined}>
             {error || hint}
           </p>
         )}
@@ -94,6 +97,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
   ) => {
     const textareaId = id || `textarea-${Math.random().toString(36).substr(2, 9)}`;
     const hasError = !!error;
+    const messageId = `${textareaId}-message`;
 
     return (
       <div className="input-container">
@@ -107,10 +111,12 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
           id={textareaId}
           className={`textarea-field ${hasError ? 'input-error' : ''} ${className}`}
           style={{ resize }}
+          aria-invalid={hasError}
+          aria-describedby={(error || hint) ? messageId : undefined}
           {...props}
         />
         {(error || hint) && (
-          <p className={`input-message ${hasError ? 'input-message-error' : ''}`}>
+          <p id={messageId} className={`input-message ${hasError ? 'input-message-error' : ''}`} role={hasError ? 'alert' : undefined}>
             {error || hint}
           </p>
         )}

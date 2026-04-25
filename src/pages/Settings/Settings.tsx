@@ -2,11 +2,14 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Card, Button, Input } from '../../components';
 import { useSettingsStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
+import { toast } from '../../stores/toastStore';
+import { validateNumber, validatePath } from '../../utils/validation';
 import {
   checkForUpdates,
   installPendingUpdate,
   type UpdateInfo,
 } from '../../services/updateApi';
+import { logger } from '../../lib/logger';
 import type {
   ModelConfig,
   AgentConfig,
@@ -51,9 +54,9 @@ const ModelConfigForm: React.FC<{
   };
 
   useEffect(() => {
-    console.log('[ModelConfigForm] Config changed:', config);
+    logger.debug('[ModelConfigForm] Config changed:', config);
     if (config) {
-      console.log('[ModelConfigForm] Setting formData to:', config);
+      logger.debug('[ModelConfigForm] Setting formData to:', config);
       setFormData(config);
     }
   }, [config]);
@@ -147,6 +150,7 @@ const AgentConfigForm: React.FC<{
     timeout: 300,
     reasoning_effort: 'medium',
   });
+  const [errors, setErrors] = useState<{ maxTurns?: string; timeout?: string }>({});
 
   useEffect(() => {
     if (config) {
@@ -154,13 +158,39 @@ const AgentConfigForm: React.FC<{
     }
   }, [config]);
 
+  const validateForm = (): boolean => {
+    const newErrors: { maxTurns?: string; timeout?: string } = {};
+
+    // max_turns: 1-1000
+    const maxTurnsResult = validateNumber(String(formData.max_turns || ''), { min: 1, max: 1000, integer: true });
+    if (!maxTurnsResult.valid) {
+      newErrors.maxTurns = maxTurnsResult.error;
+    }
+
+    // timeout: 10-3600 seconds
+    const timeoutResult = validateNumber(String(formData.timeout || ''), { min: 10, max: 3600, integer: true });
+    if (!timeoutResult.valid) {
+      newErrors.timeout = timeoutResult.error;
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!validateForm()) {
+      toast.error('Please fix the validation errors');
+      return;
+    }
+
     onSave({
       ...formData,
       max_turns: Number(formData.max_turns),
       timeout: Number(formData.timeout),
     });
+    toast.success('Agent config saved');
   };
 
   return (
@@ -170,11 +200,15 @@ const AgentConfigForm: React.FC<{
         <Input
           type="number"
           value={formData.max_turns || ''}
-          onChange={(e) => setFormData({ ...formData, max_turns: parseInt(e.target.value) })}
+          onChange={(e) => {
+            setFormData({ ...formData, max_turns: parseInt(e.target.value) || undefined });
+            setErrors(prev => ({ ...prev, maxTurns: undefined }));
+          }}
           placeholder="100"
           className="form-input"
+          error={errors.maxTurns}
         />
-        <span className="form-hint">{t('settings.maxTurnsHint')}</span>
+        <span className="form-hint">{t('settings.maxTurnsHint')} (1-1000)</span>
       </div>
 
       <div className="form-group">
@@ -182,11 +216,15 @@ const AgentConfigForm: React.FC<{
         <Input
           type="number"
           value={formData.timeout || ''}
-          onChange={(e) => setFormData({ ...formData, timeout: parseInt(e.target.value) })}
+          onChange={(e) => {
+            setFormData({ ...formData, timeout: parseInt(e.target.value) || undefined });
+            setErrors(prev => ({ ...prev, timeout: undefined }));
+          }}
           placeholder="300"
           className="form-input"
+          error={errors.timeout}
         />
-        <span className="form-hint">{t('settings.timeoutHint')}</span>
+        <span className="form-hint">{t('settings.timeoutHint')} (10-3600 seconds)</span>
       </div>
 
       <div className="form-group">
@@ -224,6 +262,7 @@ const TerminalConfigForm: React.FC<{
     timeout: 180,
     cwd: '',
   });
+  const [errors, setErrors] = useState<{ timeout?: string; cwd?: string }>({});
 
   useEffect(() => {
     if (config) {
@@ -231,12 +270,40 @@ const TerminalConfigForm: React.FC<{
     }
   }, [config]);
 
+  const validateForm = (): boolean => {
+    const newErrors: { timeout?: string; cwd?: string } = {};
+
+    // timeout: 10-7200 seconds
+    const timeoutResult = validateNumber(String(formData.timeout || ''), { min: 10, max: 7200, integer: true });
+    if (!timeoutResult.valid) {
+      newErrors.timeout = timeoutResult.error;
+    }
+
+    // cwd: valid path
+    if (formData.cwd) {
+      const pathResult = validatePath(formData.cwd);
+      if (!pathResult.valid) {
+        newErrors.cwd = pathResult.error;
+      }
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!validateForm()) {
+      toast.error('Please fix the validation errors');
+      return;
+    }
+
     onSave({
       ...formData,
       timeout: Number(formData.timeout),
     });
+    toast.success('Terminal config saved');
   };
 
   return (
@@ -260,19 +327,28 @@ const TerminalConfigForm: React.FC<{
         <Input
           type="number"
           value={formData.timeout || ''}
-          onChange={(e) => setFormData({ ...formData, timeout: parseInt(e.target.value) })}
+          onChange={(e) => {
+            setFormData({ ...formData, timeout: parseInt(e.target.value) || undefined });
+            setErrors(prev => ({ ...prev, timeout: undefined }));
+          }}
           placeholder="180"
           className="form-input"
+          error={errors.timeout}
         />
+        <span className="form-hint">Command execution timeout (10-7200 seconds)</span>
       </div>
 
       <div className="form-group">
         <label className="form-label">{t('settings.workDir')}</label>
         <Input
           value={formData.cwd || ''}
-          onChange={(e) => setFormData({ ...formData, cwd: e.target.value })}
+          onChange={(e) => {
+            setFormData({ ...formData, cwd: e.target.value });
+            setErrors(prev => ({ ...prev, cwd: undefined }));
+          }}
           placeholder="/home/user/projects"
           className="form-input"
+          error={errors.cwd}
         />
         <span className="form-hint">{t('settings.workDirHint')}</span>
       </div>
@@ -436,6 +512,7 @@ const CheckpointConfigForm: React.FC<{
 const UpdateSection: React.FC<{ t: (key: string) => string }> = ({ t }) => {
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [isChecking, setIsChecking] = useState(false);
+  const [showRestartPrompt, setShowRestartPrompt] = useState(false);
 
   const handleCheck = async () => {
     setIsChecking(true);
@@ -452,13 +529,22 @@ const UpdateSection: React.FC<{ t: (key: string) => string }> = ({ t }) => {
   const handleInstall = async () => {
     setUpdateInfo(prev => prev ? { ...prev, status: 'downloading' } : null);
     try {
-      await installPendingUpdate();
-      setUpdateInfo(prev => prev ? { ...prev, status: 'installing' } : null);
+      await installPendingUpdate((progress) => {
+        setUpdateInfo(progress);
+      });
+      // Download complete, show restart prompt
+      setShowRestartPrompt(true);
     } catch (err) {
       setUpdateInfo(prev =>
         prev ? { ...prev, status: 'error', error: err instanceof Error ? err.message : 'Install failed' } : null
       );
     }
+  };
+
+  const handleRestart = () => {
+    // Restart the app - for now use window reload
+    // TODO: Add @tauri-apps/plugin-process for proper app restart
+    window.location.reload();
   };
 
   useEffect(() => {
@@ -467,8 +553,34 @@ const UpdateSection: React.FC<{ t: (key: string) => string }> = ({ t }) => {
     });
   }, []);
 
+  // Format bytes to human readable
+  const formatBytes = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  };
+
   return (
     <div className="update-section">
+      {/* Restart Prompt Modal */}
+      {showRestartPrompt && (
+        <div className="restart-prompt-overlay">
+          <div className="restart-prompt-modal">
+            <div className="restart-prompt-icon">🔄</div>
+            <h3>{t('settings.updateReady')}</h3>
+            <p>{t('settings.updateReadyDesc')}</p>
+            <div className="restart-prompt-actions">
+              <Button variant="secondary" onClick={() => setShowRestartPrompt(false)}>
+                {t('common.later')}
+              </Button>
+              <Button variant="primary" onClick={handleRestart}>
+                {t('settings.restartNow')}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="update-info">
         <div className="update-info-row">
           <span className="update-label">{t('settings.currentVersion')}</span>
@@ -518,6 +630,27 @@ const UpdateSection: React.FC<{ t: (key: string) => string }> = ({ t }) => {
           <div className="update-status downloading">
             <div className="update-spinner" />
             <span>{t('settings.downloadingUpdate')}</span>
+            {updateInfo.downloadProgress !== undefined && (
+              <div className="download-progress">
+                <div className="progress-bar">
+                  <div
+                    className="progress-fill"
+                    style={{ width: `${updateInfo.downloadProgress}%` }}
+                  />
+                </div>
+                <span className="progress-text">
+                  {updateInfo.downloadProgress}%
+                  {updateInfo.downloadedBytes && ` (${formatBytes(updateInfo.downloadedBytes)})`}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {updateInfo?.status === 'ready' && (
+          <div className="update-status ready">
+            <span className="update-status-icon">✓</span>
+            <span>{t('settings.updateDownloaded')}</span>
           </div>
         )}
 
@@ -533,13 +666,22 @@ const UpdateSection: React.FC<{ t: (key: string) => string }> = ({ t }) => {
         <Button
           variant="secondary"
           onClick={handleCheck}
-          disabled={isChecking}
+          disabled={isChecking || updateInfo?.status === 'downloading'}
         >
           {isChecking ? t('settings.checking') : t('settings.checkForUpdates')}
         </Button>
-        {updateInfo?.available && (
-          <Button variant="primary" onClick={handleInstall}>
-            {t('settings.installUpdate')}
+        {updateInfo?.available && updateInfo.status !== 'ready' && (
+          <Button
+            variant="primary"
+            onClick={handleInstall}
+            disabled={updateInfo.status === 'downloading'}
+          >
+            {updateInfo.status === 'downloading' ? t('settings.downloading') : t('settings.installUpdate')}
+          </Button>
+        )}
+        {updateInfo?.status === 'ready' && (
+          <Button variant="primary" onClick={handleRestart}>
+            {t('settings.restartNow')}
           </Button>
         )}
       </div>
@@ -614,6 +756,8 @@ export const Settings: React.FC = () => {
   const [showImportModal, setShowImportModal] = useState(false);
   const [importText, setImportText] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const originalYamlRef = useRef<string>('');
 
   useEffect(() => {
     fetchAllConfigs();
@@ -621,14 +765,37 @@ export const Settings: React.FC = () => {
 
   // Debug: log when modelConfig changes
   useEffect(() => {
-    console.log('[Settings] modelConfig from store:', modelConfig);
+    logger.debug('[Settings] modelConfig from store:', modelConfig);
   }, [modelConfig]);
 
   useEffect(() => {
     if (editMode === 'yaml') {
-      fetchRawYaml();
+      fetchRawYaml().then(() => {
+        // Store original YAML for comparison
+        originalYamlRef.current = useSettingsStore.getState().rawYaml;
+      });
     }
   }, [editMode, fetchRawYaml]);
+
+  // Track YAML changes
+  useEffect(() => {
+    if (editMode === 'yaml' && originalYamlRef.current) {
+      setHasUnsavedChanges(rawYaml !== originalYamlRef.current);
+    }
+  }, [rawYaml, editMode]);
+
+  // Warn before leaving with unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
 
   // 导出配置
   const handleExport = async () => {
@@ -662,6 +829,14 @@ export const Settings: React.FC = () => {
       };
       reader.readAsText(file);
     }
+  };
+
+  // Handle YAML save with dirty state reset
+  const handleYamlSave = async (yaml: string) => {
+    await updateRawYaml(yaml);
+    originalYamlRef.current = yaml;
+    setHasUnsavedChanges(false);
+    toast.success('Configuration saved');
   };
 
   // 渲染表单内容
@@ -840,7 +1015,7 @@ export const Settings: React.FC = () => {
                 <YamlEditor
                   yaml={rawYaml}
                   onChange={setRawYaml}
-                  onSave={updateRawYaml}
+                  onSave={handleYamlSave}
                   isSaving={isSaving}
                   t={t}
                 />

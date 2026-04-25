@@ -9,28 +9,30 @@ interface SkillsState {
   // Skills 列表
   skills: Skill[];
   isLoadingSkills: boolean;
-  
+
   // 类别
   categories: SkillCategory[];
   selectedCategory: string | null;
   isLoadingCategories: boolean;
-  
+
   // 搜索
   searchQuery: string;
-  
+
   // Skill 详情
   selectedSkill: SkillDetail | null;
   isLoadingDetail: boolean;
-  
+
   // 错误
   error: string | null;
-  
+
   // Actions
   fetchSkills: (category?: string) => Promise<void>;
   fetchCategories: () => Promise<void>;
   fetchSkillDetail: (category: string, name: string) => Promise<void>;
   toggleSkill: (name: string, enabled: boolean) => Promise<void>;
   createSkill: (skill: { name: string; category: string; description: string; content: string }) => Promise<boolean>;
+  updateSkill: (category: string, originalName: string, skill: { name: string; category: string; description: string; content: string }) => Promise<boolean>;
+  deleteSkill: (category: string, name: string) => Promise<boolean>;
   setSearchQuery: (query: string) => void;
   setSelectedCategory: (category: string | null) => void;
   clearSelectedSkill: () => void;
@@ -102,20 +104,72 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
   createSkill: async (skillData: { name: string; category: string; description: string; content: string }) => {
     set({ error: null });
     try {
-      const newSkill: Skill = {
+      // Call the API with full skill data including content
+      await skillsApi.createSkill({
         name: skillData.name,
         category: skillData.category,
         description: skillData.description,
-        enabled: true,
-        tags: [],
-      };
-      
-      // Save the skill via API
-      await skillsApi.saveSkill(newSkill);
-      
+        content: skillData.content,
+        metadata: {
+          version: '1.0.0',
+          author: 'User',
+          tags: [],
+        },
+      });
+
       // Refresh the skills list
       await get().fetchSkills(get().selectedCategory || undefined);
-      
+
+      return true;
+    } catch (err) {
+      set({ error: (err as Error).message });
+      return false;
+    }
+  },
+
+  // 更新 Skill
+  updateSkill: async (category: string, originalName: string, skillData: { name: string; category: string; description: string; content: string }) => {
+    set({ error: null });
+    try {
+      // If name or category changed, need to delete old and create new
+      if (skillData.name !== originalName || skillData.category !== category) {
+        await skillsApi.deleteSkill(category, originalName);
+      }
+
+      // Create/update the skill
+      await skillsApi.createSkill({
+        name: skillData.name,
+        category: skillData.category,
+        description: skillData.description,
+        content: skillData.content,
+        metadata: {
+          version: '1.0.0',
+          author: 'User',
+          tags: [],
+        },
+      });
+
+      // Refresh the skills list
+      await get().fetchSkills(get().selectedCategory || undefined);
+      set({ selectedSkill: null });
+
+      return true;
+    } catch (err) {
+      set({ error: (err as Error).message });
+      return false;
+    }
+  },
+
+  // 删除 Skill
+  deleteSkill: async (category: string, name: string) => {
+    set({ error: null });
+    try {
+      await skillsApi.deleteSkill(category, name);
+
+      // Refresh the skills list
+      await get().fetchSkills(get().selectedCategory || undefined);
+      set({ selectedSkill: null });
+
       return true;
     } catch (err) {
       set({ error: (err as Error).message });

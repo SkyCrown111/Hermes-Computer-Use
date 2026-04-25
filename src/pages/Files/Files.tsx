@@ -1,10 +1,13 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { Card, Button, FolderIcon, FileIcon, SearchIcon, AlertIcon, EmptyIcon, ChartIcon, FileTextIcon, SaveIcon, HourglassIcon, SparklesIcon, XIcon, RefreshIcon, ConfirmModal, InputModal } from '../../components';
 import { useFilesStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
 import { filesApi } from '../../services/filesApi';
+import { logger } from '../../lib/logger';
 import type { FileInfo, CacheItem } from '../../types/files';
 import { formatBytes } from '../../utils/format';
+import { toast } from '../../stores/toastStore';
 import './Files.css';
 
 // 工作区类型
@@ -73,6 +76,14 @@ export const Files: React.FC = () => {
   const [newFileModal, setNewFileModal] = useState(false);
   const [newFolderModal, setNewFolderModal] = useState(false);
 
+  // Upload/Download states
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isDownloading, setIsDownloading] = useState<string | null>(null);
+
+  // Virtual list ref for file browser
+  const fileListRef = useRef<HTMLDivElement>(null);
+
   // 使用 filesStore
   const {
     // 状态
@@ -130,7 +141,7 @@ export const Files: React.FC = () => {
   // 处理错误
   useEffect(() => {
     if (error) {
-      console.error('Files error:', error);
+      logger.error('[Files] Error:', error);
       // 可以添加 toast 通知
     }
   }, [error]);
@@ -186,6 +197,14 @@ export const Files: React.FC = () => {
     
     return result;
   }, [directoryContent, searchQuery, searchResults, sortBy, sortOrder]);
+
+  // Virtual list for files (only enable for large lists > 100 items)
+  const rowVirtualizer = useVirtualizer({
+    count: filteredFiles.length,
+    getScrollElement: () => fileListRef.current,
+    estimateSize: () => 48, // Approximate row height
+    overscan: 10,
+  });
 
   // 缓存统计
   const cacheStats = useMemo(() => {
@@ -310,6 +329,80 @@ export const Files: React.FC = () => {
   const handleCreateFolder = async (name: string) => {
     await createFile(name, 'directory');
     setNewFolderModal(false);
+  };
+
+  // 处理文件上传
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    try {
+      // Read file as base64
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        try {
+          const base64 = event.target?.result as string;
+          // Remove data URL prefix to get pure base64
+          const base64Content = base64.split(',')[1];
+          const targetPath = `${currentPath}/${file.name}`.replace('//', '/');
+
+          await filesApi.uploadFile(targetPath, base64Content);
+          toast.success(`文件 ${file.name} 上传成功`);
+          refreshDirectory();
+        } catch (err) {
+          logger.error('[Files] Upload failed:', err);
+          toast.error(`上传失败: ${(err as Error).message}`);
+        } finally {
+          setIsUploading(false);
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      logger.error('[Files] Upload failed:', err);
+      toast.error(`上传失败: ${(err as Error).message}`);
+      setIsUploading(false);
+    }
+
+    // Reset file input
+    e.target.value = '';
+  };
+
+  // 处理文件下载
+  const handleDownload = async (path: string) => {
+    setIsDownloading(path);
+    try {
+      const result = await filesApi.downloadFile(path);
+
+      // Create blob from base64
+      const binaryString = atob(result.content);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      const blob = new Blob([bytes], { type: result.mimeType });
+      const url = URL.createObjectURL(blob);
+
+      // Create download link
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = result.filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast.success(`文件 ${result.filename} 下载成功`);
+    } catch (err) {
+      logger.error('[Files] Download failed:', err);
+      toast.error(`下载失败: ${(err as Error).message}`);
+    } finally {
+      setIsDownloading(null);
+    }
   };
 
   // 获取排序图标
@@ -479,6 +572,20 @@ export const Files: React.FC = () => {
                     <RefreshIcon size={14} /> {t('files.refresh')}
                   </Button>
                   <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={handleUploadClick}
+                    disabled={isUploading}
+                  >
+                    {isUploading ? '⏳ 上传中...' : '📤 上传'}
+                  </Button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    style={{ display: 'none' }}
+                    onChange={handleFileSelect}
+                  />
+                  <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => setNewFolderModal(true)}
@@ -537,13 +644,120 @@ export const Files: React.FC = () => {
                 </div>
 
                 {/* List Body */}
-                <div className="files-list-body">
+                <div className="files-list-body" ref={fileListRef}>
                   {isLoadingDirectory ? (
                     <div className="files-loading">
                       <span className="loading-icon"><HourglassIcon size={16} /></span>
                       <span>{t('files.loading')}</span>
                     </div>
+                  ) : filteredFiles.length > 100 ? (
+                    // Virtualized list for large directories
+                    <div
+                      style={{
+                        height: `${rowVirtualizer.getTotalSize()}px`,
+                        width: '100%',
+                        position: 'relative',
+                      }}
+                    >
+                      {rowVirtualizer.getVirtualItems().map(virtualRow => {
+                        const file = filteredFiles[virtualRow.index];
+                        return (
+                          <div
+                            key={file.path}
+                            className={`file-item ${selectedFiles.has(file.path) ? 'file-selected' : ''}`}
+                            onClick={() => file.type === 'directory' && navigateTo(file.path)}
+                            style={{
+                              position: 'absolute',
+                              top: 0,
+                              left: 0,
+                              width: '100%',
+                              height: `${virtualRow.size}px`,
+                              transform: `translateY(${virtualRow.start}px)`,
+                            }}
+                          >
+                            <div className="file-col-check">
+                              <input
+                                type="checkbox"
+                                checked={selectedFiles.has(file.path)}
+                                onChange={() => handleToggleFileSelection(file.path)}
+                              />
+                            </div>
+                            <div className="file-col-name">
+                              <span className="file-icon">{getFileIcon(file)}</span>
+                              <span className="file-name">{file.name}</span>
+                              {file.extension && (
+                                <span className="file-ext">{file.extension}</span>
+                              )}
+                            </div>
+                            <div className="file-col-size">
+                              {file.size !== undefined ? formatBytes(file.size) : '-'}
+                            </div>
+                            <div className="file-col-modified">
+                              {file.modified || '-'}
+                            </div>
+                            <div className="file-col-actions">
+                              {file.type === 'file' && (
+                                <>
+                                  <button
+                                    className="file-action-btn"
+                                    title={t('files.view')}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleViewFile(file.path);
+                                    }}
+                                  >
+                                    👁️
+                                  </button>
+                                  <button
+                                    className="file-action-btn"
+                                    title={t('files.edit')}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleEditFile(file.path);
+                                    }}
+                                  >
+                                    ✏️
+                                  </button>
+                                  <button
+                                    className="file-action-btn"
+                                    title={t('files.download') || '下载'}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDownload(file.path);
+                                    }}
+                                    disabled={isDownloading === file.path}
+                                  >
+                                    {isDownloading === file.path ? '⏳' : '📥'}
+                                  </button>
+                                </>
+                              )}
+                              <button
+                                className="file-action-btn"
+                                title={t('files.favorite')}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  addFavorite(file.path);
+                                }}
+                              >
+                                ⭐
+                              </button>
+                              <button
+                                className="file-action-btn"
+                                title={t('files.delete')}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteFile(file.path);
+                                }}
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   ) : filteredFiles.length > 0 ? (
+                    // Normal rendering for small lists
                     filteredFiles.map(file => (
                       <div
                         key={file.path}
@@ -592,6 +806,17 @@ export const Files: React.FC = () => {
                                 }}
                               >
                                 ✏️
+                              </button>
+                              <button
+                                className="file-action-btn"
+                                title={t('files.download') || '下载'}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDownload(file.path);
+                                }}
+                                disabled={isDownloading === file.path}
+                              >
+                                {isDownloading === file.path ? '⏳' : '📥'}
                               </button>
                             </>
                           )}
