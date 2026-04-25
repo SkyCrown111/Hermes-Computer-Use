@@ -26,7 +26,7 @@ use commands::{
     // Memory commands
     get_memories, save_memory, get_memories_path,
     // Chat commands
-    check_hermes_health, send_chat_message, stream_chat_message, start_hermes_gateway, restart_hermes_gateway, stream_chat_with_progress, stream_chat_realtime, respond_approval,
+    check_hermes_health, send_chat_message, stream_chat_message, start_hermes_gateway, restart_hermes_gateway, stream_chat_with_progress, stream_chat_realtime, respond_approval, abort_chat,
     // Monitor commands
     get_logs, get_log_stats, get_gateway_status, get_performance_metrics, get_log_components, clear_logs,
     // Files commands
@@ -108,6 +108,7 @@ pub fn run() {
             stream_chat_with_progress,
             stream_chat_realtime,
             respond_approval,
+            abort_chat,
             // Monitor commands
             get_logs,
             get_log_stats,

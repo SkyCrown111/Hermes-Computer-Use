@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 use std::process::{Command, Stdio};
 use std::io::{BufRead, BufReader, Write};
-use std::fs;
+use std::sync::{Arc, Mutex};
 use tauri::AppHandle;
 use tauri::Emitter;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
@@ -14,6 +14,12 @@ use std::os::windows::process::CommandExt;
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+// Global state to track running chat processes
+// Key: session_id (or empty string for single session), Value: process handle
+lazy_static::lazy_static! {
+    static ref RUNNING_PROCESSES: Arc<Mutex<Option<u32>>> = Arc::new(Mutex::new(None));
+}
 
 #[cfg(windows)]
 fn create_command(program: &str) -> Command {
@@ -237,6 +243,14 @@ pub async fn stream_chat_realtime(
             .spawn()
             .map_err(|e| format!("Failed to spawn Hermes: {}", e))?;
 
+        // Store the process ID for potential abort
+        let pid = child.id();
+        {
+            let mut processes = RUNNING_PROCESSES.lock().map_err(|e| format!("Failed to lock processes: {}", e))?;
+            *processes = Some(pid);
+            println!("[ChatStream] Stored process PID: {}", pid);
+        }
+
         // Write JSON to stdin
         if let Some(mut stdin) = child.stdin.take() {
             stdin.write_all(stdin_data.as_bytes())
@@ -366,6 +380,14 @@ pub async fn stream_chat_realtime(
 
         // Wait for process
         let status = child.wait().map_err(|e| format!("Failed to wait: {}", e))?;
+
+        // Clear the process ID
+        {
+            let mut processes = RUNNING_PROCESSES.lock().map_err(|e| format!("Failed to lock processes: {}", e))?;
+            *processes = None;
+            println!("[ChatStream] Cleared process PID");
+        }
+
         if !status.success() {
             let _ = app_clone.emit("chat:error", serde_json::json!({
                 "error": "Process exited with error"
@@ -411,4 +433,52 @@ pub async fn stream_chat_with_progress(
 ) -> Result<String, String> {
     let result = stream_chat_realtime(app, messages, session_id).await?;
     Ok(result)
+}
+
+/// Abort the currently running chat stream
+#[tauri::command]
+pub fn abort_chat() -> Result<(), String> {
+    println!("[ChatAbort] Attempting to abort chat...");
+
+    let mut processes = RUNNING_PROCESSES.lock().map_err(|e| format!("Failed to lock processes: {}", e))?;
+
+    if let Some(pid) = processes.take() {
+        println!("[ChatAbort] Killing process with PID: {}", pid);
+
+        // On Windows, we need to kill the process tree
+        #[cfg(windows)]
+        {
+            // Use taskkill to kill the process tree
+            let output = create_command("taskkill")
+                .args(["/F", "/T", "/PID", &pid.to_string()])
+                .output()
+                .map_err(|e| format!("Failed to kill process: {}", e))?;
+
+            if output.status.success() {
+                println!("[ChatAbort] Process killed successfully");
+            } else {
+                println!("[ChatAbort] Failed to kill process: {}", String::from_utf8_lossy(&output.stderr));
+            }
+        }
+
+        // On Linux/macOS, kill the process group
+        #[cfg(not(windows))]
+        {
+            // Kill the process
+            let output = std::process::Command::new("kill")
+                .args(["-9", &pid.to_string()])
+                .output()
+                .map_err(|e| format!("Failed to kill process: {}", e))?;
+
+            if output.status.success() {
+                println!("[ChatAbort] Process killed successfully");
+            }
+        }
+
+        println!("[ChatAbort] Chat aborted successfully");
+    } else {
+        println!("[ChatAbort] No running process to abort");
+    }
+
+    Ok(())
 }

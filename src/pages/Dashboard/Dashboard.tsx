@@ -276,8 +276,8 @@ export const Dashboard: React.FC = () => {
                 {/* Gateway Status */}
                 <div className="status-item">
                   <span className="status-label">{t('dashboard.gatewayStatus')}</span>
-                  <span className={`status-value status-value-${['online', 'running'].includes(systemStatus.gateway.status) ? 'online' : 'error'}`}>
-                    {['online', 'running'].includes(systemStatus.gateway.status) ? t('dashboard.online') : t('dashboard.offline')}
+                  <span className={`status-value status-value-${['online', 'running', 'available'].includes(systemStatus.gateway.status) ? 'online' : 'error'}`}>
+                    {['online', 'running', 'available'].includes(systemStatus.gateway.status) ? t('dashboard.online') : t('dashboard.offline')}
                   </span>
                 </div>
 

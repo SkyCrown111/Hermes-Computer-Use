@@ -251,17 +251,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       return;
     }
 
-    // Try to get title from navigation store
-    let sessionTitle = '新会话';
-    try {
-      const { useNavigationStore } = require('./navigationStore');
-      const tab = useNavigationStore.getState().openTabs.find((t: { id: string; title: string }) => t.id === sessionId);
-      if (tab?.title) {
-        sessionTitle = tab.title;
-      }
-    } catch {
-      // Ignore if navigation store not available
-    }
+    // Default title - will be updated when session is fetched from server
+    const sessionTitle = '新会话';
 
     const now = new Date().toISOString();
     const newSession: Session = {

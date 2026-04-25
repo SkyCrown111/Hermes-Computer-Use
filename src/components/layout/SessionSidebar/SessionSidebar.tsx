@@ -1,6 +1,6 @@
 // Session Sidebar - Shows session list next to main navigation
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { useSessionStore, useNavigationStore } from '../../../stores';
+import { useSessionStore, useNavigationStore, useChatStore } from '../../../stores';
 import { useTranslation } from '../../../hooks/useTranslation';
 import { PlusIcon } from '../../index';
 import { InputModal } from '../../ui/Modal';
@@ -58,10 +58,48 @@ function formatRelativeTime(dateStr: string): string {
 
 export const SessionSidebar: React.FC = () => {
   const sessions = useSessionStore((s) => s.sessions);
+  const fetchSessions = useSessionStore((s) => s.fetchSessions);
+  const deleteSession = useSessionStore((s) => s.deleteSession);
   const activeTabId = useNavigationStore((s) => s.activeTabId);
   const openTab = useNavigationStore((s) => s.openTab);
+  const closeTab = useNavigationStore((s) => s.closeTab);
   const updateSessionTitle = useSessionStore((s) => s.updateSessionTitle);
+
+  // Get chat sessions state for status indicators
+  const chatSessions = useChatStore((s) => s.sessions);
+
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Track previous streaming state to detect when streaming ends
+  const wasStreamingRef = useRef(false);
+
+  // Real-time update: poll sessions every 30 seconds
+  useEffect(() => {
+    // Initial fetch
+    fetchSessions();
+
+    // Set up polling interval (30 seconds)
+    const intervalId = setInterval(() => {
+      fetchSessions();
+    }, 30000);
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [fetchSessions]);
+
+  // Refresh when streaming ends (was streaming, now not)
+  useEffect(() => {
+    const isCurrentlyStreaming = Object.values(chatSessions).some(s => s?.isStreaming);
+
+    // If was streaming but now stopped, refresh the session list
+    if (wasStreamingRef.current && !isCurrentlyStreaming) {
+      fetchSessions();
+    }
+
+    // Update ref for next check
+    wasStreamingRef.current = isCurrentlyStreaming;
+  }, [chatSessions, fetchSessions]);
 
   // Context menu state
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
@@ -103,6 +141,15 @@ export const SessionSidebar: React.FC = () => {
     last7days: t('sidebar.timeGroup.last7days') || '最近7天',
     older: t('sidebar.timeGroup.older') || '更早',
   };
+
+  // Get session status: 'streaming' | 'active' | 'idle'
+  const getSessionStatus = useCallback((sessionId: string): 'streaming' | 'active' | 'idle' => {
+    const chatSession = chatSessions[sessionId];
+    if (!chatSession) return 'idle';
+    if (chatSession.isStreaming) return 'streaming';
+    if (chatSession.messages && chatSession.messages.length > 0) return 'active';
+    return 'idle';
+  }, [chatSessions]);
 
   const handleNewChat = () => {
     const newId = `new_${Date.now()}`;
@@ -165,6 +212,22 @@ export const SessionSidebar: React.FC = () => {
     setRenameModal({ isOpen: false, sessionId: '', currentName: '' });
   }, []);
 
+  // Handle delete action
+  const handleDelete = useCallback(async () => {
+    const sessionId = contextMenu.sessionId;
+    setContextMenu(prev => ({ ...prev, visible: false }));
+
+    try {
+      // Close the tab if it's open
+      closeTab(sessionId);
+
+      // Delete the session from server
+      await deleteSession(sessionId);
+    } catch (error) {
+      console.error('Failed to delete session:', error);
+    }
+  }, [contextMenu.sessionId, closeTab, deleteSession]);
+
   return (
     <aside className="session-sidebar">
       {/* Header */}
@@ -202,6 +265,7 @@ export const SessionSidebar: React.FC = () => {
               {items.map((session) => {
                 // Generate a more descriptive title for untitled sessions
                 const displayTitle = session.chat_name || `会话 ${session.id.slice(0, 12)}`;
+                const status = getSessionStatus(session.id);
                 return (
                   <div
                     key={session.id}
@@ -209,7 +273,7 @@ export const SessionSidebar: React.FC = () => {
                     onClick={() => openTab(session.id, session.chat_name || `会话 ${session.id.slice(0, 12)}`, 'session')}
                     onContextMenu={(e) => handleContextMenu(e, session)}
                   >
-                    <span className="session-sidebar-item-dot" />
+                    <span className={`session-sidebar-item-dot ${status}`} />
                     <span className="session-sidebar-item-title">
                       {displayTitle}
                     </span>
@@ -242,6 +306,13 @@ export const SessionSidebar: React.FC = () => {
           >
             <span className="session-context-menu-icon">✏️</span>
             {t('sidebar.rename') || '重命名'}
+          </div>
+          <div
+            className="session-context-menu-item delete"
+            onClick={handleDelete}
+          >
+            <span className="session-context-menu-icon">🗑️</span>
+            {t('sessions.delete') || '删除'}
           </div>
         </div>
       )}

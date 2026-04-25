@@ -268,9 +268,23 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   addStreamingTool: (sessionId, tool) => {
     set((s) => ({
-      sessions: updateSessionIn(s.sessions, sessionId, (session) => ({
-        streamingTools: [...session.streamingTools, tool],
-      })),
+      sessions: updateSessionIn(s.sessions, sessionId, (session) => {
+        // Deduplicate: check if tool with same name and args already exists
+        const toolKey = `${tool.name}-${JSON.stringify(tool.args)}`;
+        const existingIndex = session.streamingTools.findIndex(
+          t => `${t.name}-${JSON.stringify(t.args)}` === toolKey
+        );
+
+        if (existingIndex >= 0) {
+          // Update existing tool (e.g., add duration to completed tool)
+          const updatedTools = [...session.streamingTools];
+          updatedTools[existingIndex] = { ...updatedTools[existingIndex], ...tool };
+          return { streamingTools: updatedTools };
+        }
+
+        // Add new tool
+        return { streamingTools: [...session.streamingTools, tool] };
+      }),
     }));
   },
 
@@ -410,6 +424,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       return;
     }
 
+    console.log('[ChatStore] Migrating session from', oldId, 'to', newId);
+    console.log('[ChatStore] Old session messages:', oldSession.messages.length);
+    console.log('[ChatStore] Old session streamingText:', oldSession.streamingText?.length || 0);
+
     set((s) => {
       // Remove old session and add new one
       const { [oldId]: _, ...rest } = s.sessions;
@@ -427,6 +445,25 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     persistMessages(get().sessions);
   },
 }));
+
+// Store a mapping of old session IDs to new session IDs for callbacks that might still use old IDs
+// This is a workaround for the race condition between onSessionCreated and onComplete
+const sessionIdMap: Record<string, string> = {};
+
+export function registerSessionMigration(oldId: string, newId: string) {
+  sessionIdMap[oldId] = newId;
+  console.log('[ChatStore] Registered session migration:', oldId, '->', newId);
+}
+
+export function resolveSessionId(id: string): string {
+  // Check if this ID was migrated
+  const resolvedId = sessionIdMap[id];
+  if (resolvedId) {
+    console.log('[ChatStore] Resolved session ID:', id, '->', resolvedId);
+    return resolvedId;
+  }
+  return id;
+}
 
 // Persist messages to localStorage
 function persistMessages(sessions: Record<string, PerSessionState>) {

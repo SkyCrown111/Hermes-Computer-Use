@@ -1,9 +1,9 @@
 // Chat Page - Full screen chat interface with Hermes Agent
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { streamChatRealtime, checkHermesApiHealth, respondApproval } from '../../services/hermesChat';
-import { useSessionStore, useNavigationStore, useChatStore } from '../../stores';
+import { streamChatRealtime, checkHermesApiHealth, respondApproval, abortChat } from '../../services/hermesChat';
+import { useSessionStore, useNavigationStore, useChatStore, registerSessionMigration, resolveSessionId } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
-import { ZapIcon, UserIcon, BotIcon, AlertIcon, PlayIcon, StopIcon, TokenIcon, ThinkingIcon, PlusIcon, ClockIcon } from '../../components';
+import { ZapIcon, UserIcon, BotIcon, AlertIcon, PlayIcon, StopIcon, TokenIcon, ThinkingIcon, PlusIcon, ChatSessionHeader } from '../../components';
 import { logger } from '../../lib/logger';
 import type { ChatMessage, ToolCallInfo } from '../../stores/chatStore';
 import './ChatPage.css';
@@ -370,6 +370,9 @@ function parseToolJson(content: string): {
     /^生成.*架构图.*$/gm, // Chinese generation messages
     /^架构图生成完成.*$/gm,
     /^继续检查状态.*$/gm,
+    /^Tool result:.*$/gm, // Tool result lines
+    /^Running tool:.*$/gm, // Tool execution messages
+    /^Executing:.*$/gm, // Command execution messages
   ];
 
   for (const pattern of toolOutputPatterns) {
@@ -470,7 +473,16 @@ function parseToolJson(content: string): {
             parsed.count !== undefined ||
             parsed.api_calls ||
             parsed.tool_trace ||
-            parsed.duration_seconds
+            parsed.duration_seconds ||
+            parsed.file_path !== undefined ||
+            parsed.content !== undefined ||
+            parsed.result !== undefined ||
+            parsed.data !== undefined ||
+            parsed.response !== undefined ||
+            parsed.status === 'completed' ||
+            parsed.status === 'running' ||
+            parsed.tool_name !== undefined ||
+            parsed.tool_result !== undefined
           ) {
             shouldRemove = true;
           }
@@ -813,7 +825,19 @@ export const ChatPage: React.FC<ChatPageProps> = ({
   const handleSendMessage = useCallback(async () => {
     // Get current streaming state from store directly to avoid stale closure
     const currentIsStreaming = useChatStore.getState().sessions[effectiveSessionId || '']?.isStreaming;
-    if (!inputValue.trim() || !effectiveSessionId || currentIsStreaming) return;
+    if (!inputValue.trim() || !effectiveSessionId) return;
+
+    // If currently streaming, stop it first then send new message
+    if (currentIsStreaming) {
+      console.log('[ChatPage] Stopping current stream to send new message');
+      isStoppedRef.current = true;
+      setStreaming(effectiveSessionId, false);
+      setThinking(effectiveSessionId, false);
+      // Clear streaming tools to prevent duplication
+      clearStreamingTools(effectiveSessionId);
+      // Small delay to ensure state is updated
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
 
     const userMessage = inputValue.trim();
     setInputValue('');
@@ -901,11 +925,25 @@ export const ChatPage: React.FC<ChatPageProps> = ({
             if (!isMountedRef.current) return;
             const thinkingTime = thinkingStartTime ? Math.round((Date.now() - thinkingStartTime) / 1000) : 0;
 
-            // Determine the correct session ID to use
-            // If a new session was created from a "new_" tab, use the new session ID
-            const targetSessionId = (effectiveSessionId.startsWith('new_') && newSessionId)
-              ? newSessionId
-              : effectiveSessionId;
+            // Get the current active tab ID from navigation store (most up-to-date)
+            const currentActiveTabId = useNavigationStore.getState().activeTabId;
+
+            // Resolve the session ID - this handles the case where the ID was migrated
+            // from new_xxx to a real session ID
+            let targetSessionId = resolveSessionId(effectiveSessionId);
+
+            // If we have a newSessionId from the event, prefer that
+            if (newSessionId) {
+              targetSessionId = newSessionId;
+            } else if (currentActiveTabId) {
+              // Also try to resolve the current active tab ID
+              targetSessionId = resolveSessionId(currentActiveTabId);
+            }
+
+            console.log('[ChatPage] onComplete - effectiveSessionId:', effectiveSessionId);
+            console.log('[ChatPage] onComplete - newSessionId:', newSessionId);
+            console.log('[ChatPage] onComplete - currentActiveTabId:', currentActiveTabId);
+            console.log('[ChatPage] onComplete - resolved targetSessionId:', targetSessionId);
 
             setStreaming(targetSessionId, false);
             setThinking(targetSessionId, false);
@@ -932,6 +970,12 @@ export const ChatPage: React.FC<ChatPageProps> = ({
                 outputTokens: usage?.completion_tokens,
                 totalTokens: usage?.total_tokens,
               });
+              console.log('[ChatPage] onComplete - Updated message:', lastMessage.id, 'content length:', finalContent.length);
+            } else {
+              console.log('[ChatPage] onComplete - No last message found for session:', targetSessionId);
+              // Log all available sessions for debugging
+              const allSessions = useChatStore.getState().sessions;
+              console.log('[ChatPage] Available sessions:', Object.keys(allSessions));
             }
 
             // Clear streaming state after saving to message
@@ -993,13 +1037,23 @@ export const ChatPage: React.FC<ChatPageProps> = ({
             // Get current tab ID from navigation store (in case tab was switched)
             const currentTabId = useNavigationStore.getState().activeTabId;
 
+            console.log('[ChatPage] onSessionCreated - currentTabId:', currentTabId);
+            console.log('[ChatPage] onSessionCreated - effectiveSessionId:', effectiveSessionId);
+
             // If current tab is a temporary "new_" tab, replace it with the real session ID
             if (currentTabId && currentTabId.startsWith('new_')) {
-              // First migrate messages from old ID to new ID
+              console.log('[ChatPage] Migrating session from', currentTabId, 'to', newSessionId);
+
+              // Register the migration so onComplete can find the new ID
+              registerSessionMigration(currentTabId, newSessionId);
+
+              // Migrate messages from old ID to new ID
               useChatStore.getState().migrateSession(currentTabId, newSessionId);
+
               // Then update the tab with the new session ID
-              // Use a default title that will be updated when the session is fetched
               useNavigationStore.getState().replaceTabId(currentTabId, newSessionId, '新会话');
+
+              console.log('[ChatPage] Session migration complete');
             }
 
             // Optimistically add session to list immediately
@@ -1028,16 +1082,29 @@ export const ChatPage: React.FC<ChatPageProps> = ({
   }, [inputValue, effectiveSessionId, addMessage, updateMessage, setStreaming, setStreamingText, setThinking, appendReasoningText, clearReasoningText, clearStreamingTools, addStreamingTool, setTokenUsage, setChatPendingPermission, thinkingStartTime, t, updateSessionActivity, fetchSessions]);
 
   // Stop running
-  const handleStop = () => {
+  const handleStop = async () => {
     // Get current session ID from navigation store (in case tab was switched)
     const currentTabId = useNavigationStore.getState().activeTabId;
     const targetSessionId = currentTabId || effectiveSessionId;
     if (!targetSessionId) return;
 
+    console.log('[ChatPage] Stopping chat...');
     isStoppedRef.current = true;
+
+    // Abort the backend process
+    try {
+      await abortChat();
+      console.log('[ChatPage] Backend process aborted');
+    } catch (error) {
+      console.error('[ChatPage] Failed to abort chat:', error);
+    }
+
     setStreaming(targetSessionId, false);
     setThinking(targetSessionId, false);
     setThinkingStartTime(null);
+
+    // Clear streaming tools to prevent duplication
+    clearStreamingTools(targetSessionId);
 
     // Get the last message from the current store state (not closure)
     const currentMessages = useChatStore.getState().sessions[targetSessionId]?.messages;
@@ -1098,6 +1165,9 @@ export const ChatPage: React.FC<ChatPageProps> = ({
 
   return (
     <div className="chat-page">
+      {/* Session Header */}
+      <ChatSessionHeader />
+
       {/* Messages */}
       <div className="chat-page-messages">
         {sessionState.messages.length === 0 && !sessionState.isStreaming && (
@@ -1203,21 +1273,6 @@ export const ChatPage: React.FC<ChatPageProps> = ({
                   </>
                 );
               })()}
-              {/* Stats bar for assistant messages (after completion) */}
-              {msg.role === 'assistant' && !isStreamingMsg && (msg.thinkingTime || msg.totalTokens) && msg.content && (
-                <div className="message-stats">
-                  {msg.thinkingTime && (
-                    <span className="stat-item" title={t('chat.thinkingTime')}>
-                      <ClockIcon size={12} /> {msg.thinkingTime}s
-                    </span>
-                  )}
-                  {msg.inputTokens && msg.outputTokens && (
-                    <span className="stat-item stat-detail" title={t('chat.inputOutput')}>
-                      ({t('chat.input')}: {msg.inputTokens.toLocaleString()} / {t('chat.output')}: {msg.outputTokens.toLocaleString()})
-                    </span>
-                  )}
-                </div>
-              )}
             </div>
           </div>
           );

@@ -122,6 +122,14 @@ export async function respondApproval(approvalId: string, choice: 'once' | 'sess
 }
 
 /**
+ * Abort the currently running chat stream
+ */
+export async function abortChat(): Promise<void> {
+  logger.debug('[HermesChat] Aborting chat...');
+  await invoke('abort_chat');
+}
+
+/**
  * Stream a chat message with real-time events
  * This is the new streaming implementation with true real-time updates
  */

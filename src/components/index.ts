@@ -18,3 +18,6 @@ export { Layout, PageHeader } from './layout';
 export type { LayoutProps, PageHeaderProps } from './layout';
 
 export { Sidebar } from './layout';
+
+// Chat Components
+export { ChatSessionHeader } from './ChatSessionHeader';

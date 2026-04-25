@@ -418,6 +418,12 @@ const translations: Translations = {
   'chat.cmd.task': { zh: '创建任务', en: 'Create task' },
   'chat.cmd.file': { zh: '文件操作', en: 'File operations' },
   'chat.cmd.search': { zh: '搜索内容', en: 'Search content' },
+
+  // Chat Session Header
+  'chat.streaming': { zh: '会话活跃中', en: 'Streaming' },
+  'chat.active': { zh: '会话活跃', en: 'Active' },
+  'chat.idle': { zh: '新会话', en: 'New Session' },
+  'chat.lastUpdate': { zh: '最后更新', en: 'Last update' },
 };
 
 // Get translation for a key

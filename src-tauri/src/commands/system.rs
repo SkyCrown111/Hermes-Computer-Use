@@ -106,14 +106,18 @@ pub async fn get_system_status() -> Result<SystemStatus, String> {
             0
         };
 
-        // Read gateway state
+        // Read gateway state from file
         let gateway_state: serde_json::Value = if let Ok(output) = create_command("wsl")
             .args(["bash", "-c", "cat ~/.hermes/gateway_state.json 2>/dev/null"])
             .output()
         {
             if output.status.success() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
-                serde_json::from_str(&stdout).unwrap_or(serde_json::json!({}))
+                if stdout.trim().is_empty() {
+                    serde_json::json!({})
+                } else {
+                    serde_json::from_str(&stdout).unwrap_or(serde_json::json!({}))
+                }
             } else {
                 serde_json::json!({})
             }
@@ -121,16 +125,51 @@ pub async fn get_system_status() -> Result<SystemStatus, String> {
             serde_json::json!({})
         };
 
+        // Check if Hermes CLI/venv actually exists (this is what chat functionality needs)
+        let hermes_cli_available = if let Ok(output) = create_command("wsl")
+            .args(["bash", "-c", "test -f ~/.hermes/hermes-agent/venv/bin/python && echo 'available' || echo 'not_found'"])
+            .output()
+        {
+            String::from_utf8_lossy(&output.stdout).trim() == "available"
+        } else {
+            false
+        };
+
+        // Check if gateway process is running
+        let gateway_process_running = if let Ok(output) = create_command("wsl")
+            .args(["bash", "-c", "pgrep -f 'hermes.*gateway' || pgrep -f 'hermes_cli.*gateway' || echo ''"])
+            .output()
+        {
+            !String::from_utf8_lossy(&output.stdout).trim().is_empty()
+        } else {
+            false
+        };
+
         // Get system metrics via WSL
         let (cpu_percent, memory_percent, memory_used_mb, memory_total_mb) = get_system_metrics();
 
-        (active_sessions, pending_tasks, gateway_state, cpu_percent, memory_percent, memory_used_mb, memory_total_mb)
-    }).await.unwrap_or((0, 0, serde_json::json!({}), 0.0, 0.0, 0, 0));
+        (active_sessions, pending_tasks, gateway_state, cpu_percent, memory_percent, memory_used_mb, memory_total_mb, hermes_cli_available, gateway_process_running)
+    }).await.unwrap_or((0, 0, serde_json::json!({}), 0.0, 0.0, 0, 0, false, false));
 
-    // Parse gateway state
-    let gateway_status = result.2.get("gateway_state")
+    // Determine gateway status - use multiple sources
+    // Priority: 1. gateway_state.json, 2. process check, 3. CLI availability
+    let file_status = result.2.get("gateway_state")
         .and_then(|v| v.as_str())
         .unwrap_or("unknown");
+
+    // Determine final status
+    let gateway_status = if file_status == "running" {
+        "running".to_string()
+    } else if result.8 { // gateway_process_running
+        "running".to_string()
+    } else if result.7 { // hermes_cli_available
+        // CLI is available but gateway not running - show as available
+        "available".to_string()
+    } else {
+        file_status.to_string()
+    };
+
+    println!("[System] Gateway status: file={}, process={}, cli={}, final={}", file_status, result.8, result.7, gateway_status);
 
     let start_time = result.2.get("start_time")
         .and_then(|v| v.as_u64())
@@ -155,7 +194,7 @@ pub async fn get_system_status() -> Result<SystemStatus, String> {
 
     Ok(SystemStatus {
         gateway: GatewayStatus {
-            status: gateway_status.to_string(),
+            status: gateway_status,
             uptime_seconds: start_time,
             version: env!("CARGO_PKG_VERSION").to_string(),
             connected_platforms,
