@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Card, Button, BrainIcon, UserIcon, BookIcon, SearchIcon, EmptyIcon, AlertIcon } from '../../components';
+import { Card, Button, BrainIcon, UserIcon, BookIcon, SearchIcon, EmptyIcon, AlertIcon, HourglassIcon, CheckIcon } from '../../components';
 import { useMemoryStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
 import { toast } from '../../stores/toastStore';
@@ -133,10 +133,10 @@ const MemoryFileView: React.FC<MemoryFileViewProps> = ({
   // Show auto-save status
   const getAutoSaveIndicator = () => {
     if (autoSaveStatus === 'saving') {
-      return <span className="auto-save-indicator saving">⏳ Saving...</span>;
+      return <span className="auto-save-indicator saving"><HourglassIcon size={14} /> Saving...</span>;
     }
     if (autoSaveStatus === 'saved') {
-      return <span className="auto-save-indicator saved">✓ Saved</span>;
+      return <span className="auto-save-indicator saved"><CheckIcon size={14} /> Saved</span>;
     }
     return null;
   };
@@ -202,7 +202,7 @@ const MemoryFileView: React.FC<MemoryFileViewProps> = ({
             {/* Tips */}
             <div className="memory-tips">
               <div className="memory-tips-title">
-                <span>💡</span>
+                <span className="memory-tips-icon"><BookIcon size={14} /></span>
                 <span>{t('memory.formatTip')}</span>
               </div>
               <div className="memory-tips-content">

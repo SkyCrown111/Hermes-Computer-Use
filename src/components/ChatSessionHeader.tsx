@@ -83,7 +83,7 @@ export const ChatSessionHeader: React.FC = () => {
   }, [sessionState]);
 
   // Get session title
-  const title = currentTab?.title || sessionInfo?.chat_name || '新会话';
+  const title = currentTab?.title || sessionInfo?.chat_name || t('chat.idle');
 
   // Don't render if no active session
   if (!activeTabId) return null;

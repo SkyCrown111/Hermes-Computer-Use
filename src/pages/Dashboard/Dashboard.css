@@ -330,6 +330,10 @@
   padding: var(--space-8);
 }
 
+.empty-text {
+  color: var(--text-tertiary);
+}
+
 .loading-spinner {
   width: 32px;
   height: 32px;

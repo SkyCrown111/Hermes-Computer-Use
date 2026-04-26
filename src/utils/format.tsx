@@ -1,4 +1,6 @@
 // Shared utility functions
+import React from 'react';
+import { TerminalIcon, ChatIcon, SmartphoneIcon, GlobeIcon, ClockIcon, PlugIcon, BotIcon, BriefcaseIcon } from '../components/ui/Icons';
 
 /**
  * Format large numbers with K/M suffix
@@ -61,18 +63,18 @@ export const formatRelativeTime = (
 /**
  * Get platform icon
  */
-export const getPlatformIcon = (platform: string): string => {
-  const icons: Record<string, string> = {
-    cli: '💻',
-    weixin: '💬',
-    telegram: '📱',
-    discord: '🎮',
-    slack: '💼',
-    web: '🌐',
-    cron: '⏰',
-    api: '🔌',
+export const getPlatformIcon = (platform: string): React.ReactNode => {
+  const icons: Record<string, React.ReactNode> = {
+    cli: <TerminalIcon size={14} />,
+    weixin: <ChatIcon size={14} />,
+    telegram: <SmartphoneIcon size={14} />,
+    discord: <ChatIcon size={14} />,
+    slack: <BriefcaseIcon size={14} />,
+    web: <GlobeIcon size={14} />,
+    cron: <ClockIcon size={14} />,
+    api: <PlugIcon size={14} />,
   };
-  return icons[platform] || '🤖';
+  return icons[platform] || <BotIcon size={14} />;
 };
 
 /**

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Card, Button, FolderIcon, FileIcon, SearchIcon, AlertIcon, EmptyIcon, ChartIcon, FileTextIcon, SaveIcon, HourglassIcon, SparklesIcon, XIcon, RefreshIcon, ConfirmModal, InputModal } from '../../components';
+import { Card, Button, FolderIcon, FileIcon, SearchIcon, AlertIcon, EmptyIcon, ChartIcon, FileTextIcon, SaveIcon, HourglassIcon, SparklesIcon, XIcon, RefreshIcon, EditIcon, TrashIcon, DownloadIcon, UploadIcon, ConfirmModal, InputModal } from '../../components';
 import { useFilesStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
 import { filesApi } from '../../services/filesApi';
@@ -20,41 +20,41 @@ interface Workspace {
 
 // 获取文件图标
 const getFileIcon = (item: FileInfo): string => {
-  if (item.type === 'directory') return '📁';
-  
+  if (item.type === 'directory') return '>';
+
   const ext = item.extension?.toLowerCase();
   switch (ext) {
     case '.js':
     case '.jsx':
     case '.ts':
     case '.tsx':
-      return '📜';
+      return '<>';
     case '.py':
-      return '🐍';
+      return '>>';
     case '.json':
-      return '📋';
+      return '[]';
     case '.md':
-      return '📝';
+      return '##';
     case '.css':
     case '.scss':
-      return '🎨';
+      return '{}';
     case '.html':
-      return '🌐';
+      return '<>';
     case '.png':
     case '.jpg':
     case '.gif':
     case '.svg':
-      return '🖼️';
+      return '**';
     case '.pdf':
-      return '📕';
+      return '()';
     case '.zip':
     case '.tar':
     case '.gz':
-      return '📦';
+      return '(*)';
     case '.env':
-      return '🔐';
+      return '..';
     default:
-      return '📄';
+      return '::';
   }
 };
 
@@ -577,7 +577,7 @@ export const Files: React.FC = () => {
                     onClick={handleUploadClick}
                     disabled={isUploading}
                   >
-                    {isUploading ? '⏳ 上传中...' : '📤 上传'}
+                    {isUploading ? <><HourglassIcon size={14} /> {'上传中...'}</> : <><UploadIcon size={14} /> {'上传'}</>}
                   </Button>
                   <input
                     ref={fileInputRef}
@@ -605,7 +605,8 @@ export const Files: React.FC = () => {
                       size="sm"
                       onClick={() => goUp()}
                     >
-                      ⬆️ {t('files.parentDir')}
+                    <FolderIcon size={14} /> {' '}
+                    {t('files.parentDir')}
                     </Button>
                   )}
                 </div>
@@ -706,7 +707,7 @@ export const Files: React.FC = () => {
                                       handleViewFile(file.path);
                                     }}
                                   >
-                                    👁️
+                                    View
                                   </button>
                                   <button
                                     className="file-action-btn"
@@ -716,7 +717,7 @@ export const Files: React.FC = () => {
                                       handleEditFile(file.path);
                                     }}
                                   >
-                                    ✏️
+                                  <EditIcon size={14} />
                                   </button>
                                   <button
                                     className="file-action-btn"
@@ -727,7 +728,7 @@ export const Files: React.FC = () => {
                                     }}
                                     disabled={isDownloading === file.path}
                                   >
-                                    {isDownloading === file.path ? '⏳' : '📥'}
+                                    {isDownloading === file.path ? <HourglassIcon size={14} /> : <DownloadIcon size={14} />}
                                   </button>
                                 </>
                               )}
@@ -739,7 +740,7 @@ export const Files: React.FC = () => {
                                   addFavorite(file.path);
                                 }}
                               >
-                                ⭐
+                                ★
                               </button>
                               <button
                                 className="file-action-btn"
@@ -749,7 +750,7 @@ export const Files: React.FC = () => {
                                   handleDeleteFile(file.path);
                                 }}
                               >
-                                🗑️
+                                <TrashIcon size={14} />
                               </button>
                             </div>
                           </div>
@@ -795,7 +796,7 @@ export const Files: React.FC = () => {
                                   handleViewFile(file.path);
                                 }}
                               >
-                                👁️
+                                View
                               </button>
                               <button
                                 className="file-action-btn"
@@ -805,7 +806,7 @@ export const Files: React.FC = () => {
                                   handleEditFile(file.path);
                                 }}
                               >
-                                ✏️
+                                <EditIcon size={14} />
                               </button>
                               <button
                                 className="file-action-btn"
@@ -816,7 +817,7 @@ export const Files: React.FC = () => {
                                 }}
                                 disabled={isDownloading === file.path}
                               >
-                                {isDownloading === file.path ? '⏳' : '📥'}
+                                {isDownloading === file.path ? <HourglassIcon size={14} /> : <DownloadIcon size={14} />}
                               </button>
                             </>
                           )}
@@ -828,7 +829,7 @@ export const Files: React.FC = () => {
                               addFavorite(file.path);
                             }}
                           >
-                            ⭐
+                            ★
                           </button>
                           <button
                             className="file-action-btn"
@@ -838,7 +839,7 @@ export const Files: React.FC = () => {
                               handleDeleteFile(file.path);
                             }}
                           >
-                            🗑️
+                            <TrashIcon size={14} />
                           </button>
                         </div>
                       </div>
@@ -875,7 +876,7 @@ export const Files: React.FC = () => {
                   <div className="file-editor">
                     <div className="file-editor-header">
                       <span className="file-editor-title">{currentFile.path.split('/').pop()}</span>
-                      <button className="file-editor-close" onClick={closeFile}>✕</button>
+                      <button className="file-editor-close" onClick={closeFile}><XIcon size={14} /></button>
                     </div>
                     <div className="file-editor-info">
                       <span>{t('files.path')}: {currentFile.path}</span>
@@ -997,7 +998,7 @@ export const Files: React.FC = () => {
                       </div>
                       <div className="cache-col-type">
                         <span className={`cache-type cache-type-${item.type}`}>
-                          {item.type === 'file' ? '📄' : item.type === 'search' ? '🔍' : '📋'}
+                          {item.type === 'file' ? 'File' : item.type === 'search' ? 'Search' : 'Meta'}
                           {item.type}
                         </span>
                       </div>
@@ -1016,7 +1017,7 @@ export const Files: React.FC = () => {
                           onClick={() => handleDeleteCacheItem(item.key)}
                           title={t('files.delete')}
                         >
-                          🗑️
+                          <TrashIcon size={14} />
                         </button>
                       </div>
                     </div>

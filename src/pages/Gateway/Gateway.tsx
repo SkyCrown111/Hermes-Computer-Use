@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { Card, Button } from '../../components';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { Card, Button, AlertIcon, RefreshIcon } from '../../components';
 import { useTranslation } from '../../hooks/useTranslation';
 import { monitorApi } from '../../services/monitorApi';
 import { restartGateway } from '../../services/settingsApi';
@@ -7,39 +7,90 @@ import { logger } from '../../lib/logger';
 import type { GatewayDetailedStatus } from '../../types/monitor';
 import './Gateway.css';
 
+// Polling intervals with exponential backoff
+const POLL_INTERVAL_NORMAL = 15000; // 15s when healthy
+const POLL_INTERVAL_ERROR = 60000;  // 60s when errors occur
+const MAX_CONSECUTIVE_ERRORS = 3;    // After this many errors, switch to longer interval
+
 export const Gateway: React.FC = () => {
   const { t } = useTranslation();
   const [status, setStatus] = useState<GatewayDetailedStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRestarting, setIsRestarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [consecutiveErrors, setConsecutiveErrors] = useState(0);
+  const [isRetrying, setIsRetrying] = useState(false);
 
-  const fetchStatus = useCallback(async () => {
+  // Use ref for interval to handle dynamic timing
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const fetchStatus = useCallback(async (isRetry = false) => {
+    if (isRetry) setIsRetrying(true);
     setIsLoading(true);
     setError(null);
+
     try {
       const result = await monitorApi.getGatewayStatus();
       setStatus(result);
+      setConsecutiveErrors(0);
+      setError(null);
     } catch (err) {
       logger.error('[Gateway] Failed to fetch status:', err);
-      setError(t('gateway.fetchFailed'));
+      const errorMsg = err instanceof Error ? err.message : t('gateway.fetchFailed');
+      setError(errorMsg);
+      setConsecutiveErrors(prev => prev + 1);
     } finally {
       setIsLoading(false);
+      setIsRetrying(false);
     }
-  }, []);
+  }, [t]);
 
+  // Setup polling with dynamic interval based on error state
   useEffect(() => {
+    const setupInterval = () => {
+      // Clear existing interval
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+
+      // Determine interval based on error state
+      const interval = consecutiveErrors >= MAX_CONSECUTIVE_ERRORS
+        ? POLL_INTERVAL_ERROR
+        : POLL_INTERVAL_NORMAL;
+
+      intervalRef.current = setInterval(() => {
+        fetchStatus();
+      }, interval);
+    };
+
+    // Initial fetch
     fetchStatus();
-    const interval = setInterval(fetchStatus, 15000);
-    return () => clearInterval(interval);
+
+    // Setup interval
+    setupInterval();
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, [fetchStatus, consecutiveErrors]);
+
+  // Handle manual retry
+  const handleRetry = useCallback(() => {
+    setConsecutiveErrors(0);
+    fetchStatus(true);
   }, [fetchStatus]);
 
   const handleRestart = async () => {
     setIsRestarting(true);
+    setError(null);
     try {
       await restartGateway();
+      // Reset error state on successful restart
+      setConsecutiveErrors(0);
       // Wait a moment then refresh status
-      setTimeout(fetchStatus, 3000);
+      setTimeout(() => fetchStatus(), 3000);
     } catch (err) {
       logger.error('[Gateway] Restart failed:', err);
       setError(t('gateway.restartFailed'));
@@ -71,8 +122,13 @@ export const Gateway: React.FC = () => {
       <div className="gateway-header">
         <h1>{t('gateway.title')}</h1>
         <div className="gateway-actions">
-          <Button variant="secondary" onClick={fetchStatus} disabled={isLoading}>
-            {isLoading ? t('gateway.refreshing') : t('gateway.refresh')}
+          <Button
+            variant="secondary"
+            onClick={() => fetchStatus()}
+            disabled={isLoading}
+          >
+            <RefreshIcon size={14} className={isLoading ? 'spinning' : ''} />
+            {isLoading && !isRetrying ? t('gateway.refreshing') : t('gateway.refresh')}
           </Button>
           <Button variant="primary" onClick={handleRestart} disabled={isRestarting}>
             {isRestarting ? t('gateway.restarting') : t('gateway.restart')}
@@ -80,9 +136,20 @@ export const Gateway: React.FC = () => {
         </div>
       </div>
 
+      {/* Error state with retry option */}
       {error && (
-        <div className="error-message">
-          <span>⚠️ {error}</span>
+        <div className="error-message gateway-error">
+          <span><AlertIcon size={16} /> {error}</span>
+          {consecutiveErrors > 0 && (
+            <Button variant="ghost" size="sm" onClick={handleRetry} disabled={isRetrying}>
+              {isRetrying ? t('common.loading') : t('dashboard.recheck')}
+            </Button>
+          )}
+          {consecutiveErrors >= MAX_CONSECUTIVE_ERRORS && (
+            <span className="error-hint">
+              {t('gateway.autoRetryHint')}
+            </span>
+          )}
         </div>
       )}
 
@@ -145,7 +212,11 @@ export const Gateway: React.FC = () => {
       ) : (
         <Card>
           <div className="empty-state">
+            <AlertIcon size={24} />
             <span>{t('gateway.notRunning')}</span>
+            <Button variant="primary" onClick={handleRestart} disabled={isRestarting}>
+              {t('gateway.restart')}
+            </Button>
           </div>
         </Card>
       )}

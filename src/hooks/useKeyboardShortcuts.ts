@@ -2,6 +2,7 @@
 // Ctrl+N: New chat  |  Ctrl+W: Close tab  |  Ctrl+Tab/Shift: Switch tab
 import { useEffect } from 'react';
 import { useNavigationStore } from '../stores';
+import { useTranslation } from './useTranslation';
 
 /**
  * Custom event name for triggering session sidebar search focus.
@@ -10,6 +11,8 @@ import { useNavigationStore } from '../stores';
 export const FOCUS_SEARCH_EVENT = 'hermes:focus-search';
 
 export function useKeyboardShortcuts() {
+  const { t } = useTranslation();
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
@@ -19,7 +22,7 @@ export function useKeyboardShortcuts() {
       if (e.ctrlKey && e.key === 'n') {
         e.preventDefault();
         const newId = `new_${Date.now()}`;
-        useNavigationStore.getState().openTab(newId, '新会话', 'new');
+        useNavigationStore.getState().openTab(newId, t('shortcuts.newChat'), 'new');
         return;
       }
 

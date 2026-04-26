@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { useTranslation } from '../../hooks/useTranslation';
-import { PlusIcon, PlayIcon, StopIcon } from '../ui/Icons';
+import { PlusIcon, PlayIcon, StopIcon, HourglassIcon, XIcon } from '../ui/Icons';
 import { logger } from '../../lib/logger';
 
 // ---- Types ----
@@ -263,7 +263,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                     className="remove-file-btn"
                     onClick={() => removeAttachedFile(idx)}
                   >
-                    ✕
+                    <XIcon size={14} />
                   </button>
                 </div>
               ))}
@@ -273,14 +273,14 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           {/* Pending Message Indicator */}
           {pendingMessage && (
             <div className="pending-message-indicator">
-              <span className="pending-icon">⏳</span>
-              <span className="pending-text">{t('chat.messageQueued') || '消息已排队，等待发送...'}</span>
+              <span className="pending-icon"><HourglassIcon size={14} /></span>
+              <span className="pending-text">{t('chat.messageQueued')}</span>
               <button
                 className="cancel-pending-btn"
                 onClick={() => setPendingMessage(null)}
-                title={t('common.cancel') || '取消'}
+                title={t('common.cancel')}
               >
-                ✕
+                <XIcon size={14} />
               </button>
             </div>
           )}

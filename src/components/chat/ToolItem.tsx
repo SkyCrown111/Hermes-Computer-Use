@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, memo } from 'react';
 import type { ToolCallInfo } from '../../stores/chatStore';
 import { TOOL_ICONS } from './constants';
 import { SimpleDiffViewer } from './SimpleDiffViewer';
@@ -8,7 +8,7 @@ interface ToolItemProps {
   isStreaming?: boolean;
 }
 
-export const ToolItem: React.FC<ToolItemProps> = ({ tool, isStreaming }) => {
+const ToolItemComponent: React.FC<ToolItemProps> = ({ tool, isStreaming }) => {
   const [showDiff, setShowDiff] = useState(false);
   const isRunning = !tool.duration && !tool.is_error && isStreaming;
   const icon = TOOL_ICONS[tool.name] || 'build';
@@ -69,3 +69,6 @@ export const ToolItem: React.FC<ToolItemProps> = ({ tool, isStreaming }) => {
     </div>
   );
 };
+
+// Memoize to prevent re-renders when parent tools list updates but this tool hasn't changed
+export const ToolItem = memo(ToolItemComponent);

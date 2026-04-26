@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Button, RocketIcon, ChatIcon, TargetIcon, ClockIcon, ChartIcon, ZapIcon, MonitorIcon, TrendingUpIcon, AlertIcon } from '../../components';
+import { Card, Button, RocketIcon, ChatIcon, TargetIcon, ClockIcon, ChartIcon, ZapIcon, MonitorIcon, TrendingUpIcon, AlertIcon, LightbulbIcon } from '../../components';
 import { useDashboardStore, useNavigationStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
 import { safeInvoke } from '../../lib/tauri';
@@ -59,7 +59,7 @@ const OnboardingGuide: React.FC<{ onRetry: () => void; t: (key: string) => strin
         </div>
 
         <div className="onboarding-info">
-          <p>💡 {t('dashboard.dataDir')}: <code>~/.hermes</code></p>
+          <p><LightbulbIcon size={14} /> {t('dashboard.dataDir')}: <code>~/.hermes</code></p>
           <p>{t('dashboard.dataDirDesc')}</p>
         </div>
       </Card>
@@ -251,7 +251,7 @@ export const Dashboard: React.FC = () => {
               </div>
             ) : (
               <div className="loading-container">
-                <span style={{ color: 'var(--text-tertiary)' }}>{t('dashboard.noActivity')}</span>
+                <span className="empty-text">{t('dashboard.noActivity')}</span>
               </div>
             )}
             <Button variant="ghost" className="view-all-btn" onClick={() => setActiveItem('sessions')}>
@@ -272,10 +272,10 @@ export const Dashboard: React.FC = () => {
               <Button variant="secondary" onClick={() => setActiveItem('tasks')}>{t('dashboard.createTask')}</Button>
               <Button variant="secondary" onClick={() => setActiveItem('settings')}>{t('dashboard.openSettings')}</Button>
               <Button variant="secondary" onClick={handleCheckUpdates} disabled={isCheckingUpdates}>
-                {isCheckingUpdates ? 'Checking...' : 'Check for Updates'}
+                {isCheckingUpdates ? t('dashboard.checkingUpdates') : t('dashboard.checkForUpdates')}
               </Button>
               <Button variant="secondary" onClick={handleRestartGateway} disabled={isRestartingGateway}>
-                {isRestartingGateway ? 'Restarting...' : 'Restart Gateway'}
+                {isRestartingGateway ? t('dashboard.restarting') : t('dashboard.restartGateway')}
               </Button>
             </div>
           </Card>
@@ -302,7 +302,7 @@ export const Dashboard: React.FC = () => {
               </div>
             ) : (
               <div className="loading-container">
-                <span style={{ color: 'var(--text-tertiary)' }}>{t('dashboard.todayTasks')}</span>
+                <span className="empty-text">{t('dashboard.todayTasks')}</span>
               </div>
             )}
           </Card>
@@ -373,7 +373,7 @@ export const Dashboard: React.FC = () => {
               </div>
             ) : (
               <div className="loading-container">
-                <span style={{ color: 'var(--text-tertiary)' }}>{t('dashboard.cannotGetStatus')}</span>
+                <span className="empty-text">{t('dashboard.cannotGetStatus')}</span>
               </div>
             )}
           </Card>
@@ -397,7 +397,7 @@ export const Dashboard: React.FC = () => {
               </div>
             ) : (
               <div className="loading-container">
-                <span style={{ color: 'var(--text-tertiary)' }}>{t('dashboard.noSkills')}</span>
+                <span className="empty-text">{t('dashboard.noSkills')}</span>
               </div>
             )}
           </Card>

@@ -136,7 +136,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({
     if (!selectedIds || selectedIds.length === 0) return;
 
     const count = selectedIds.length;
-    if (!window.confirm(`确定删除选中的 ${count} 个会话？此操作不可恢复。`)) return;
+    if (!window.confirm(t('chat.confirmBatchDelete').replace('{count}', String(count)))) return;
 
     let success = 0;
     for (const id of selectedIds) {
@@ -155,7 +155,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({
       return next;
     });
 
-    sendNotification(`已删除 ${success}/${count} 个会话`);
+    sendNotification(t('chat.batchDeleteNotification').replace('{success}', String(success)).replace('{count}', String(count)));
   }, [selectedSearchResults]);
 
   const batchExportSearchResults = useCallback((msgId: string, sessions: SessionSearchResult[]) => {
@@ -186,7 +186,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    sendNotification(`已导出 ${selectedIds.length} 个会话`);
+    sendNotification(t('chat.exportNotification').replace('{count}', String(selectedIds.length)));
   }, [selectedSearchResults]);
 
   // Compute matching message indices
@@ -323,7 +323,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({
       if (lastMsg?.content && lastMsg.content !== sessionState.streamingText) {
         // Message has been finalized with content
         sendNotification('Hermes', {
-          body: '对话已完成',
+          body: t('chat.streamComplete'),
           tag: 'hermes-stream-complete',
         });
       }
@@ -337,7 +337,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({
     const currentError = sessionError ?? null;
     if (currentError && currentError !== prevErrorRef.current) {
       sendNotification('Hermes', {
-        body: `出错: ${currentError.slice(0, 100)}`,
+        body: `${t('chat.error')}: ${currentError.slice(0, 100)}`,
         tag: 'hermes-stream-error',
       });
     }
@@ -457,7 +457,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({
               });
             }
           },
-          onComplete: (content, newSessionId, usage) => {
+          onComplete: (content, newSessionId, usage, eventReasoning) => {
             if (isStoppedRef.current || !isMountedRef.current) return;
             const thinkingTime = thinkingStartTime ? Math.round((Date.now() - thinkingStartTime) / 1000) : 0;
 
@@ -493,20 +493,23 @@ export const ChatPage: React.FC<ChatPageProps> = ({
             const currentReasoningText = currentSession?.reasoningText || '';
             const currentStreamingTools = currentSession?.streamingTools || [];
 
+            // Prefer reasoning from the event, fallback to accumulated reasoning text
+            const finalReasoning = eventReasoning || currentReasoningText;
+
             // Get the last message ID from the current store state (not closure)
             const currentMessages = currentSession?.messages;
             const lastMessage = currentMessages?.[currentMessages.length - 1];
             if (lastMessage) {
               updateMessage(targetSessionId, lastMessage.id, {
                 content: finalContent,
-                reasoning: currentReasoningText,
+                reasoning: finalReasoning,
                 tools: currentStreamingTools, // Save streaming tools to message
                 thinkingTime,
                 inputTokens: usage?.prompt_tokens,
                 outputTokens: usage?.completion_tokens,
                 totalTokens: usage?.total_tokens,
               });
-              logger.debug('[ChatPage] onComplete - Updated message:', lastMessage.id, 'content length:', finalContent.length);
+              logger.debug('[ChatPage] onComplete - Updated message:', lastMessage.id, 'content length:', finalContent.length, 'reasoning length:', finalReasoning?.length || 0);
             } else {
               logger.debug('[ChatPage] onComplete - No last message found for session:', targetSessionId);
               // Log all available sessions for debugging
@@ -587,7 +590,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({
               useChatStore.getState().migrateSession(currentTabId, newSessionId);
 
               // Then update the tab with the new session ID
-              useNavigationStore.getState().replaceTabId(currentTabId, newSessionId, '新会话');
+              useNavigationStore.getState().replaceTabId(currentTabId, newSessionId, t('chat.idle'));
 
               logger.debug('[ChatPage] Session migration complete');
             }

@@ -1,5 +1,7 @@
 import { Component, type ReactNode, type ErrorInfo } from 'react';
 import { logger } from '../lib/logger';
+import { t } from '../lib/i18n';
+import { useThemeStore } from '../stores';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -12,6 +14,9 @@ interface ErrorBoundaryState {
   hasError: boolean;
   error: Error | null;
 }
+
+// Get current language from store or default to 'zh'
+const getLanguage = () => useThemeStore.getState().language || 'zh';
 
 export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
@@ -34,6 +39,8 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   render() {
     if (this.state.hasError) {
+      const lang = getLanguage();
+
       if (this.props.inline) {
         return (
           <div style={{
@@ -47,10 +54,12 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
             fontFamily: 'system-ui, sans-serif',
             color: '#e0e0e0',
           }}>
-            <span style={{ fontSize: '2rem', marginBottom: '8px' }}>⚠️</span>
-            <h2 style={{ fontSize: '1.1rem', marginBottom: '8px', color: '#ff6b6b' }}>Page Error</h2>
+            <span style={{ fontSize: '2rem', marginBottom: '8px' }}>!</span>
+            <h2 style={{ fontSize: '1.1rem', marginBottom: '8px', color: '#ff6b6b' }}>
+              {t('errorBoundary.pageError', lang)}
+            </h2>
             <p style={{ color: '#999', marginBottom: '16px', textAlign: 'center', fontSize: '0.85rem' }}>
-              {this.state.error?.message || 'An unexpected error occurred on this page.'}
+              {this.state.error?.message || t('errorBoundary.pageDescription', lang)}
             </p>
             <button
               onClick={this.handleReset}
@@ -64,7 +73,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                 cursor: 'pointer',
               }}
             >
-              Retry
+              {t('errorBoundary.retry', lang)}
             </button>
           </div>
         );
@@ -82,9 +91,11 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
           color: '#e0e0e0',
           background: '#1a1a2e',
         }}>
-          <h1 style={{ fontSize: '1.5rem', marginBottom: '12px' }}>Something went wrong</h1>
+          <h1 style={{ fontSize: '1.5rem', marginBottom: '12px' }}>
+            {t('errorBoundary.title', lang)}
+          </h1>
           <p style={{ color: '#999', marginBottom: '20px', textAlign: 'center', maxWidth: '480px' }}>
-            An unexpected error occurred. Please try restarting the application.
+            {t('errorBoundary.description', lang)}
           </p>
           <pre style={{
             background: '#2a2a3e',
@@ -113,7 +124,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
               cursor: 'pointer',
             }}
           >
-            Reload Application
+            {t('errorBoundary.reload', lang)}
           </button>
         </div>
       );

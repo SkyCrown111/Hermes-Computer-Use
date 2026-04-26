@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Card, Button, Input, ConfirmModal } from '../../components';
-import { PlusIcon, XIcon, EditIcon, TrashIcon } from '../../components';
+import { PlusIcon, XIcon, EditIcon, TrashIcon, SearchIcon, WarningIcon, FolderIcon, TargetIcon } from '../../components';
 import { useSkillsStore, useNavigationStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
 import { logger } from '../../lib/logger';
@@ -192,7 +192,7 @@ export const Skills: React.FC = () => {
               placeholder={t('skills.search')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              icon="🔍"
+              icon={<SearchIcon size={16} />}
               className="search-input"
             />
           </div>
@@ -237,7 +237,7 @@ export const Skills: React.FC = () => {
         {/* Error Message */}
         {error && (
           <div className="error-message">
-            <span>⚠️</span>
+            <span><WarningIcon size={16} /></span>
             <span>{error}</span>
           </div>
         )}
@@ -254,7 +254,7 @@ export const Skills: React.FC = () => {
               Object.entries(groupedSkills).map(([category, categorySkills]) => (
                 <div key={category} className="skill-category-group">
                   <h3 className="category-title">
-                    📁 {formatCategoryName(category)}
+                    <FolderIcon size={16} /> {formatCategoryName(category)}
                     <span className="category-count">({categorySkills.length})</span>
                   </h3>
                   <div className="skills-grid">
@@ -264,7 +264,7 @@ export const Skills: React.FC = () => {
                         className={`skill-card ${!skill.enabled ? 'skill-card-disabled' : ''}`}
                       >
                         <div className="skill-card-header">
-                          <div className="skill-icon">🎯</div>
+                          <div className="skill-icon"><TargetIcon size={20} /></div>
                           <div className="skill-info">
                             <h4 className="skill-name">{skill.name}</h4>
                             {skill.version && <span className="skill-version">v{skill.version}</span>}
@@ -340,7 +340,7 @@ export const Skills: React.FC = () => {
                     </div>
                   </div>
                   <button className="close-button" onClick={clearSelectedSkill}>
-                    ✕
+                    <XIcon size={14} />
                   </button>
                 </div>
 

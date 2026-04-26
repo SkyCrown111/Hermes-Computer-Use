@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ConfirmModal } from '../../components';
+import { ConfirmModal, AlertIcon, WarningIcon, CheckIcon } from '../../components';
 import { usePlatformStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
 import { toast } from '../../stores/toastStore';
@@ -91,7 +91,7 @@ export function Platforms() {
       const initialConfig: Record<string, string> = {};
       const fields = platformConfigFields[selectedPlatform] || [];
       for (const field of fields) {
-        initialConfig[field.key] = platformData?.config?.[field.key] || '';
+        initialConfig[field.key] = (platformData?.config?.[field.key] as string) || '';
       }
       setConfigForm(initialConfig);
     }
@@ -254,7 +254,7 @@ export function Platforms() {
 
             {platform.error && (
               <div className="platform-error">
-                <span>⚠️ {platform.error}</span>
+                <span><AlertIcon size={14} /> {platform.error}</span>
               </div>
             )}
 
@@ -285,7 +285,7 @@ export function Platforms() {
               <div className="modal-body">
                 {qrcodeError ? (
                   <div className="qrcode-error">
-                    <p>⚠️ {qrcodeError}</p>
+                    <p><WarningIcon size={16} /> {qrcodeError}</p>
                     <button className="btn btn-secondary" onClick={loadQRCode}>
                       重新加载
                     </button>
@@ -300,16 +300,16 @@ export function Platforms() {
                       />
                     </div>
                     {qrcodeStatus === 'pending' && (
-                      <p className="qrcode-hint">请使用微信扫描二维码以登录</p>
+                      <p className="qrcode-hint">{t('platforms.wechat.scanPrompt')}</p>
                     )}
                     {qrcodeStatus === 'scanned' && (
-                      <p className="qrcode-scanned">✅ 已扫描，请在手机上确认登录</p>
+                      <p className="qrcode-scanned"><CheckIcon size={16} /> {t('platforms.wechat.scanned')}</p>
                     )}
-                    <p className="qrcode-expiry">二维码有效期为 2 分钟</p>
+                    <p className="qrcode-expiry">{t('platforms.wechat.qrcodeExpiry')}</p>
                   </div>
                 ) : (
                   <div className="qrcode-loading">
-                    <p>正在加载二维码...</p>
+                    <p>{t('platforms.wechat.loadingQrcode')}</p>
                   </div>
                 )}
                 <div className="modal-footer">
@@ -368,7 +368,7 @@ export function Platforms() {
         <div className="modal-overlay" onClick={() => setConnectionError(null)}>
           <div className="modal-content glass-card connection-error-modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>⚠️ {t('platforms.testConnection')} {t('nav.home') === 'Home' ? 'Failed' : '失败'}</h2>
+              <h2><WarningIcon size={18} /> {t('platforms.testConnection')} {t('nav.home') === 'Home' ? 'Failed' : '失败'}</h2>
               <button className="modal-close" onClick={() => setConnectionError(null)}>×</button>
             </div>
             <div className="modal-body">

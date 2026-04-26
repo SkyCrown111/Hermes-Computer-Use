@@ -1,5 +1,3 @@
-@import "tailwindcss";
-
 /* ============================================
    Hermes Console - Reference Design Color System
    ============================================ */
@@ -30,7 +28,7 @@
 
   /* ─── Outline Colors ─── */
   --color-outline: #87736D;
-  --color-outline-variant: #DAC1BA;
+  --color-outline-variant: #E5D8D2;
 
   /* ─── Secondary & Tertiary ─── */
   --color-secondary: #2D628F;
@@ -176,7 +174,12 @@
 
   /* ─── Outline Colors (Dark) ─── */
   --color-outline: #A09B96;
-  --color-outline-variant: #544F4B;
+  --color-outline-variant: #6B6560;
+
+  /* Border aliases for dark theme */
+  --color-border: var(--color-outline-variant);
+  --color-border-focus: var(--color-primary);
+  --color-border-separator: var(--color-outline-variant);
 
   /* ─── Text Colors (Dark) ─── */
   --color-on-surface: #E3E2DF;

@@ -39,11 +39,11 @@ const getLogLineClass = (line: LogLine): string => {
 
 // 平台图标映射
 const platformIcons: Record<string, string> = {
-  telegram: '📱',
-  discord: '💬',
-  slack: '💼',
-  cli: '⌨️',
-  web: '🌐',
+  telegram: 'TG',
+  discord: 'DC',
+  slack: 'SL',
+  cli: 'CLI',
+  web: 'WEB',
 };
 
 export const Monitor: React.FC = () => {
@@ -370,7 +370,7 @@ export const Monitor: React.FC = () => {
                       <div key={conn.platform} className="platform-item">
                         <span className="platform-name">
                           <span className="platform-icon">
-                            {platformIcons[conn.platform] || '🔌'}
+                            {platformIcons[conn.platform] || 'PL'}
                           </span>
                           {conn.platform}
                         </span>

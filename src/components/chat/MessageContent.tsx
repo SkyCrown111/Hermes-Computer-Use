@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { ThinkingBlock } from './ThinkingBlock';
 import { ToolsBlock } from './ToolsBlock';
 import { PermissionCard } from './PermissionCard';
@@ -47,7 +47,7 @@ export interface MessageContentProps {
 
 // ---- Component ----
 
-export const MessageContent: React.FC<MessageContentProps> = ({
+const MessageContentComponent: React.FC<MessageContentProps> = ({
   message,
   isFirstInGroup,
   isStreamingMsg = false,
@@ -203,11 +203,11 @@ export const MessageContent: React.FC<MessageContentProps> = ({
             <div className="message-edit-actions">
               <button className="message-edit-save" onClick={() => onSaveEdit(msg.id)}>
                 <span className="material-symbols-outlined">check</span>
-                {t('common.confirm') || '保存'}
+                {t('common.confirm')}
               </button>
               <button className="message-edit-cancel" onClick={onCancelEdit}>
                 <span className="material-symbols-outlined">close</span>
-                {t('common.cancel') || '取消'}
+                {t('common.cancel')}
               </button>
             </div>
           </div>
@@ -217,19 +217,19 @@ export const MessageContent: React.FC<MessageContentProps> = ({
         {!isStreamingMsg && editMessageId !== msg.id && (
           <div className="message-actions">
             {msg.role === 'user' && (
-              <button className="message-action-btn" onClick={() => onStartEdit(msg.id, msg.content)} title="编辑">
+              <button className="message-action-btn" onClick={() => onStartEdit(msg.id, msg.content)} title={t('message.edit')}>
                 <span className="material-symbols-outlined">edit</span>
               </button>
             )}
-            <button className="message-action-btn" onClick={() => onCopyMessage(msg.content)} title="复制">
+            <button className="message-action-btn" onClick={() => onCopyMessage(msg.content)} title={t('message.copy')}>
               <span className="material-symbols-outlined">content_copy</span>
             </button>
             {msg.role === 'assistant' && (
-              <button className="message-action-btn" onClick={onRegenerate} title="重新生成">
+              <button className="message-action-btn" onClick={onRegenerate} title={t('message.regenerate')}>
                 <span className="material-symbols-outlined">replay</span>
               </button>
             )}
-            <button className="message-action-btn delete" onClick={() => onDeleteMessage(msg.id)} title="删除">
+            <button className="message-action-btn delete" onClick={() => onDeleteMessage(msg.id)} title={t('message.delete')}>
               <span className="material-symbols-outlined">delete</span>
             </button>
           </div>
@@ -239,3 +239,5 @@ export const MessageContent: React.FC<MessageContentProps> = ({
   );
 };
 
+// Memoize to prevent re-renders when parent updates but props haven't changed
+export const MessageContent = memo(MessageContentComponent);

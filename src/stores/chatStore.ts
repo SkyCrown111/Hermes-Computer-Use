@@ -16,7 +16,6 @@ export interface PerSessionState {
   thinkingText: string;  // Status message like "正在思考..."
   reasoningText: string; // Actual reasoning content from AI
   streamingTools: ToolCallInfo[]; // Tools during streaming
-  activeToolName: string | null;
   pendingPermission: {
     id: string;
     command: string;
@@ -27,8 +26,6 @@ export interface PerSessionState {
     input_tokens: number;
     output_tokens: number;
   };
-  elapsedSeconds: number;
-  statusVerb: string;
   error: string | null;
 }
 
@@ -66,11 +63,8 @@ const DEFAULT_SESSION_STATE: PerSessionState = {
   thinkingText: '',
   reasoningText: '',
   streamingTools: [],
-  activeToolName: null,
   pendingPermission: null,
   tokenUsage: { input_tokens: 0, output_tokens: 0 },
-  elapsedSeconds: 0,
-  statusVerb: '',
   error: null,
 };
 
@@ -106,7 +100,6 @@ interface ChatStore {
 
   // 设置思考状态
   setThinking: (sessionId: string, isThinking: boolean, text?: string) => void;
-  appendThinkingText: (sessionId: string, text: string) => void;
 
   // 设置推理内容
   setReasoningText: (sessionId: string, text: string) => void;
@@ -118,7 +111,6 @@ interface ChatStore {
   clearStreamingTools: (sessionId: string) => void;
 
   // 设置工具
-  setActiveTool: (sessionId: string, toolName: string | null) => void;
   addToolCall: (sessionId: string, tool: ToolCallInfo) => void;
   updateToolCall: (sessionId: string, toolName: string, updates: Partial<ToolCallInfo>) => void;
 
@@ -236,14 +228,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }));
   },
 
-  appendThinkingText: (sessionId, text) => {
-    set((s) => ({
-      sessions: updateSessionIn(s.sessions, sessionId, (session) => ({
-        thinkingText: session.thinkingText + text,
-      })),
-    }));
-  },
-
   setReasoningText: (sessionId, text) => {
     set((s) => ({
       sessions: updateSessionIn(s.sessions, sessionId, () => ({
@@ -294,14 +278,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set((s) => ({
       sessions: updateSessionIn(s.sessions, sessionId, () => ({
         streamingTools: [],
-      })),
-    }));
-  },
-
-  setActiveTool: (sessionId, toolName) => {
-    set((s) => ({
-      sessions: updateSessionIn(s.sessions, sessionId, () => ({
-        activeToolName: toolName,
       })),
     }));
   },

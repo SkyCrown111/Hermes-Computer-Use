@@ -151,7 +151,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
             id: tab.id,
             platform: 'cli',
             chat_id: '',
-            chat_name: tab.title || '新会话',
+            chat_name: tab.title || 'New Session',
             started_at: now,
             last_activity_at: now,
             message_count: 0,
@@ -255,7 +255,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     }
 
     // Default title - will be updated when session is fetched from server
-    const sessionTitle = '新会话';
+    const sessionTitle = 'New Session';
 
     const now = new Date().toISOString();
     const newSession: Session = {

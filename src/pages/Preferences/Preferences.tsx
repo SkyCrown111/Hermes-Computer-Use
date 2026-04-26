@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Card } from '../../components';
+import { Card, SettingsIcon, GlobeIcon, CrownIcon, SkeletonText } from '../../components';
 import { useThemeStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
 import { getCurrentVersion } from '../../services/updateApi';
@@ -35,7 +35,7 @@ export const Preferences: React.FC = () => {
       <Card className="preferences-card">
         <div className="preferences-section">
           <div className="section-header">
-            <span className="section-icon">🎨</span>
+            <span className="section-icon"><SettingsIcon size={18} /></span>
             <div>
               <h2>{t('prefs.appearance')}</h2>
               <p>{t('prefs.appearanceDesc')}</p>
@@ -52,14 +52,14 @@ export const Preferences: React.FC = () => {
                 className={`theme-btn ${mode === 'light' ? 'active' : ''}`}
                 onClick={() => useThemeStore.getState().setTheme('light')}
               >
-                <span className="theme-icon">☀️</span>
+                <span className="theme-icon">L</span>
                 <span>{t('prefs.light')}</span>
               </button>
               <button
                 className={`theme-btn ${mode === 'dark' ? 'active' : ''}`}
                 onClick={() => useThemeStore.getState().setTheme('dark')}
               >
-                <span className="theme-icon">🌙</span>
+                <span className="theme-icon">D</span>
                 <span>{t('prefs.dark')}</span>
               </button>
             </div>
@@ -92,7 +92,7 @@ export const Preferences: React.FC = () => {
       <Card className="preferences-card">
         <div className="preferences-section">
           <div className="section-header">
-            <span className="section-icon">ℹ️</span>
+            <span className="section-icon"><SettingsIcon size={18} /></span>
             <div>
               <h2>{t('prefs.about')}</h2>
               <p>{t('prefs.aboutDesc')}</p>
@@ -101,10 +101,10 @@ export const Preferences: React.FC = () => {
 
           <div className="about-content">
             <div className="about-logo">
-              <span className="logo-icon">👑</span>
+              <span className="logo-icon"><CrownIcon size={24} /></span>
               <div className="logo-text">
                 <h3>Hermes Crown</h3>
-                <span className="version">v{version}</span>
+                {version ? <span className="version">v{version}</span> : <SkeletonText lines={1} lineHeight="0.9em" />}
               </div>
             </div>
 
@@ -130,7 +130,7 @@ export const Preferences: React.FC = () => {
                 rel="noopener noreferrer"
                 className="social-link"
               >
-                <span className="social-icon">📦</span>
+                <span className="social-icon"><GlobeIcon size={14} /></span>
                 <span>GitHub</span>
               </a>
             </div>

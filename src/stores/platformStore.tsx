@@ -3,6 +3,15 @@
 import { create } from 'zustand';
 import type { Platform, PlatformType } from '../types/platform';
 import { platformApi } from '../services/platformApi';
+import {
+  SmartphoneIcon,
+  ChatIcon,
+  BriefcaseIcon,
+  PlugIcon,
+  GlobeIcon,
+  BotIcon,
+  ZapIcon,
+} from '../components/ui/Icons';
 
 // 默认平台配置
 const defaultPlatforms: Platform[] = [
@@ -11,7 +20,7 @@ const defaultPlatforms: Platform[] = [
     name: 'Telegram',
     description: 'Telegram Bot 接入',
     status: 'disconnected',
-    icon: '📱',
+    icon: <SmartphoneIcon size={18} />,
     enabled: false,
   },
   {
@@ -19,7 +28,7 @@ const defaultPlatforms: Platform[] = [
     name: 'Discord',
     description: 'Discord Bot 接入',
     status: 'disconnected',
-    icon: '🎮',
+    icon: <ChatIcon size={18} />,
     enabled: false,
   },
   {
@@ -27,7 +36,7 @@ const defaultPlatforms: Platform[] = [
     name: 'Slack',
     description: 'Slack Bot 接入',
     status: 'disconnected',
-    icon: '💼',
+    icon: <BriefcaseIcon size={18} />,
     enabled: false,
   },
   {
@@ -35,7 +44,7 @@ const defaultPlatforms: Platform[] = [
     name: 'WhatsApp',
     description: 'WhatsApp Business API',
     status: 'disconnected',
-    icon: '💬',
+    icon: <ChatIcon size={18} />,
     enabled: false,
   },
   {
@@ -43,7 +52,7 @@ const defaultPlatforms: Platform[] = [
     name: '微信',
     description: '个人微信扫码接入',
     status: 'disconnected',
-    icon: '🟢',
+    icon: <ChatIcon size={18} />,
     enabled: false,
   },
   {
@@ -51,7 +60,7 @@ const defaultPlatforms: Platform[] = [
     name: '企业微信',
     description: '企业微信 Work 接入',
     status: 'disconnected',
-    icon: '🏢',
+    icon: <BotIcon size={18} />,
     enabled: false,
   },
   {
@@ -59,7 +68,7 @@ const defaultPlatforms: Platform[] = [
     name: '飞书',
     description: '飞书机器人接入',
     status: 'disconnected',
-    icon: '🦜',
+    icon: <ZapIcon size={18} />,
     enabled: false,
   },
   {
@@ -67,7 +76,7 @@ const defaultPlatforms: Platform[] = [
     name: 'API Gateway',
     description: 'REST API 接口',
     status: 'disconnected',
-    icon: '🔌',
+    icon: <PlugIcon size={18} />,
     enabled: false,
   },
   {
@@ -75,7 +84,7 @@ const defaultPlatforms: Platform[] = [
     name: 'Webhook',
     description: '自定义 Webhook 接入',
     status: 'disconnected',
-    icon: '🔗',
+    icon: <GlobeIcon size={18} />,
     enabled: false,
   },
 ];
@@ -92,7 +101,7 @@ interface PlatformState {
   selectPlatform: (type: PlatformType | null) => void;
   openConfigModal: (type: PlatformType) => void;
   closeConfigModal: () => void;
-  updateConfig: (type: PlatformType, config: Record<string, any>) => Promise<boolean>;
+  updateConfig: (type: PlatformType, config: Record<string, unknown>) => Promise<boolean>;
   enablePlatform: (type: PlatformType) => Promise<boolean>;
   disablePlatform: (type: PlatformType) => Promise<boolean>;
   testConnection: (type: PlatformType) => Promise<{ ok: boolean; message?: string; details?: string }>;

@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { logger } from '../lib/logger';
+import { t } from '../lib/i18n';
+import { useThemeStore } from './themeStore';
 
 const TAB_STORAGE_KEY = 'hermes-open-tabs';
 
@@ -66,7 +68,8 @@ export const useNavigationStore = create<NavigationState>((set, get) => ({
     }
 
     // Add new tab
-    const newTab: OpenTab = { id, title: title || `新会话`, type };
+    const lang = useThemeStore.getState().language || 'zh';
+    const newTab: OpenTab = { id, title: title || t('sidebar.newChat', lang), type };
     const newTabs = [...openTabs, newTab];
     set({
       openTabs: newTabs,

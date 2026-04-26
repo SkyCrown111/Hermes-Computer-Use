@@ -472,8 +472,13 @@
   margin-bottom: var(--space-2);
   overflow: hidden;
   border-radius: var(--radius-lg);
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-outline-variant);
   background: var(--color-surface-container-lowest);
+}
+
+/* Dark theme thinking block */
+[data-theme="dark"] .thinking-block-wrapper {
+  border-color: var(--color-outline-variant);
 }
 
 .thinking-block-toggle {
@@ -519,7 +524,7 @@
 }
 
 .thinking-block-content {
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid var(--color-outline-variant);
   max-height: 300px;
   overflow-y: auto;
   padding: var(--space-3);
@@ -529,6 +534,10 @@
   white-space: pre-wrap;
   word-break: break-word;
   font-family: var(--font-mono);
+}
+
+[data-theme="dark"] .thinking-block-content {
+  border-top-color: var(--color-outline-variant);
 }
 
 .thinking-dots-animate::after {
@@ -566,9 +575,14 @@
   display: flex;
   flex-direction: column;
   border-radius: var(--radius-lg);
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-outline-variant);
   background: var(--color-surface-container-lowest);
   overflow: hidden;
+}
+
+/* Dark theme tools block */
+[data-theme="dark"] .tools-block {
+  border-color: var(--color-outline-variant);
 }
 
 .tools-block-header {
@@ -627,9 +641,13 @@
 }
 
 .tools-block-content {
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid var(--color-outline-variant);
   display: flex;
   flex-direction: column;
+}
+
+[data-theme="dark"] .tools-block-content {
+  border-top-color: var(--color-outline-variant);
 }
 
 /* Individual tool item inside the block */
@@ -638,7 +656,11 @@
   flex-direction: column;
   align-items: stretch;
   padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-outline-variant);
+}
+
+[data-theme="dark"] .tool-item {
+  border-bottom-color: var(--color-outline-variant);
 }
 
 .tool-item:last-child {
@@ -729,9 +751,13 @@
   margin-bottom: var(--space-2);
   overflow: hidden;
   border-radius: var(--radius-lg);
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-outline-variant);
   background: var(--color-surface-container-lowest);
   font-size: 13px;
+}
+
+[data-theme="dark"] .tool-card {
+  border-color: var(--color-outline-variant);
 }
 
 .tool-card.error {

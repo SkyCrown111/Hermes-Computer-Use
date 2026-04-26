@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useSessionStore, useNavigationStore, useChatStore } from '../../../stores';
 import { useTranslation } from '../../../hooks/useTranslation';
-import { PlusIcon } from '../../index';
+import { PlusIcon, EditIcon, TrashIcon } from '../../index';
 import { InputModal } from '../../ui/Modal';
 import { formatRelativeTimeShort, groupByTime, type TimeGroup, TIME_GROUP_ORDER } from '../../../utils/format';
 import { FOCUS_SEARCH_EVENT } from '../../../hooks/useKeyboardShortcuts';
@@ -109,10 +109,10 @@ export const SessionSidebar: React.FC = () => {
   const { t } = useTranslation();
 
   const TIME_GROUP_LABELS: Record<TimeGroup, string> = {
-    today: t('sidebar.timeGroup.today') || '今天',
-    yesterday: t('sidebar.timeGroup.yesterday') || '昨天',
-    last7days: t('sidebar.timeGroup.last7days') || '最近7天',
-    older: t('sidebar.timeGroup.older') || '更早',
+    today: t('sidebar.timeGroup.today'),
+    yesterday: t('sidebar.timeGroup.yesterday'),
+    last7days: t('sidebar.timeGroup.last7days'),
+    older: t('sidebar.timeGroup.older'),
   };
 
   // Get session status: 'streaming' | 'active' | 'idle'
@@ -126,7 +126,7 @@ export const SessionSidebar: React.FC = () => {
 
   const handleNewChat = () => {
     const newId = `new_${Date.now()}`;
-    openTab(newId, '新会话', 'new');
+    openTab(newId, t('sidebar.newChat'), 'new');
   };
 
   // Handle right-click on session item
@@ -139,7 +139,7 @@ export const SessionSidebar: React.FC = () => {
       x: e.clientX,
       y: e.clientY,
       sessionId: session.id,
-      sessionName: session.chat_name || `会话 ${session.id.slice(0, 12)}`,
+      sessionName: session.chat_name || t('sessions.untitled').replace('{id}', session.id.slice(0, 12)),
     });
   }, []);
 
@@ -205,8 +205,8 @@ export const SessionSidebar: React.FC = () => {
     <aside className="session-sidebar">
       {/* Header */}
       <div className="session-sidebar-header">
-        <span className="session-sidebar-title">{t('nav.sessions') || '会话'}</span>
-        <button className="session-sidebar-new-btn" onClick={handleNewChat} title={t('nav.newChat') || '新建会话'}>
+        <span className="session-sidebar-title">{t('nav.sessions')}</span>
+        <button className="session-sidebar-new-btn" onClick={handleNewChat} title={t('nav.newChat')}>
           <PlusIcon size={14} />
         </button>
       </div>
@@ -217,7 +217,7 @@ export const SessionSidebar: React.FC = () => {
           ref={searchInputRef}
           type="text"
           className="session-sidebar-search-input"
-          placeholder={t('sidebar.searchPlaceholder') || '搜索会话...'}
+          placeholder={t('sidebar.searchPlaceholder')}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
         />
@@ -227,7 +227,7 @@ export const SessionSidebar: React.FC = () => {
       <div className="session-sidebar-list">
         {filteredSessions.length === 0 && (
           <div className="session-sidebar-empty">
-            {searchQuery ? (t('sidebar.noMatching') || '没有匹配的会话') : (t('sidebar.noSessions') || '暂无会话')}
+            {searchQuery ? t('sidebar.noMatching') : t('sidebar.noSessions')}
           </div>
         )}
         {TIME_GROUP_ORDER.map((group) => {
@@ -237,14 +237,13 @@ export const SessionSidebar: React.FC = () => {
             <div key={group} className="session-sidebar-group">
               <div className="session-sidebar-group-label">{TIME_GROUP_LABELS[group]}</div>
               {items.map((session) => {
-                // Generate a more descriptive title for untitled sessions
-                const displayTitle = session.chat_name || `会话 ${session.id.slice(0, 12)}`;
+                const displayTitle = session.chat_name || t('sessions.untitled').replace('{id}', session.id.slice(0, 12));
                 const status = getSessionStatus(session.id);
                 return (
                   <div
                     key={session.id}
                     className={`session-sidebar-item ${activeTabId === session.id ? 'active' : ''}`}
-                    onClick={() => openTab(session.id, session.chat_name || `会话 ${session.id.slice(0, 12)}`, 'session')}
+                    onClick={() => openTab(session.id, session.chat_name || t('sessions.untitled').replace('{id}', session.id.slice(0, 12)), 'session')}
                     onContextMenu={(e) => handleContextMenu(e, session)}
                   >
                     <span className={`session-sidebar-item-dot ${status}`} />
@@ -278,15 +277,15 @@ export const SessionSidebar: React.FC = () => {
             className="session-context-menu-item"
             onClick={handleRename}
           >
-            <span className="session-context-menu-icon">✏️</span>
-            {t('sidebar.rename') || '重命名'}
+            <span className="session-context-menu-icon"><EditIcon size={14} /></span>
+            {t('sidebar.rename')}
           </div>
           <div
             className="session-context-menu-item delete"
             onClick={handleDelete}
           >
-            <span className="session-context-menu-icon">🗑️</span>
-            {t('sessions.delete') || '删除'}
+            <span className="session-context-menu-icon"><TrashIcon size={14} /></span>
+            {t('sessions.delete')}
           </div>
         </div>
       )}
@@ -294,11 +293,11 @@ export const SessionSidebar: React.FC = () => {
       {/* Rename Modal */}
       <InputModal
         isOpen={renameModal.isOpen}
-        title={t('sidebar.renameSession') || '重命名会话'}
-        placeholder={t('sidebar.enterSessionName') || '请输入会话名称'}
+        title={t('sidebar.renameSession')}
+        placeholder={t('sidebar.enterSessionName')}
         defaultValue={renameModal.currentName}
-        confirmText={t('common.confirm') || '确定'}
-        cancelText={t('common.cancel') || '取消'}
+        confirmText={t('common.confirm')}
+        cancelText={t('common.cancel')}
         onConfirm={handleRenameConfirm}
         onCancel={handleRenameCancel}
       />

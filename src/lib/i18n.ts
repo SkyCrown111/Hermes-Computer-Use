@@ -75,6 +75,24 @@ const translations: Translations = {
   'sessions.page': { zh: '第', en: 'Page' },
   'sessions.total': { zh: '共', en: 'Total' },
   'sessions.items': { zh: '条', en: 'items' },
+  'sessions.untitled': { zh: '会话 {id}', en: 'Session {id}' },
+  'sessions.deleteSelected': { zh: '删除选中', en: 'Delete Selected' },
+  'sessions.clearSelection': { zh: '清除选择', en: 'Clear Selection' },
+  'sessions.noSelection': { zh: '未选择会话', en: 'No sessions selected' },
+  'sessions.exporting': { zh: '正在导出 {count} 个会话...', en: 'Exporting {count} sessions...' },
+  'sessions.exportSuccess': { zh: '成功导出 {count} 个会话', en: 'Successfully exported {count} sessions' },
+  'sessions.exportSomeFailed': { zh: '已导出 {success}/{total} 个会话。{fail} 个失败。', en: 'Exported {success}/{total} sessions. {fail} failed.' },
+  'sessions.exportFailed': { zh: '导出会话失败', en: 'Failed to export sessions' },
+  'sessions.batchDeleteSuccess': { zh: '成功删除 {count} 个会话', en: 'Successfully deleted {count} sessions' },
+  'sessions.batchDeletePartial': { zh: '已删除 {success}/{total} 个会话。{fail} 个失败。', en: 'Deleted {success}/{total} sessions. {fail} failed.' },
+  'sessions.loadFailed': { zh: '加载会话详情失败', en: 'Failed to load session details' },
+  'sessions.exportSingleSuccess': { zh: '会话导出成功', en: 'Session exported successfully' },
+  'sessions.exportSingleFailed': { zh: '导出会话失败', en: 'Failed to export session' },
+  'sessions.selectedCount': { zh: '{count} 个已选', en: '{count} selected' },
+  'sessions.batchDeleteConfirm.title': { zh: '删除会话', en: 'Delete Sessions' },
+  'sessions.batchDeleteConfirm.message': { zh: '确定要删除选中的 {count} 个会话吗？此操作不可恢复。', en: 'Are you sure you want to delete {count} sessions? This action cannot be undone.' },
+  'sessions.batchDeleteConfirm.confirm': { zh: '全部删除', en: 'Delete All' },
+  'sessions.batchDeleteConfirm.cancel': { zh: '取消', en: 'Cancel' },
 
   // Session Sidebar
   'sidebar.timeGroup.today': { zh: '今天', en: 'Today' },
@@ -85,6 +103,7 @@ const translations: Translations = {
   'sidebar.noSessions': { zh: '暂无会话', en: 'No sessions' },
   'sidebar.noMatching': { zh: '没有匹配的会话', en: 'No matching sessions' },
   'sidebar.rename': { zh: '重命名', en: 'Rename' },
+  'sidebar.newChat': { zh: '新会话', en: 'New Chat' },
   'sidebar.renameSession': { zh: '重命名会话', en: 'Rename Session' },
   'sidebar.enterSessionName': { zh: '请输入会话名称', en: 'Enter session name' },
 
@@ -172,6 +191,15 @@ const translations: Translations = {
   'dashboard.cannotGetStatus': { zh: '无法获取系统状态', en: 'Cannot get system status' },
   'dashboard.commonSkills': { zh: '常用 Skills', en: 'Common Skills' },
   'dashboard.noSkills': { zh: '暂无可用 Skills', en: 'No available Skills' },
+  'dashboard.checkingUpdates': { zh: '检查中...', en: 'Checking...' },
+  'dashboard.checkForUpdates': { zh: '检查更新', en: 'Check for Updates' },
+  'dashboard.restarting': { zh: '重启中...', en: 'Restarting...' },
+  'dashboard.restartGateway': { zh: '重启 Gateway', en: 'Restart Gateway' },
+  'dashboard.updateAvailable': { zh: '有可用更新', en: 'Update available' },
+  'dashboard.upToDate': { zh: '已是最新版本', en: 'Already up to date' },
+  'dashboard.updateCheckFailed': { zh: '检查更新失败', en: 'Failed to check for updates' },
+  'dashboard.gatewayRestarted': { zh: 'Gateway 已重启', en: 'Gateway restarted' },
+  'dashboard.gatewayRestartFailed': { zh: '重启 Gateway 失败', en: 'Failed to restart gateway' },
 
   // Tasks Page
   'tasks.total': { zh: '总任务', en: 'Total Tasks' },
@@ -329,6 +357,9 @@ const translations: Translations = {
   'memory.save': { zh: '保存', en: 'Save' },
   'memory.saved': { zh: '已保存', en: 'Saved' },
   'memory.cancel': { zh: '取消', en: 'Cancel' },
+  'memory.savingStatus': { zh: '保存中...', en: 'Saving...' },
+  'memory.savedStatus': { zh: '已保存', en: 'Saved' },
+  'section.untitled': { zh: '段落 {id}', en: 'Section {id}' },
 
   // Files Page
   'files.fileBrowser': { zh: '文件浏览', en: 'File Browser' },
@@ -441,6 +472,10 @@ const translations: Translations = {
   'chat.cmd.task': { zh: '创建任务', en: 'Create task' },
   'chat.cmd.file': { zh: '文件操作', en: 'File operations' },
   'chat.cmd.search': { zh: '搜索内容', en: 'Search content' },
+  'chat.confirmBatchDelete': { zh: '确定删除选中的 {count} 个会话？此操作不可恢复。', en: 'Are you sure you want to delete the selected {count} sessions? This action cannot be undone.' },
+  'chat.batchDeleteNotification': { zh: '已删除 {success}/{count} 个会话', en: 'Deleted {success}/{count} sessions' },
+  'chat.exportNotification': { zh: '已导出 {count} 个会话', en: 'Exported {count} sessions' },
+  'chat.streamComplete': { zh: '对话已完成', en: 'Conversation completed' },
 
   // Gateway Page
   'gateway.title': { zh: 'Gateway 管理', en: 'Gateway' },
@@ -458,6 +493,7 @@ const translations: Translations = {
   'gateway.notRunning': { zh: 'Gateway 未运行。请通过命令行启动或点击"重启 Gateway"。', en: 'Gateway is not running. Start it from the command line or click "Restart Gateway".' },
   'gateway.fetchFailed': { zh: '获取 Gateway 状态失败', en: 'Failed to fetch gateway status' },
   'gateway.restartFailed': { zh: '重启 Gateway 失败', en: 'Failed to restart gateway' },
+  'gateway.autoRetryHint': { zh: '自动重试间隔已延长', en: 'Auto-retry interval extended' },
   'gateway.online': { zh: '在线', en: 'Online' },
   'gateway.offline': { zh: '离线', en: 'Offline' },
   'gateway.degraded': { zh: '降级', en: 'Degraded' },
@@ -488,6 +524,40 @@ const translations: Translations = {
   'shortcuts.navigateCommands': { zh: '导航命令列表', en: 'Navigate commands' },
   'shortcuts.selectCommand': { zh: '选择命令', en: 'Select command' },
   'shortcuts.toClose': { zh: '关闭', en: 'to close' },
+
+  // Error Boundary
+  'errorBoundary.title': { zh: '出现错误', en: 'Something went wrong' },
+  'errorBoundary.pageError': { zh: '页面错误', en: 'Page Error' },
+  'errorBoundary.description': { zh: '发生意外错误，请尝试重启应用程序。', en: 'An unexpected error occurred. Please try restarting the application.' },
+  'errorBoundary.pageDescription': { zh: '此页面发生意外错误。', en: 'An unexpected error occurred on this page.' },
+  'errorBoundary.retry': { zh: '重试', en: 'Retry' },
+  'errorBoundary.reload': { zh: '重新加载应用', en: 'Reload Application' },
+
+  // Toast
+  'toast.dismiss': { zh: '关闭', en: 'Dismiss' },
+
+  // Loading
+  'loading.loading': { zh: '加载中...', en: 'Loading...' },
+
+  // Message Actions
+  'message.edit': { zh: '编辑', en: 'Edit' },
+  'message.copy': { zh: '复制', en: 'Copy' },
+  'message.regenerate': { zh: '重新生成', en: 'Regenerate' },
+  'message.delete': { zh: '删除', en: 'Delete' },
+  'message.searchPlaceholder': { zh: '搜索消息...', en: 'Search messages...' },
+  'message.previous': { zh: '上一个', en: 'Previous' },
+  'message.next': { zh: '下一个', en: 'Next' },
+  'message.close': { zh: '关闭', en: 'Close' },
+
+  // Cron Jobs
+  'cron.schedulePlaceholder': { zh: '例如: every 1h, every 30m, 0 9 * * *', en: 'e.g.: every 1h, every 30m, 0 9 * * *' },
+  'cron.outputTargetPlaceholder': { zh: '例如: telegram:123456', en: 'e.g.: telegram:123456' },
+
+  // Platforms — WeChat QR
+  'platforms.wechat.scanPrompt': { zh: '请使用微信扫描二维码以登录', en: 'Scan the QR code with WeChat to log in' },
+  'platforms.wechat.scanned': { zh: '已扫描，请在手机上确认登录', en: 'Scanned, please confirm on your phone' },
+  'platforms.wechat.qrcodeExpiry': { zh: '二维码有效期为 2 分钟', en: 'QR code expires in 2 minutes' },
+  'platforms.wechat.loadingQrcode': { zh: '正在加载二维码...', en: 'Loading QR code...' },
 };
 
 // Get translation for a key

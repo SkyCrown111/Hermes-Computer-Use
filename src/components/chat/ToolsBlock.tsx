@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, memo } from 'react';
 import type { ToolCallInfo } from '../../stores/chatStore';
 import { ToolItem } from './ToolItem';
 
@@ -7,7 +7,7 @@ interface ToolsBlockProps {
   isStreaming?: boolean;
 }
 
-export const ToolsBlock: React.FC<ToolsBlockProps> = ({ tools, isStreaming }) => {
+const ToolsBlockComponent: React.FC<ToolsBlockProps> = ({ tools, isStreaming }) => {
   const [expanded, setExpanded] = useState(false);
 
   // Count running/completed tools
@@ -58,3 +58,6 @@ export const ToolsBlock: React.FC<ToolsBlockProps> = ({ tools, isStreaming }) =>
     </div>
   );
 };
+
+// Memoize to prevent re-renders when parent message updates but tools haven't changed
+export const ToolsBlock = memo(ToolsBlockComponent);

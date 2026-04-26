@@ -1,13 +1,14 @@
 // Global Command Palette — triggered by Ctrl+K
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigationStore } from '../../../stores';
+import { useTranslation } from '../../../hooks/useTranslation';
 import { logger } from '../../../lib/logger';
 import './CommandPalette.css';
 
 interface Command {
   id: string;
-  label: string;
-  description?: string;
+  labelKey: string;
+  descriptionKey?: string;
   icon?: string;
   action: () => void;
 }
@@ -17,27 +18,29 @@ export const CommandPalette: React.FC = () => {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const { setActiveItem, openChat } = useNavigationStore();
+  const { t } = useTranslation();
 
   const commands: Command[] = [
-    { id: 'new-chat', label: 'New Chat', icon: '💬', action: () => openChat() },
-    { id: 'dashboard', label: 'Go to Dashboard', icon: '🏠', action: () => setActiveItem('dashboard') },
-    { id: 'sessions', label: 'Go to Sessions', icon: '💬', action: () => setActiveItem('sessions') },
-    { id: 'skills', label: 'Go to Skills', icon: '🎯', action: () => setActiveItem('skills') },
-    { id: 'tasks', label: 'Go to Tasks', icon: '⏰', action: () => setActiveItem('tasks') },
-    { id: 'gateway', label: 'Go to Gateway', icon: '🌐', action: () => setActiveItem('gateway') },
-    { id: 'monitor', label: 'Go to Monitor', icon: '📊', action: () => setActiveItem('monitor') },
-    { id: 'memory', label: 'Go to Memory', icon: '🧠', action: () => setActiveItem('memory') },
-    { id: 'platforms', label: 'Go to Platforms', icon: '🔌', action: () => setActiveItem('platforms') },
-    { id: 'settings', label: 'Go to Settings', icon: '⚙️', action: () => setActiveItem('settings') },
-    { id: 'preferences', label: 'Go to Preferences', icon: '🎨', action: () => setActiveItem('preferences') },
-    { id: 'files', label: 'Go to Files', icon: '📁', action: () => setActiveItem('files') },
+    { id: 'new-chat', labelKey: 'shortcuts.newChat', icon: '>>', action: () => openChat() },
+    { id: 'dashboard', labelKey: 'nav.home', icon: '[]', action: () => setActiveItem('dashboard') },
+    { id: 'sessions', labelKey: 'nav.sessions', icon: '><', action: () => setActiveItem('sessions') },
+    { id: 'skills', labelKey: 'nav.skills', icon: '()', action: () => setActiveItem('skills') },
+    { id: 'tasks', labelKey: 'nav.tasks', icon: '{}', action: () => setActiveItem('tasks') },
+    { id: 'gateway', labelKey: 'gateway.title', icon: '<>', action: () => setActiveItem('gateway') },
+    { id: 'monitor', labelKey: 'nav.monitor', icon: '~~', action: () => setActiveItem('monitor') },
+    { id: 'memory', labelKey: 'nav.memory', icon: '##', action: () => setActiveItem('memory') },
+    { id: 'platforms', labelKey: 'nav.platforms', icon: '||', action: () => setActiveItem('platforms') },
+    { id: 'settings', labelKey: 'nav.settings', icon: '**', action: () => setActiveItem('settings') },
+    { id: 'preferences', labelKey: 'nav.preferences', icon: '++', action: () => setActiveItem('preferences') },
+    { id: 'files', labelKey: 'nav.files', icon: '[]', action: () => setActiveItem('files') },
   ];
 
   // Filter commands by query
   const filtered = query
     ? commands.filter(c =>
-        c.label.toLowerCase().includes(query.toLowerCase()) ||
+        t(c.labelKey).toLowerCase().includes(query.toLowerCase()) ||
         c.id.includes(query.toLowerCase())
       )
     : commands;
@@ -93,38 +96,62 @@ export const CommandPalette: React.FC = () => {
   if (!isOpen) return null;
 
   return (
-    <div className="command-palette-overlay" onClick={close}>
-      <div className="command-palette" onClick={e => e.stopPropagation()}>
+    <div
+      className="command-palette-overlay"
+      onClick={close}
+      role="presentation"
+    >
+      <div
+        className="command-palette"
+        onClick={e => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('shortcuts.commandPalette')}
+      >
         <div className="command-palette-header">
-          <span className="command-palette-icon">⌘</span>
+          <span className="command-palette-icon" aria-hidden="true">⌘</span>
           <input
             ref={inputRef}
             type="text"
             className="command-palette-input"
-            placeholder="Type a command..."
+            placeholder={t('common.search')}
             value={query}
             onChange={e => { setQuery(e.target.value); setSelectedIndex(0); }}
             onKeyDown={handleKeyDown}
+            aria-label={t('common.search')}
+            aria-autocomplete="list"
+            aria-controls="command-list"
+            aria-activedescendant={filtered[selectedIndex] ? `cmd-${filtered[selectedIndex].id}` : undefined}
           />
         </div>
-        <div className="command-palette-results">
+        <div
+          ref={listRef}
+          className="command-palette-results"
+          role="listbox"
+          id="command-list"
+          aria-label={t('shortcuts.navigateCommands')}
+        >
           {filtered.length > 0 ? (
             filtered.map((cmd, i) => (
               <div
                 key={cmd.id}
+                id={`cmd-${cmd.id}`}
                 className={`command-item ${i === selectedIndex ? 'command-item-selected' : ''}`}
                 onClick={() => execute(cmd)}
                 onMouseEnter={() => setSelectedIndex(i)}
+                role="option"
+                aria-selected={i === selectedIndex}
+                tabIndex={-1}
               >
-                <span className="command-icon">{cmd.icon}</span>
+                <span className="command-icon" aria-hidden="true">{cmd.icon}</span>
                 <div className="command-info">
-                  <span className="command-label">{cmd.label}</span>
-                  {cmd.description && <span className="command-desc">{cmd.description}</span>}
+                  <span className="command-label">{t(cmd.labelKey)}</span>
+                  {cmd.descriptionKey && <span className="command-desc">{t(cmd.descriptionKey)}</span>}
                 </div>
               </div>
             ))
           ) : (
-            <div className="command-empty">No matching commands</div>
+            <div className="command-empty" role="status">{t('common.noData')}</div>
           )}
         </div>
       </div>

@@ -5,6 +5,7 @@ import { initializeChatStore } from './stores/chatStore';
 import { Layout, ToastContainer, ErrorBoundary, CommandPalette, GlobalSearch } from './components';
 import { logger } from './lib/logger';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { useTranslation } from './hooks/useTranslation';
 
 // Lazy-loaded page components for code splitting
 const Dashboard = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
@@ -20,12 +21,28 @@ const ChatPageLazy = lazy(() => import('./pages/Chat').then(m => ({ default: m.C
 const Preferences = lazy(() => import('./pages/Preferences').then(m => ({ default: m.Preferences })));
 const Gateway = lazy(() => import('./pages/Gateway').then(m => ({ default: m.Gateway })));
 
-// Suspense fallback
-const PageFallback = () => (
-  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: 300 }}>
-    <div className="loading-spinner" />
-  </div>
-);
+// Suspense fallback with i18n
+const PageFallback: React.FC = () => {
+  const { t } = useTranslation();
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '100%',
+        minHeight: 300,
+        gap: 'var(--space-3)',
+      }}
+    >
+      <div className="loading-spinner" />
+      <span style={{ color: 'var(--text-tertiary)', fontSize: '0.875rem' }}>
+        {t('loading.loading')}
+      </span>
+    </div>
+  );
+};
 
 function App() {
   const { activeItem, chatContext, restoreTabs } = useNavigationStore();

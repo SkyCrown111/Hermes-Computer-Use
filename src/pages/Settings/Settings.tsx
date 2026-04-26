@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Card, Button, Input } from '../../components';
+import { Card, Button, Input, SettingsIcon, ZapIcon, TerminalIcon, SaveIcon, RefreshIcon, AlertIcon, FileTextIcon, CheckIcon, XIcon } from '../../components';
 import { useSettingsStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
 import { toast } from '../../stores/toastStore';
@@ -23,14 +23,26 @@ import './Settings.css';
 // 配置节类型
 type ConfigSection = 'model' | 'agent' | 'terminal' | 'compression' | 'checkpoint' | 'update';
 
+// 配置节图标
+const SectionIcon: React.FC<{ section: ConfigSection; size?: number }> = ({ section, size = 16 }) => {
+  switch (section) {
+    case 'model': return <SettingsIcon size={size} />;
+    case 'agent': return <ZapIcon size={size} />;
+    case 'terminal': return <TerminalIcon size={size} />;
+    case 'compression': return <SaveIcon size={size} />;
+    case 'checkpoint': return <SaveIcon size={size} />;
+    case 'update': return <RefreshIcon size={size} />;
+  }
+};
+
 // 配置节标题
-const getSectionTitles = (t: (key: string) => string): Record<ConfigSection, { title: string; icon: string; description: string }> => ({
-  model: { title: t('settings.modelConfig'), icon: '🤖', description: t('settings.modelConfigDesc') },
-  agent: { title: t('settings.agentConfig'), icon: '⚡', description: t('settings.agentConfigDesc') },
-  terminal: { title: t('settings.terminalConfig'), icon: '💻', description: t('settings.terminalConfigDesc') },
-  compression: { title: t('settings.compressionConfig'), icon: '📦', description: t('settings.compressionConfigDesc') },
-  checkpoint: { title: t('settings.checkpointConfig'), icon: '💾', description: t('settings.checkpointConfigDesc') },
-  update: { title: t('settings.update'), icon: '🔄', description: t('settings.updateDesc') },
+const getSectionTitles = (t: (key: string) => string): Record<ConfigSection, { title: string; description: string }> => ({
+  model: { title: t('settings.modelConfig'), description: t('settings.modelConfigDesc') },
+  agent: { title: t('settings.agentConfig'), description: t('settings.agentConfigDesc') },
+  terminal: { title: t('settings.terminalConfig'), description: t('settings.terminalConfigDesc') },
+  compression: { title: t('settings.compressionConfig'), description: t('settings.compressionConfigDesc') },
+  checkpoint: { title: t('settings.checkpointConfig'), description: t('settings.checkpointConfigDesc') },
+  update: { title: t('settings.update'), description: t('settings.updateDesc') },
 });
 
 // 模型配置表单
@@ -111,7 +123,7 @@ const ModelConfigForm: React.FC<{
             className="toggle-visibility-btn"
             onClick={() => setShowApiKey(!showApiKey)}
           >
-            {showApiKey ? '🙈' : '👁️'}
+            {showApiKey ? 'Hide' : 'Show'}
           </button>
         </div>
         <span className="form-hint">
@@ -571,7 +583,7 @@ const UpdateSection: React.FC<{ t: (key: string) => string }> = ({ t }) => {
       {showRestartPrompt && (
         <div className="restart-prompt-overlay">
           <div className="restart-prompt-modal">
-            <div className="restart-prompt-icon">🔄</div>
+            <div className="restart-prompt-icon"><RefreshIcon size={24} /></div>
             <h3>{t('settings.updateReady')}</h3>
             <p>{t('settings.updateReadyDesc')}</p>
             <div className="restart-prompt-actions">
@@ -601,7 +613,7 @@ const UpdateSection: React.FC<{ t: (key: string) => string }> = ({ t }) => {
 
         {updateInfo?.status === 'uptodate' && (
           <div className="update-status uptodate">
-            <span className="update-status-icon">✓</span>
+            <span className="update-status-icon"><CheckIcon size={14} /></span>
             <span>{t('settings.appUptodate')}</span>
           </div>
         )}
@@ -609,7 +621,7 @@ const UpdateSection: React.FC<{ t: (key: string) => string }> = ({ t }) => {
         {updateInfo?.available && (
           <div className="update-available">
             <div className="update-available-header">
-              <span className="update-status-icon update-icon-new">🔄</span>
+              <span className="update-status-icon update-icon-new"><RefreshIcon size={14} /></span>
               <span>{t('settings.updateAvailable')}</span>
             </div>
             <div className="update-info-row">
@@ -654,14 +666,14 @@ const UpdateSection: React.FC<{ t: (key: string) => string }> = ({ t }) => {
 
         {updateInfo?.status === 'ready' && (
           <div className="update-status ready">
-            <span className="update-status-icon">✓</span>
+            <span className="update-status-icon"><CheckIcon size={14} /></span>
             <span>{t('settings.updateDownloaded')}</span>
           </div>
         )}
 
         {updateInfo?.status === 'error' && (
           <div className="update-status error">
-            <span className="update-status-icon">⚠</span>
+            <span className="update-status-icon"><AlertIcon size={14} /></span>
             <span>{updateInfo.error || t('settings.updateCheckFailed')}</span>
           </div>
         )}
@@ -943,7 +955,7 @@ export const Settings: React.FC = () => {
         {/* Success Message */}
         {successMessage && (
           <div className="success-message">
-            <span>✓</span>
+            <span><CheckIcon size={14} /></span>
             <span>{successMessage}</span>
             <button onClick={clearSuccessMessage} className="dismiss-btn">×</button>
           </div>
@@ -952,7 +964,7 @@ export const Settings: React.FC = () => {
         {/* Error Message */}
         {error && (
           <div className="error-message">
-            <span>⚠️</span>
+            <span><AlertIcon size={16} /></span>
             <span>{error}</span>
             <button onClick={clearError} className="dismiss-btn">×</button>
           </div>
@@ -964,13 +976,13 @@ export const Settings: React.FC = () => {
             <>
               {/* Section Navigation */}
               <div className="section-nav">
-                {(Object.entries(sectionTitles) as [ConfigSection, { title: string; icon: string; description: string }][]).map(([key, { title, icon }]) => (
+                {(Object.entries(sectionTitles) as [ConfigSection, { title: string; description: string }][]).map(([key, { title }]) => (
                   <button
                     key={key}
                     className={`section-nav-item ${activeSection === key ? 'active' : ''}`}
                     onClick={() => setActiveSection(key)}
                   >
-                    <span className="section-icon">{icon}</span>
+                    <span className="section-nav-icon"><SectionIcon section={key} size={16} /></span>
                     <span className="section-title">{title}</span>
                   </button>
                 ))}
@@ -986,7 +998,7 @@ export const Settings: React.FC = () => {
                   <>
                     <div className="config-header">
                       <div className="config-title-group">
-                        <span className="config-icon">{sectionTitles[activeSection]?.icon}</span>
+                        <span className="config-icon"><SectionIcon section={activeSection} size={20} /></span>
                         <div>
                           <h2 className="config-title">{sectionTitles[activeSection]?.title}</h2>
                           <p className="config-description">
@@ -1005,7 +1017,7 @@ export const Settings: React.FC = () => {
             <Card className="yaml-card">
               <div className="config-header">
                 <div className="config-title-group">
-                  <span className="config-icon">📝</span>
+                  <span className="config-icon"><FileTextIcon size={20} /></span>
                   <div>
                     <h2 className="config-title">{t('settings.yamlEditor')}</h2>
                     <p className="config-description">{t('settings.yamlEditorDesc')}</p>
@@ -1036,7 +1048,7 @@ export const Settings: React.FC = () => {
               <div className="modal-header">
                 <h3>{t('settings.importConfig')}</h3>
                 <button className="close-button" onClick={() => setShowImportModal(false)}>
-                  ✕
+                  <XIcon size={14} />
                 </button>
               </div>
               <div className="modal-body">

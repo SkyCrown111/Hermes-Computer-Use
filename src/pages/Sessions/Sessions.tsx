@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Button, ChatIcon, UserIcon, BotIcon, ToolIcon, ExportIcon, SearchIcon, ClockIcon, TrashIcon, SettingsIcon, AlertIcon, EditIcon, ConfirmModal } from '../../components';
+import { Card, Button, ChatIcon, UserIcon, BotIcon, ToolIcon, ExportIcon, SearchIcon, ClockIcon, TrashIcon, SettingsIcon, AlertIcon, EditIcon, ConfirmModal, XIcon } from '../../components';
 import { useSessionStore, useNavigationStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
 import { toast } from '../../stores/toastStore';
@@ -37,7 +37,7 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, isSelected, isBatchM
       </div>
       <div className="session-info">
         <div className="session-header-row">
-          <span className="session-name">{session.chat_name || `会话 ${session.id.slice(0, 12)}`}</span>
+          <span className="session-name">{session.chat_name || t('sessions.untitled').replace('{id}', session.id.slice(0, 12))}</span>
           <span className="session-model">{session.model.split('/').pop()}</span>
         </div>
         <div className="session-meta">
@@ -174,7 +174,7 @@ const ExportModal: React.FC<ExportModalProps> = ({ session, onClose, onExport, t
               className={`export-option ${selectedFormat === format ? 'export-option-selected' : ''}`}
               onClick={() => setSelectedFormat(format)}
             >
-              <span>{format === 'markdown' ? '📝' : '📄'}</span>
+              <span>{format === 'markdown' ? 'MD' : 'JSON'}</span>
               <span>{format.toUpperCase()}</span>
             </div>
           ))}
@@ -361,7 +361,7 @@ export const Sessions: React.FC = () => {
   // Handlers
   const handleSessionClick = (session: Session) => {
     logger.component('Sessions', 'Opening session as tab:', session.id);
-    openTab(session.id, session.chat_name || `会话 ${session.id.slice(0, 8)}`, 'session');
+    openTab(session.id, session.chat_name || t('sessions.untitled').replace('{id}', session.id.slice(0, 8)), 'session');
   };
 
   const handleShowDetail = async (session: Session) => {
@@ -444,7 +444,7 @@ export const Sessions: React.FC = () => {
         <div className="sessions-actions">
           <Button
             variant="secondary"
-            icon="📤"
+            icon={<ExportIcon size={16} />}
             disabled={selectedIds.size === 0}
             onClick={() => {
               setSelectedSessionForExport(null);
@@ -491,15 +491,15 @@ export const Sessions: React.FC = () => {
       {/* Batch Action Bar */}
       {selectedIds.size > 0 && (
         <div className="batch-bar">
-          <span className="batch-count">{selectedIds.size} selected</span>
+          <span className="batch-count">{t('sessions.selectedCount').replace('{count}', String(selectedIds.size))}</span>
           <Button variant="error" size="sm" onClick={() => setBatchDeleteConfirm(true)}>
-            Delete Selected
+            {t('sessions.deleteSelected')}
           </Button>
           <Button variant="secondary" size="sm" onClick={handleBatchExport}>
-            Export Selected
+            {t('sessions.export')}
           </Button>
           <Button variant="ghost" size="sm" onClick={clearSelection}>
-            Clear Selection
+            {t('sessions.clearSelection')}
           </Button>
         </div>
       )}
@@ -577,12 +577,12 @@ export const Sessions: React.FC = () => {
           <div className="session-detail-drawer" onClick={(e) => e.stopPropagation()}>
             <div className="drawer-header">
               <h2>{t('sessions.detail')}</h2>
-              <button className="drawer-close" onClick={clearCurrentSession}>✕</button>
+              <button className="drawer-close" onClick={clearCurrentSession}><XIcon size={14} /></button>
             </div>
             <div className="drawer-content">
               {/* Messages Panel */}
               <div className="messages-panel-wrapper">
-                <h3>💬 {t('sessions.chatHistory')} ({messages.length} {t('sessions.messages')})</h3>
+                <h3><ChatIcon size={16} /> {t('sessions.chatHistory')} ({messages.length} {t('sessions.messages')})</h3>
                 <div className="messages-panel">
                   {isLoadingMessages ? (
                     <div className="loading-container">
@@ -602,7 +602,7 @@ export const Sessions: React.FC = () => {
 
               {/* Detail Panel */}
               <div className="detail-panel-wrapper">
-                <h3>📋 {t('sessions.sessionInfo')}</h3>
+                <h3><SettingsIcon size={16} /> {t('sessions.sessionInfo')}</h3>
                 <div className="detail-info-grid">
                   <div className="detail-info-item">
                     <span className="detail-label">{t('sessions.sessionId')}</span>
@@ -637,7 +637,7 @@ export const Sessions: React.FC = () => {
                 <div className="drawer-actions">
                   <Button
                     variant="primary"
-                    icon="💬"
+                    icon={<ChatIcon size={16} />}
                     onClick={() => {
                       openTab(currentSession.id, currentSession.chat_name || `会话 ${currentSession.id.slice(0, 8)}`, 'session');
                     }}
@@ -646,7 +646,7 @@ export const Sessions: React.FC = () => {
                   </Button>
                   <Button
                     variant="secondary"
-                    icon="📤"
+                    icon={<ExportIcon size={16} />}
                     onClick={() => {
                       setSelectedSessionForExport(currentSession);
                       setShowExportModal(true);
@@ -710,10 +710,10 @@ export const Sessions: React.FC = () => {
       {/* Batch Delete Confirmation */}
       <ConfirmModal
         isOpen={batchDeleteConfirm}
-        title="Delete Sessions"
-        message={`Are you sure you want to delete ${selectedIds.size} sessions? This action cannot be undone.`}
-        confirmText="Delete All"
-        cancelText="Cancel"
+        title={t('sessions.batchDeleteConfirm.title')}
+        message={t('sessions.batchDeleteConfirm.message').replace('{count}', String(selectedIds.size))}
+        confirmText={t('sessions.batchDeleteConfirm.confirm')}
+        cancelText={t('sessions.batchDeleteConfirm.cancel')}
         variant="danger"
         onConfirm={handleBatchDelete}
         onCancel={() => setBatchDeleteConfirm(false)}

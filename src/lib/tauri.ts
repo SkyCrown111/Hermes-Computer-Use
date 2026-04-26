@@ -4,13 +4,19 @@
 import { invoke } from '@tauri-apps/api/core';
 import { logger } from './logger';
 
+// Global type declarations for Tauri window properties
+declare global {
+  interface Window {
+    __TAURI_INTERNALS__?: Record<string, unknown>;
+    __TAURI__?: Record<string, unknown>;
+  }
+}
+
 // Check if running in Tauri environment
 export const isTauri = () => {
   // Check for Tauri 2.0 internals
   if (typeof window !== 'undefined') {
-    // @ts-ignore - Tauri 2.0 internal check
     if (window.__TAURI_INTERNALS__) return true;
-    // @ts-ignore - Tauri 1.x check
     if (window.__TAURI__) return true;
   }
   // Check user agent for Tauri webview
@@ -279,15 +285,15 @@ function getMockData(cmd: string): unknown {
     // ===== Platforms =====
     case 'get_platforms':
       return [
-        { type: 'telegram', name: 'Telegram', description: 'Telegram Bot 接入', status: 'connected', icon: '📱', enabled: true, config: { bot_token: '' } },
-        { type: 'discord', name: 'Discord', description: 'Discord Bot 接入', status: 'disconnected', icon: '🎮', enabled: false, config: {} },
-        { type: 'slack', name: 'Slack', description: 'Slack Bot 接入', status: 'disconnected', icon: '💼', enabled: false, config: {} },
-        { type: 'whatsapp', name: 'WhatsApp', description: 'WhatsApp Business API', status: 'disconnected', icon: '💬', enabled: false, config: {} },
-        { type: 'weixin', name: '微信', description: '个人微信扫码接入', status: 'disconnected', icon: '🟢', enabled: false, config: {} },
-        { type: 'wechat', name: '企业微信', description: '企业微信 Work 接入', status: 'disconnected', icon: '🏢', enabled: false, config: {} },
-        { type: 'lark', name: '飞书', description: '飞书机器人接入', status: 'disconnected', icon: '🦜', enabled: false, config: {} },
-        { type: 'api', name: 'API Gateway', description: 'REST API 接口', status: 'disconnected', icon: '🔌', enabled: false, config: {} },
-        { type: 'webhook', name: 'Webhook', description: '自定义 Webhook 接入', status: 'disconnected', icon: '🔗', enabled: false, config: {} },
+        { type: 'telegram', name: 'Telegram', description: 'Telegram Bot 接入', status: 'connected', icon: 'telegram', enabled: true, config: { bot_token: '' } },
+        { type: 'discord', name: 'Discord', description: 'Discord Bot 接入', status: 'disconnected', icon: 'discord', enabled: false, config: {} },
+        { type: 'slack', name: 'Slack', description: 'Slack Bot 接入', status: 'disconnected', icon: 'slack', enabled: false, config: {} },
+        { type: 'whatsapp', name: 'WhatsApp', description: 'WhatsApp Business API', status: 'disconnected', icon: 'whatsapp', enabled: false, config: {} },
+        { type: 'weixin', name: '微信', description: '个人微信扫码接入', status: 'disconnected', icon: 'weixin', enabled: false, config: {} },
+        { type: 'wechat', name: '企业微信', description: '企业微信 Work 接入', status: 'disconnected', icon: 'wechat', enabled: false, config: {} },
+        { type: 'lark', name: '飞书', description: '飞书机器人接入', status: 'disconnected', icon: 'lark', enabled: false, config: {} },
+        { type: 'api', name: 'API Gateway', description: 'REST API 接口', status: 'disconnected', icon: 'api', enabled: false, config: {} },
+        { type: 'webhook', name: 'Webhook', description: '自定义 Webhook 接入', status: 'disconnected', icon: 'webhook', enabled: false, config: {} },
       ];
     case 'get_platform_status':
       return {

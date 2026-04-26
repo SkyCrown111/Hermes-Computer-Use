@@ -1,6 +1,7 @@
 // Keyboard Shortcuts Help Panel
 import React, { useEffect, useCallback } from 'react';
 import { useTranslation } from '../../../hooks/useTranslation';
+import { XIcon } from '../Icons';
 import './KeyboardShortcutsHelp.css';
 
 interface ShortcutGroup {
@@ -75,7 +76,7 @@ export const KeyboardShortcutsHelp: React.FC = () => {
         <div className="shortcuts-help-header">
           <h2 id="shortcuts-help-title">{t('shortcuts.title') || 'Keyboard Shortcuts'}</h2>
           <button className="shortcuts-help-close" onClick={() => setVisible(false)} aria-label={t('common.close') || 'Close'}>
-            ✕
+            <XIcon size={14} />
           </button>
         </div>
         <div className="shortcuts-help-content">

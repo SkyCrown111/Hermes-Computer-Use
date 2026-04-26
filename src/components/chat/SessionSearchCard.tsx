@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { memo } from 'react';
+import { ChatIcon } from '../ui/Icons';
 import type { SessionSearchResult } from './constants';
 
 interface SessionSearchCardProps {
@@ -8,7 +9,7 @@ interface SessionSearchCardProps {
   onToggle?: () => void;
 }
 
-export const SessionSearchCard: React.FC<SessionSearchCardProps> = ({ result, onClick, selected, onToggle }) => {
+const SessionSearchCardComponent: React.FC<SessionSearchCardProps> = ({ result, onClick, selected, onToggle }) => {
   const formatDate = (timestamp: number) => {
     const date = new Date(timestamp * 1000);
     return date.toLocaleString('zh-CN', {
@@ -27,7 +28,7 @@ export const SessionSearchCard: React.FC<SessionSearchCardProps> = ({ result, on
             <input type="checkbox" checked={!!selected} onChange={() => onToggle()} />
           </label>
         )}
-        <span className="session-search-card-icon">💬</span>
+        <span className="session-search-card-icon"><ChatIcon size={14} /></span>
         <span className="session-search-card-title">
           {result.title || `会话 ${result.session_id.slice(0, 8)}`}
         </span>
@@ -41,3 +42,6 @@ export const SessionSearchCard: React.FC<SessionSearchCardProps> = ({ result, on
     </div>
   );
 };
+
+// Memoize to prevent re-renders when parent list updates but this card's props haven't changed
+export const SessionSearchCard = memo(SessionSearchCardComponent);

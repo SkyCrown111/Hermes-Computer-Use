@@ -8,7 +8,7 @@ import { useTranslation } from '../../hooks/useTranslation';
 import { ChatInput, MessageContent, ThinkingBlock, ToolsBlock } from '../../components/chat';
 import type { ChatInputHandle, AttachedFile, SessionSearchResult } from '../../components/chat';
 import type { ChatMessage, ToolCallInfo } from '../../stores/chatStore';
-import { MarkdownRenderer, BotIcon, ThinkingIcon } from '../../components';
+import { MarkdownRenderer, BotIcon, ThinkingIcon, XIcon } from '../../components';
 import { logger } from '../../lib/logger';
 import type { Session, SessionMessage } from '../../types';
 import './SessionChat.css';
@@ -308,7 +308,7 @@ export const SessionChat: React.FC<SessionChatProps> = ({
             {apiAvailable === true && (
               <span className="api-status online">{t('dashboard.online')}</span>
             )}
-            <button className="chat-close-btn" onClick={onClose}>✕</button>
+            <button className="chat-close-btn" onClick={onClose}><XIcon size={14} /></button>
           </div>
         </div>
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Button, Input, Textarea, PlusIcon, ClockIcon, TargetIcon, ExportIcon, AlertIcon, EmptyIcon, ConfirmModal, ChevronDownIcon, ChevronUpIcon } from '../../components';
+import { Card, Button, Input, Textarea, PlusIcon, ClockIcon, TargetIcon, ExportIcon, AlertIcon, EmptyIcon, ConfirmModal, ChevronDownIcon, ChevronUpIcon, XIcon } from '../../components';
 import { useCronJobsStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
 import { toast } from '../../stores/toastStore';
@@ -276,7 +276,9 @@ export const CronJobs: React.FC = () => {
                           job.enabled ? 'status-enabled' : 'status-disabled'
                         }`}
                       >
-                        {job.enabled ? '🟢 ' + t('tasks.enabled') : '🔴 ' + t('tasks.paused')}
+                        {job.enabled
+                          ? <><span className="status-indicator status-enabled-dot" />{t('tasks.enabled')}</>
+                          : <><span className="status-indicator status-disabled-dot" />{t('tasks.paused')}</>}
                       </span>
                     </div>
                     <div className="job-schedule">
@@ -297,7 +299,7 @@ export const CronJobs: React.FC = () => {
                       size="sm"
                       onClick={() => handleTrigger(job.id)}
                     >
-                      ▶️ {t('tasks.trigger')}
+                      ▶ {t('tasks.trigger')}
                     </Button>
                     <Button
                       variant="ghost"
@@ -306,7 +308,7 @@ export const CronJobs: React.FC = () => {
                         job.enabled ? pauseJob(job.id) : resumeJob(job.id)
                       }
                     >
-                      {job.enabled ? '⏸️ 暂停' : '▶️ ' + t('tasks.resume')}
+                      {job.enabled ? '|| ' + t('tasks.pause') : '▶ ' + t('tasks.resume')}
                     </Button>
                   </div>
                 </div>
@@ -397,7 +399,7 @@ export const CronJobs: React.FC = () => {
                     setEditingJob(null);
                   }}
                 >
-                  ✕
+                  <XIcon size={16} />
                 </button>
               </div>
 
@@ -423,7 +425,7 @@ export const CronJobs: React.FC = () => {
 
                 <Input
                   label={t('tasks.schedule')}
-                  placeholder="例如: every 1h, every 30m, 0 9 * * *"
+                  placeholder={t('cron.schedulePlaceholder')}
                   value={formData.schedule}
                   onChange={(e) => {
                     const value = e.target.value;
@@ -463,7 +465,7 @@ export const CronJobs: React.FC = () => {
                       {formData.skills.map((skill: string) => (
                         <span key={skill} className="selected-skill">
                           {skill}
-                          <button onClick={() => removeSkill(skill)}>✕</button>
+                          <button onClick={() => removeSkill(skill)}><XIcon size={12} /></button>
                         </span>
                       ))}
                     </div>
@@ -472,7 +474,7 @@ export const CronJobs: React.FC = () => {
 
                 <Input
                   label={t('tasks.outputTarget')}
-                  placeholder="例如: telegram:123456"
+                  placeholder={t('cron.outputTargetPlaceholder')}
                   value={formData.deliver || ''}
                   onChange={(e) =>
                     setFormData({ ...formData, deliver: e.target.value })
@@ -508,7 +510,7 @@ export const CronJobs: React.FC = () => {
               <div className="form-header">
                 <h2>{t('tasks.executionHistory')}</h2>
                 <button className="close-button" onClick={() => clearSelectedJob()}>
-                  ✕
+                  <XIcon size={16} />
                 </button>
               </div>
 
@@ -533,7 +535,9 @@ export const CronJobs: React.FC = () => {
                                 : 'status-error'
                             }`}
                           >
-                            {output.status === 'success' ? '✅ ' + t('tasks.success') : '❌ ' + t('tasks.failed')}
+                            {output.status === 'success'
+                              ? <><span className="status-indicator status-success-dot" />{t('tasks.success')}</>
+                              : <><span className="status-indicator status-error-dot" />{t('tasks.failed')}</>}
                           </span>
                           <span className="output-time">
                             {formatDateTime(output.started_at)}

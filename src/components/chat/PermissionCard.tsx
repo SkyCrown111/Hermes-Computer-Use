@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, memo } from 'react';
 
 interface PermissionCardProps {
   approval: { id: string; command: string; description: string; allow_permanent: boolean };
   onRespond: (choice: 'once' | 'session' | 'always' | 'deny') => void;
 }
 
-export const PermissionCard: React.FC<PermissionCardProps> = ({ approval, onRespond }) => {
+const PermissionCardComponent: React.FC<PermissionCardProps> = ({ approval, onRespond }) => {
   const [showCommand, setShowCommand] = useState(false);
 
   return (
@@ -63,3 +63,6 @@ export const PermissionCard: React.FC<PermissionCardProps> = ({ approval, onResp
     </div>
   );
 };
+
+// Memoize to prevent re-renders when parent updates but approval props haven't changed
+export const PermissionCard = memo(PermissionCardComponent);

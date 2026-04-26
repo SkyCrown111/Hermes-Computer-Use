@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, memo } from 'react';
 
 interface ThinkingBlockProps {
   content: string;
   isActive?: boolean;
 }
 
-export const ThinkingBlock: React.FC<ThinkingBlockProps> = ({ content, isActive }) => {
+const ThinkingBlockComponent: React.FC<ThinkingBlockProps> = ({ content, isActive }) => {
   const [expanded, setExpanded] = useState(false);
   const lines = content.split('\n').filter(l => l.trim());
   const firstLine = lines[0]?.replace(/\s+/g, ' ').trim() || '';
@@ -35,3 +35,6 @@ export const ThinkingBlock: React.FC<ThinkingBlockProps> = ({ content, isActive 
     </div>
   );
 };
+
+// Memoize to prevent re-renders when parent message updates but thinking content hasn't changed
+export const ThinkingBlock = memo(ThinkingBlockComponent);

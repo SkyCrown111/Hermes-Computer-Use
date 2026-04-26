@@ -134,7 +134,7 @@ export const MessageList: React.FC<MessageListProps> = ({
           <input
             className="message-search-input"
             type="text"
-            placeholder="搜索消息..."
+            placeholder={t('message.searchPlaceholder')}
             value={messageSearchQuery}
             onChange={(e) => {
               onSetSearchQuery(e.target.value);
@@ -150,7 +150,7 @@ export const MessageList: React.FC<MessageListProps> = ({
             className="message-search-nav"
             disabled={messageMatchIndices.length === 0}
             onClick={() => onSetActiveMatch(i => i <= 0 ? messageMatchIndices.length - 1 : i - 1)}
-            title="上一个"
+            title={t('message.previous')}
           >
             <span className="material-symbols-outlined">keyboard_arrow_up</span>
           </button>
@@ -158,14 +158,14 @@ export const MessageList: React.FC<MessageListProps> = ({
             className="message-search-nav"
             disabled={messageMatchIndices.length === 0}
             onClick={() => onSetActiveMatch(i => i >= messageMatchIndices.length - 1 ? 0 : i + 1)}
-            title="下一个"
+            title={t('message.next')}
           >
             <span className="material-symbols-outlined">keyboard_arrow_down</span>
           </button>
           <button
             className="message-search-close"
             onClick={onCloseSearch}
-            title="关闭"
+            title={t('message.close')}
           >
             <span className="material-symbols-outlined">close</span>
           </button>

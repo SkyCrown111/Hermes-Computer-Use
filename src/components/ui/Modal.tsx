@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button } from './Button';
+import { Button, AlertIcon, ZapIcon } from '../index';
 import './Modal.css';
 
 interface ConfirmModalProps {
@@ -25,10 +25,13 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
 }) => {
   if (!isOpen) return null;
 
-  const icons = {
-    danger: '⚠️',
-    warning: '⚡',
-    info: 'ℹ️',
+  const getIcon = (variant: string) => {
+    switch (variant) {
+      case 'danger': return <AlertIcon size={24} />;
+      case 'warning': return <ZapIcon size={24} />;
+      case 'info': return <span style={{ fontSize: '24px', fontWeight: 'bold', lineHeight: 1 }}>i</span>;
+      default: return <AlertIcon size={24} />;
+    }
   };
 
   return (
@@ -42,7 +45,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
         aria-describedby="confirm-modal-message"
       >
         <div className={`modal-icon modal-icon-${variant}`}>
-          {icons[variant]}
+          {getIcon(variant)}
         </div>
         <h3 className="modal-title" id="confirm-modal-title">{title}</h3>
         <p className="modal-message" id="confirm-modal-message">{message}</p>

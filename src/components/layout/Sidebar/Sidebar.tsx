@@ -135,7 +135,7 @@ export const Sidebar: React.FC = () => {
     { id: 'monitor', label: t('nav.monitor'), icon: <MonitorIcon />, path: '/monitor' },
     { id: 'memory', label: t('nav.memory'), icon: <MemoryIcon />, path: '/memory' },
     { id: 'platforms', label: t('nav.platforms'), icon: <PlatformsIcon />, path: '/platforms' },
-    { id: 'gateway', label: 'Gateway', icon: <GatewayIcon />, path: '/gateway' },
+    { id: 'gateway', label: t('gateway.title'), icon: <GatewayIcon />, path: '/gateway' },
     { id: 'files', label: t('nav.files'), icon: <FilesIcon />, path: '/files' },
   ];
 
