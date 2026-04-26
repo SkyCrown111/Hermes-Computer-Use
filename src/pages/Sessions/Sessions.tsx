@@ -620,7 +620,7 @@ export const Sessions: React.FC = () => {
                   </div>
                   <div className="detail-info-item">
                     <span className="detail-label">{t('sessions.messageCount')}</span>
-                    <span className="detail-value">{currentSession.message_count} {t('sessions.messages').replace('消息', '').replace('messages', '')}</span>
+                    <span className="detail-value">{currentSession.message_count} {t('sessions.countUnit')}</span>
                   </div>
                   <div className="detail-info-item">
                     <span className="detail-label">{t('sessions.tokenUsage')}</span>

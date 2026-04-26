@@ -121,16 +121,54 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   successMessage: null,
   isSaving: false,
 
-  // 获取所有配置
+  // 获取所有配置 (single API call, not 5 separate ones)
   fetchAllConfigs: async () => {
-    const state = get();
-    await Promise.all([
-      state.fetchModelConfig(),
-      state.fetchAgentConfig(),
-      state.fetchTerminalConfig(),
-      state.fetchCompressionConfig(),
-      state.fetchCheckpointConfig(),
-    ]);
+    try {
+      const config = await settingsApi.loadConfig() as ConfigResponse;
+      set({
+        modelConfig: {
+          default: config.model?.default || '',
+          provider: config.model?.provider || 'auto',
+          api_key: config.model?.api_key || '',
+          base_url: config.model?.base_url || '',
+        },
+        agentConfig: {
+          max_turns: config.agent?.max_turns || 100,
+          timeout: config.agent?.timeout || 300,
+          reasoning_effort: (config.agent?.reasoning_effort as 'low' | 'medium' | 'high') || 'medium',
+        },
+        terminalConfig: {
+          backend: (config.terminal?.backend as 'local' | 'docker' | 'ssh') || 'local',
+          timeout: config.terminal?.timeout || 180,
+          cwd: config.terminal?.cwd || '',
+        },
+        compressionConfig: {
+          enabled: config.compression?.enabled ?? true,
+          threshold: config.compression?.threshold || 0.8,
+          target_ratio: config.compression?.target_ratio || 0.5,
+        },
+        checkpointConfig: {
+          enabled: config.checkpoint?.enabled ?? true,
+          max_snapshots: config.checkpoint?.max_snapshots || 10,
+        },
+        rawYaml: config.raw || '',
+        isLoadingModel: false,
+        isLoadingAgent: false,
+        isLoadingTerminal: false,
+        isLoadingCompression: false,
+        isLoadingCheckpoint: false,
+      });
+    } catch (err) {
+      const msg = (err as Error).message;
+      set({
+        error: msg,
+        isLoadingModel: false,
+        isLoadingAgent: false,
+        isLoadingTerminal: false,
+        isLoadingCompression: false,
+        isLoadingCheckpoint: false,
+      });
+    }
   },
 
   // 获取模型配置
@@ -309,14 +347,13 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     }
   },
 
-  // 更新原始 YAML 配置
+  // 更新原始 YAML 配置 (pass raw YAML string, not JSON.parse)
   updateRawYaml: async (yaml: string) => {
     set({ isSaving: true, error: null });
     try {
-      const config = JSON.parse(yaml);
-      await settingsApi.saveConfig(config);
+      await settingsApi.saveConfig({ raw: yaml });
       set({ rawYaml: yaml, isSaving: false, successMessage: '配置已保存' });
-      // 刷新所有配置
+      // Refresh all configs
       get().fetchAllConfigs();
       setTimeout(() => set({ successMessage: null }), 3000);
     } catch (err) {

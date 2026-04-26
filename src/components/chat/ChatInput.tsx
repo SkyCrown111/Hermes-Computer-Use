@@ -17,6 +17,11 @@ export interface ChatInputHandle {
   triggerSend: (text: string) => void;
 }
 
+interface PendingMessage {
+  text: string;
+  files: AttachedFile[];
+}
+
 interface ChatInputProps {
   onSendMessage: (text: string, attachedFiles: AttachedFile[]) => void;
   onStop: () => void;
@@ -53,6 +58,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const [filteredCommands, setFilteredCommands] = useState(HERMES_COMMANDS);
     const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
     const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
+    const [pendingMessage, setPendingMessage] = useState<PendingMessage | null>(null);
 
     // ---- Refs ----
     const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -74,6 +80,15 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     useEffect(() => {
       inputRef.current?.focus();
     }, []);
+
+    // Send pending message when streaming ends
+    useEffect(() => {
+      if (!isStreaming && pendingMessage) {
+        logger.debug('[ChatInput] Streaming ended, sending pending message');
+        onSendMessage(pendingMessage.text, pendingMessage.files);
+        setPendingMessage(null);
+      }
+    }, [isStreaming, pendingMessage, onSendMessage]);
 
     // Close menus when clicking outside
     useEffect(() => {
@@ -113,7 +128,17 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     };
 
     const handleSend = () => {
-      if (!inputValue.trim() || isStreaming) return;
+      if (!inputValue.trim()) return;
+
+      // If streaming, queue the message to be sent when streaming ends
+      if (isStreaming) {
+        logger.debug('[ChatInput] Streaming in progress, queuing message');
+        setPendingMessage({ text: inputValue.trim(), files: attachedFiles });
+        setInputValue('');
+        setAttachedFiles([]);
+        return;
+      }
+
       onSendMessage(inputValue.trim(), attachedFiles);
       setInputValue('');
       setAttachedFiles([]);
@@ -242,6 +267,21 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                   </button>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Pending Message Indicator */}
+          {pendingMessage && (
+            <div className="pending-message-indicator">
+              <span className="pending-icon">⏳</span>
+              <span className="pending-text">{t('chat.messageQueued') || '消息已排队，等待发送...'}</span>
+              <button
+                className="cancel-pending-btn"
+                onClick={() => setPendingMessage(null)}
+                title={t('common.cancel') || '取消'}
+              >
+                ✕
+              </button>
             </div>
           )}
 

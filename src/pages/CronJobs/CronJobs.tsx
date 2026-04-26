@@ -306,7 +306,7 @@ export const CronJobs: React.FC = () => {
                         job.enabled ? pauseJob(job.id) : resumeJob(job.id)
                       }
                     >
-                      {job.enabled ? '⏸️ ' + t('tasks.paused') : '▶️ ' + t('tasks.resume')}
+                      {job.enabled ? '⏸️ 暂停' : '▶️ ' + t('tasks.resume')}
                     </Button>
                   </div>
                 </div>

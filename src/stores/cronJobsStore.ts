@@ -47,7 +47,19 @@ interface CronJobsState {
   clearError: () => void;
 }
 
-export const useCronJobsStore = create<CronJobsState>((set, get) => ({
+  // Parse schedule string into Schedule object
+  function parseSchedule(schedule: string): { kind: string; display: string; minutes?: number } {
+    const trimmed = schedule.trim();
+    // Check if it's a cron expression (5 space-separated fields)
+    if (/^(\d+|\*|\/\d+|\d+-\d+|\d+\/\d+)\s+/.test(trimmed) && trimmed.split(/\s+/).length === 5) {
+      return { kind: 'cron', display: trimmed };
+    }
+    // Otherwise treat as interval minutes
+    const minutes = parseInt(trimmed.replace(/[^0-9]/g, ''), 10) || 60;
+    return { kind: 'interval', display: `每 ${minutes} 分钟`, minutes };
+  }
+
+  export const useCronJobsStore = create<CronJobsState>((set, get) => ({
   // 初始状态
   jobs: [],
   isLoadingJobs: false,
@@ -101,7 +113,7 @@ export const useCronJobsStore = create<CronJobsState>((set, get) => ({
         ...params,
         enabled: true,
         run_count: 0,
-        schedule: { kind: 'interval' as const, display: params.schedule, minutes: 60 },
+        schedule: { ...parseSchedule(params.schedule) },
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       } as CronJob;

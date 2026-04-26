@@ -501,3 +501,130 @@
   height: 48px;
   border-width: 4px;
 }
+
+/* ============================================
+   Mobile Responsive Enhancements
+   ============================================ */
+
+@media (max-width: 767px) {
+  .dashboard {
+    gap: var(--space-4);
+  }
+
+  .stat-card {
+    padding: var(--space-4);
+  }
+
+  .stat-icon {
+    width: 50px;
+    height: 50px;
+  }
+
+  .stat-value {
+    font-size: var(--text-xl);
+  }
+
+  .action-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .session-preview {
+    max-width: 200px;
+  }
+
+  .onboarding-container {
+    padding: var(--space-4);
+  }
+
+  .onboarding-card {
+    padding: var(--space-6);
+  }
+
+  .onboarding-actions {
+    flex-direction: column;
+  }
+
+  .onboarding-actions .btn {
+    width: 100%;
+  }
+
+  /* Additional mobile enhancements */
+  .dashboard-main {
+    grid-template-columns: 1fr;
+  }
+
+  .recent-sessions {
+    grid-row: auto;
+  }
+
+  .status-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-3);
+  }
+
+  .session-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+  }
+
+  .session-time {
+    align-self: flex-end;
+  }
+
+  .task-item {
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .task-status {
+    order: -1;
+  }
+
+  .task-time {
+    width: 100%;
+    text-align: right;
+  }
+
+  .skills-grid {
+    gap: var(--space-1);
+  }
+
+  .skill-chip {
+    padding: var(--space-1) var(--space-2);
+    font-size: var(--text-xs);
+  }
+
+  .onboarding-icon {
+    font-size: 48px;
+  }
+
+  .onboarding-title {
+    font-size: var(--text-xl);
+  }
+
+  .onboarding-steps {
+    padding: var(--space-4);
+  }
+
+  .step {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+  }
+
+  .step-number {
+    width: 24px;
+    height: 24px;
+    font-size: var(--text-xs);
+  }
+
+  .step-content code {
+    font-size: var(--text-xs);
+    word-break: break-all;
+  }
+
+  .loading-fullscreen {
+    min-height: 60vh;
+  }
+}

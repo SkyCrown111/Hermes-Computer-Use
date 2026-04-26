@@ -81,6 +81,7 @@
   flex: 1;
   overflow-y: auto;
   padding: var(--space-2);
+  padding-bottom: 40px; /* Extra space for status bar */
 }
 
 .session-sidebar-group {
@@ -233,4 +234,23 @@
 
 .session-context-menu-icon {
   font-size: 12px;
+}
+
+/* ============================================
+   Responsive Styles
+   ============================================ */
+
+/* Tablet: 768px - 1024px */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .session-sidebar {
+    left: var(--sidebar-collapsed-width);
+    width: 200px;
+  }
+}
+
+/* Mobile: < 768px - Hide session sidebar */
+@media (max-width: 767px) {
+  .session-sidebar {
+    display: none;
+  }
 }

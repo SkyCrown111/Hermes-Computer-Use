@@ -4,6 +4,7 @@ import { useSettingsStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
 import { toast } from '../../stores/toastStore';
 import { validateNumber, validatePath } from '../../utils/validation';
+import { relaunch } from '@tauri-apps/plugin-process';
 import {
   checkForUpdates,
   installPendingUpdate,
@@ -541,10 +542,14 @@ const UpdateSection: React.FC<{ t: (key: string) => string }> = ({ t }) => {
     }
   };
 
-  const handleRestart = () => {
-    // Restart the app - for now use window reload
-    // TODO: Add @tauri-apps/plugin-process for proper app restart
-    window.location.reload();
+  const handleRestart = async () => {
+    try {
+      await relaunch();
+    } catch (err) {
+      logger.error('[Settings] Failed to restart app:', err);
+      // Fallback to page reload if restart fails
+      window.location.reload();
+    }
   };
 
   useEffect(() => {

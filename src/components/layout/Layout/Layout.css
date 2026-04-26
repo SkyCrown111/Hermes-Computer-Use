@@ -127,3 +127,106 @@
   align-items: center;
   gap: var(--space-3);
 }
+
+/* ============================================
+   Responsive Styles
+   ============================================ */
+
+/* Mobile Header with Hamburger Menu */
+.mobile-header {
+  display: none;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+.hamburger-btn {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.hamburger-btn:hover {
+  background: var(--color-surface-hover);
+}
+
+.hamburger-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.mobile-header-title {
+  flex: 1;
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+}
+
+/* Tablet: 768px - 1024px */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .layout-main {
+    margin-left: calc(var(--sidebar-collapsed-width) + var(--session-sidebar-width)) !important;
+  }
+
+  .layout-content {
+    padding: var(--space-4);
+  }
+
+  .page-header {
+    margin-bottom: var(--space-4);
+  }
+
+  .page-title {
+    font-size: var(--text-xl);
+  }
+}
+
+/* Mobile: < 768px */
+@media (max-width: 767px) {
+  .layout-main {
+    margin-left: 0 !important;
+  }
+
+  .layout-header {
+    display: none;
+  }
+
+  .mobile-header {
+    display: flex;
+  }
+
+  .layout-content {
+    padding: var(--space-4);
+    height: calc(100vh - 56px - 32px); /* 56px mobile header + 32px status bar */
+  }
+
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+    margin-bottom: var(--space-4);
+  }
+
+  .page-title {
+    font-size: var(--text-xl);
+  }
+
+  .page-actions {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+}

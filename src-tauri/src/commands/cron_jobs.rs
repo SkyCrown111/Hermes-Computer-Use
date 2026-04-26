@@ -3,6 +3,7 @@
 //! Commands for managing Hermes Agent cron jobs.
 //! Reads from ~/.hermes/cron/jobs.json in WSL.
 
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde::{Deserialize, Serialize};
 use super::utils::create_command;
 
@@ -53,7 +54,25 @@ fn read_jobs_json() -> Result<serde_json::Value, String> {
         .map_err(|e| format!("Failed to parse jobs.json: {}", e))
 }
 
-/// List all cron jobs - reads real data from WSL
+/// Write jobs.json to WSL using base64 encoding for safe shell transport
+fn write_jobs_json(data: &serde_json::Value) -> Result<(), String> {
+    let json_str = serde_json::to_string_pretty(data)
+        .map_err(|e| format!("Failed to serialize jobs data: {}", e))?;
+    let encoded = STANDARD.encode(json_str);
+
+    let cmd = format!("mkdir -p ~/.hermes/cron && echo '{}' | base64 -d > ~/.hermes/cron/jobs.json", encoded);
+
+    let output = create_command("wsl")
+        .args(["-e", "bash", "-c", &cmd])
+        .output()
+        .map_err(|e| format!("Failed to write jobs.json: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to write jobs.json: {}", stderr));
+    }
+    Ok(())
+}
 #[tauri::command]
 pub fn list_cron_jobs() -> Result<Vec<CronJob>, String> {
     println!("[Cron] Listing cron jobs...");
@@ -187,39 +206,71 @@ pub fn get_cron_job(id: String) -> Result<CronJob, String> {
     Err(format!("Job not found: {}", id))
 }
 
-/// Pause a cron job
-#[tauri::command]
-pub fn pause_cron_job(id: String) -> Result<(), String> {
-    println!("[Cron] Pausing job: {}", id);
-    // TODO: Implement via Hermes API or direct file modification
-    Ok(())
-}
-
-/// Resume a cron job
-#[tauri::command]
-pub fn resume_cron_job(id: String) -> Result<(), String> {
-    println!("[Cron] Resuming job: {}", id);
-    // TODO: Implement via Hermes API or direct file modification
-    Ok(())
-}
-
 /// Delete a cron job
 #[tauri::command]
 pub fn delete_cron_job(id: String) -> Result<(), String> {
     println!("[Cron] Deleting job: {}", id);
-    // TODO: Implement via Hermes API or direct file modification
+
+    let mut data = read_jobs_json()?;
+    if let Some(jobs) = data.get_mut("jobs").and_then(|v| v.as_array_mut()) {
+        let len_before = jobs.len();
+        jobs.retain(|job| job.get("id").and_then(|v| v.as_str()) != Some(&id));
+        if jobs.len() == len_before {
+            return Err(format!("Job not found: {}", id));
+        }
+    }
+    write_jobs_json(&data)?;
+    println!("[Cron] Deleted job: {}", id);
     Ok(())
 }
 
-/// Save a cron job
+/// Save (create or update) a cron job
 #[tauri::command]
-pub fn save_cron_job(_job: CronJob) -> Result<(), String> {
+pub fn save_cron_job(job: CronJob) -> Result<(), String> {
+    println!("[Cron] Saving job: {}", job.id);
+
+    let mut data = read_jobs_json()?;
+    let new_job = serde_json::json!(job);
+
+    if let Some(jobs) = data.get_mut("jobs").and_then(|v| v.as_array_mut()) {
+        let mut found = false;
+        for existing in jobs.iter_mut() {
+            if existing.get("id").and_then(|v| v.as_str()) == Some(&job.id) {
+                *existing = new_job.clone();
+                found = true;
+                break;
+            }
+        }
+        if !found {
+            jobs.push(new_job.clone());
+        }
+    }
+    write_jobs_json(&data)?;
+    println!("[Cron] Saved job: {}", job.id);
     Ok(())
 }
 
-/// Toggle a cron job
+/// Toggle a cron job's enabled state
 #[tauri::command]
-pub fn toggle_cron_job(_id: String, _enabled: bool) -> Result<(), String> {
+pub fn toggle_cron_job(id: String, enabled: bool) -> Result<(), String> {
+    println!("[Cron] Toggling job {} to enabled={}", id, enabled);
+
+    let mut data = read_jobs_json()?;
+    if let Some(jobs) = data.get_mut("jobs").and_then(|v| v.as_array_mut()) {
+        let mut found = false;
+        for job in jobs.iter_mut() {
+            if job.get("id").and_then(|v| v.as_str()) == Some(&id) {
+                job["enabled"] = serde_json::Value::Bool(enabled);
+                found = true;
+                break;
+            }
+        }
+        if !found {
+            return Err(format!("Job not found: {}", id));
+        }
+    }
+    write_jobs_json(&data)?;
+    println!("[Cron] Toggled job {} to {}", id, enabled);
     Ok(())
 }
 
@@ -233,7 +284,12 @@ pub fn get_cron_path() -> Result<String, String> {
 #[tauri::command]
 pub fn trigger_cron_job(id: String) -> Result<(), String> {
     println!("[Cron] Triggering job: {}", id);
-    
+
+    // Validate job_id
+    if id.is_empty() || id.chars().any(|c| !c.is_alphanumeric() && c != '-' && c != '_') {
+        return Err(format!("Invalid id: {}", id));
+    }
+
     // Use Hermes CLI to trigger the job
     let output = create_command("wsl")
         .args(["-e", "bash", "-c",
@@ -266,7 +322,17 @@ pub struct CronJobOutput {
 #[tauri::command]
 pub fn get_cron_outputs(job_id: String, limit: Option<usize>) -> Result<Vec<CronJobOutput>, String> {
     println!("[Cron] Getting outputs for job: {} (limit: {:?})", job_id, limit);
-    
+
+    // Validate job_id to prevent path traversal and shell injection
+    if job_id.is_empty()
+        || job_id.contains('/')
+        || job_id.contains('\\')
+        || job_id.contains('.')
+        || job_id.chars().any(|c| !c.is_alphanumeric() && c != '-' && c != '_')
+    {
+        return Err(format!("Invalid job_id: {}", job_id));
+    }
+
     // Read outputs from the job's output directory
     let script = format!(
         "ls -t ~/.hermes/cron/outputs/{}/*.json 2>/dev/null | head -n {} | xargs -I {{}} cat {{}}",

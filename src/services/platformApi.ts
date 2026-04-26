@@ -45,4 +45,14 @@ export const platformApi = {
   async reconnect(type: PlatformType): Promise<void> {
     await safeInvoke('reconnect_platform', { platformType: type });
   },
+
+  // 获取微信二维码
+  async getWechatQRCode(): Promise<{ qrcode_url: string; status: string; expires_at: string }> {
+    return safeInvoke('get_wechat_qrcode');
+  },
+
+  // 检查微信二维码扫描状态
+  async checkWechatQRCodeStatus(): Promise<{ status: string }> {
+    return safeInvoke('check_wechat_qrcode_status');
+  },
 };

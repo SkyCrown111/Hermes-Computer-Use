@@ -551,3 +551,61 @@
   color: var(--accent-error);
   font-size: var(--text-sm);
 }
+
+/* ============================================
+   Mobile Responsive Enhancements
+   ============================================ */
+
+@media (max-width: 767px) {
+  .monitor {
+    gap: var(--space-4);
+  }
+
+  .monitor-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .monitor-controls {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .file-selector {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .filter-select {
+    min-width: auto;
+    flex: 1;
+  }
+
+  .search-input {
+    min-width: auto;
+    width: 100%;
+  }
+
+  .log-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+  }
+
+  .log-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .monitor-sidebar {
+    gap: var(--space-3);
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .metric-item {
+    padding: var(--space-2);
+  }
+}

@@ -5,24 +5,18 @@
 use serde::{Deserialize, Serialize};
 use super::utils::create_command;
 
-/// Log file type
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum LogFile {
-    Agent,
-    Gateway,
-    Cron,
-    Mcp,
-}
-
-/// Log line structure
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LogLine {
-    pub raw: String,
-    pub timestamp: Option<String>,
-    pub level: Option<String>,
-    pub component: Option<String>,
-    pub message: Option<String>,
+/// Escape a string for use in grep -E pattern (escape regex special chars)
+fn escape_grep_pattern(s: &str) -> String {
+    // Escape . \ [ ] * ? + ^ $ { } ( ) |
+    s.chars().map(|c| match c {
+        '.' | '\\' | '[' | ']' | '*' | '?' | '+' | '^' | '$' | '{' | '}' | '(' | ')' | '|' => {
+            let mut out = String::with_capacity(2);
+            out.push('\\');
+            out.push(c);
+            out
+        }
+        c => c.to_string(),
+    }).collect::<String>()
 }
 
 /// Logs response
@@ -108,10 +102,12 @@ pub async fn get_logs(
 
     // Add filters
     if let Some(lvl) = &level {
-        cmd = format!("{} | grep -E '\\b{}\\b'", cmd, lvl);
+        let escaped = escape_grep_pattern(lvl);
+        cmd = format!("{} | grep -E '\\b{}\\b'", cmd, escaped);
     }
     if let Some(comp) = &component {
-        cmd = format!("{} | grep -E '\\[{}\\]'", cmd, comp);
+        let escaped = escape_grep_pattern(comp);
+        cmd = format!("{} | grep -E '\\[{}\\]'", cmd, escaped);
     }
     if let Some(srch) = &search {
         cmd = format!("{} | grep -i '{}'", cmd, srch.replace("'", "'\\''"));

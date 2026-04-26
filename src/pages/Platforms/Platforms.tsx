@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ConfirmModal } from '../../components';
 import { usePlatformStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
 import { toast } from '../../stores/toastStore';
+import { platformApi } from '../../services/platformApi';
 import type { Platform, PlatformType } from '../../types/platform';
 import './Platforms.css';
 
@@ -30,6 +31,7 @@ const platformConfigFields: Record<PlatformType, { key: string; label: string; t
     { key: 'agent_id', label: 'Agent ID', type: 'text', placeholder: 'App Agent ID' },
     { key: 'secret', label: 'Secret', type: 'password', placeholder: 'App Secret' },
   ],
+  weixin: [], // 个人微信使用扫码登录，无需表单字段
   lark: [
     { key: 'app_id', label: 'App ID', type: 'text', placeholder: 'Lark App ID' },
     { key: 'app_secret', label: 'App Secret', type: 'password', placeholder: 'Lark App Secret' },
@@ -96,7 +98,7 @@ export function Platforms() {
   }, [isConfigModalOpen, selectedPlatform, platforms]);
 
   const selectedPlatformData = platforms.find(p => p.type === selectedPlatform);
-  const configFields = selectedPlatform ? platformConfigFields[selectedPlatform] : [];
+  const configFields = selectedPlatform ? (platformConfigFields[selectedPlatform] ?? []) : [];
 
   const [disableConfirm, setDisableConfirm] = useState<Platform | null>(null);
   const [connectionError, setConnectionError] = useState<{ platform: PlatformType; error: string; details?: string } | null>(null);
@@ -144,6 +146,55 @@ export function Platforms() {
       closeConfigModal();
     }
   };
+
+  // ===== WeChat QR Code =====
+  const [qrcodeUrl, setQrcodeUrl] = useState<string | null>(null);
+  const [qrcodeStatus, setQrcodeStatus] = useState<'pending' | 'scanned' | 'expired'>('pending');
+  const [qrcodeError, setQrcodeError] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const loadQRCode = async () => {
+    setQrcodeUrl(null);
+    setQrcodeStatus('pending');
+    setQrcodeError(null);
+    try {
+      const result = await platformApi.getWechatQRCode();
+      setQrcodeUrl(result.qrcode_url);
+    } catch {
+      setQrcodeError('Failed to load QR code');
+    }
+  };
+
+  // Fetch QR code when opening WeChat config modal
+  useEffect(() => {
+    if (isConfigModalOpen && selectedPlatform === 'weixin') {
+      loadQRCode();
+    }
+  }, [isConfigModalOpen, selectedPlatform]);
+
+  // Poll QR code scan status
+  useEffect(() => {
+    if (isConfigModalOpen && selectedPlatform === 'weixin' && qrcodeStatus === 'pending') {
+      pollRef.current = setInterval(async () => {
+        try {
+          const result = await platformApi.checkWechatQRCodeStatus();
+          if (result.status === 'scanned') {
+            setQrcodeStatus('scanned');
+            clearInterval(pollRef.current ?? undefined);
+          }
+        } catch {
+          // ignore polling errors
+        }
+      }, 3000);
+    }
+
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+  }, [isConfigModalOpen, selectedPlatform, qrcodeStatus]);
 
   return (
     <div className="platforms-page">
@@ -229,32 +280,73 @@ export function Platforms() {
               </button>
             </div>
 
-            <form onSubmit={handleSaveConfig}>
+            {selectedPlatform === 'weixin' ? (
+              // 微信扫码配置
               <div className="modal-body">
-                {configFields.map(field => (
-                  <div key={field.key} className="form-group">
-                    <label htmlFor={field.key}>{field.label}</label>
-                    <input
-                      id={field.key}
-                      name={field.key}
-                      type={field.type}
-                      placeholder={field.placeholder}
-                      value={configForm[field.key] || ''}
-                      onChange={(e) => handleConfigChange(field.key, e.target.value)}
-                    />
+                {qrcodeError ? (
+                  <div className="qrcode-error">
+                    <p>⚠️ {qrcodeError}</p>
+                    <button className="btn btn-secondary" onClick={loadQRCode}>
+                      重新加载
+                    </button>
                   </div>
-                ))}
+                ) : qrcodeUrl ? (
+                  <div className="qrcode-container">
+                    <div className="qrcode-image-wrapper">
+                      <img
+                        src={qrcodeUrl}
+                        alt="WeChat QR Code"
+                        className="qrcode-image"
+                      />
+                    </div>
+                    {qrcodeStatus === 'pending' && (
+                      <p className="qrcode-hint">请使用微信扫描二维码以登录</p>
+                    )}
+                    {qrcodeStatus === 'scanned' && (
+                      <p className="qrcode-scanned">✅ 已扫描，请在手机上确认登录</p>
+                    )}
+                    <p className="qrcode-expiry">二维码有效期为 2 分钟</p>
+                  </div>
+                ) : (
+                  <div className="qrcode-loading">
+                    <p>正在加载二维码...</p>
+                  </div>
+                )}
+                <div className="modal-footer">
+                  <button type="button" className="btn btn-secondary" onClick={() => { closeConfigModal(); }}>
+                    {t('common.close')}
+                  </button>
+                </div>
               </div>
+            ) : (
+              // 其他平台表单配置
+              <form onSubmit={handleSaveConfig}>
+                <div className="modal-body">
+                  {configFields.map(field => (
+                    <div key={field.key} className="form-group">
+                      <label htmlFor={field.key}>{field.label}</label>
+                      <input
+                        id={field.key}
+                        name={field.key}
+                        type={field.type}
+                        placeholder={field.placeholder}
+                        value={configForm[field.key] || ''}
+                        onChange={(e) => handleConfigChange(field.key, e.target.value)}
+                      />
+                    </div>
+                  ))}
+                </div>
 
-              <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={closeConfigModal}>
-                  {t('common.cancel')}
-                </button>
-                <button type="submit" className="btn btn-primary">
-                  {t('platforms.saveConfig')}
-                </button>
-              </div>
-            </form>
+                <div className="modal-footer">
+                  <button type="button" className="btn btn-secondary" onClick={closeConfigModal}>
+                    {t('common.cancel')}
+                  </button>
+                  <button type="submit" className="btn btn-primary">
+                    {t('platforms.saveConfig')}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

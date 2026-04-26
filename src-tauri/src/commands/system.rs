@@ -156,16 +156,13 @@ pub async fn get_system_status() -> Result<SystemStatus, String> {
         .and_then(|v| v.as_str())
         .unwrap_or("unknown");
 
-    // Determine final status
-    let gateway_status = if file_status == "running" {
-        "running".to_string()
-    } else if result.8 { // gateway_process_running
-        "running".to_string()
-    } else if result.7 { // hermes_cli_available
-        // CLI is available but gateway not running - show as available
-        "available".to_string()
+    // Determine final status (mapped to frontend expected values: online|offline|degraded)
+    let gateway_status = if file_status == "running" || result.8 {
+        "online".to_string()
+    } else if result.7 {
+        "offline".to_string()
     } else {
-        file_status.to_string()
+        "offline".to_string()
     };
 
     println!("[System] Gateway status: file={}, process={}, cli={}, final={}", file_status, result.8, result.7, gateway_status);
@@ -301,43 +298,6 @@ fn get_system_metrics() -> (f32, f32, u64, u64) {
     };
 
     (cpu_percent, memory_percent, memory_used_mb, memory_total_mb)
-}
-
-/// Get Hermes config
-#[tauri::command]
-pub fn get_config() -> Result<serde_json::Value, String> {
-    let script = "cat ~/.hermes/config.yaml 2>/dev/null || echo '{}'";
-
-    if let Ok(output) = create_command("wsl")
-        .args(["bash", "-c", script])
-        .output()
-    {
-        if output.status.success() {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            return Ok(serde_json::json!({
-                "raw": stdout.to_string()
-            }));
-        }
-    }
-
-    Ok(serde_json::json!({}))
-}
-
-/// Update Hermes config
-#[tauri::command]
-pub fn update_config(config: serde_json::Value) -> Result<(), String> {
-    println!("[System] Updating config: {:?}", config);
-    Ok(())
-}
-
-/// Check if running in WSL environment
-#[tauri::command]
-pub fn check_wsl() -> bool {
-    create_command("wsl")
-        .args(["echo", "ok"])
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
 }
 
 /// Usage totals

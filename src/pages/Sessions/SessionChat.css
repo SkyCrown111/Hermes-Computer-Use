@@ -781,3 +781,143 @@
 .chat-messages::-webkit-scrollbar-thumb:hover {
   opacity: 0.6;
 }
+
+/* ============================================
+   Mobile Responsive Enhancements
+   ============================================ */
+
+@media (max-width: 767px) {
+  .session-chat-overlay {
+    padding: 0;
+  }
+
+  .session-chat-container {
+    width: 100%;
+    height: 100vh;
+    max-height: 100vh;
+    border-radius: 0;
+  }
+
+  .chat-header {
+    padding: var(--space-3) var(--space-4);
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .chat-header h2 {
+    font-size: var(--text-base);
+  }
+
+  .chat-header-info {
+    width: 100%;
+    order: 3;
+  }
+
+  .chat-header-actions {
+    flex: 1;
+    justify-content: flex-end;
+  }
+
+  .chat-messages {
+    padding: var(--space-3);
+  }
+
+  .chat-message {
+    max-width: 95%;
+  }
+
+  .message-avatar {
+    width: 28px;
+    height: 28px;
+    font-size: 14px;
+  }
+
+  .message-bubble {
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .message-text {
+    font-size: var(--text-xs);
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .thinking-indicator {
+    flex-wrap: wrap;
+  }
+
+  .tools-block {
+    gap: var(--space-1);
+  }
+
+  .tool-item {
+    font-size: 10px;
+    padding: var(--space-1) var(--space-2);
+  }
+
+  .message-actions {
+    opacity: 1;
+  }
+
+  .message-edit-textarea {
+    font-size: var(--text-xs);
+  }
+
+  .session-search-toolbar {
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-2);
+  }
+
+  .session-search-select-all {
+    width: 100%;
+  }
+
+  .session-search-toolbar-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .session-search-toolbar-btn {
+    font-size: 10px;
+    padding: var(--space-1) var(--space-1);
+  }
+
+  .session-search-list {
+    max-height: 200px;
+  }
+
+  /* ChatInput styles */
+  .session-chat-input {
+    padding: var(--space-2);
+  }
+
+  .session-chat-input .chat-input-container {
+    border-radius: var(--radius-lg);
+  }
+
+  .session-chat-input .chat-textarea {
+    min-height: 60px;
+    padding: var(--space-3);
+    padding-bottom: 48px;
+    font-size: var(--text-xs);
+  }
+
+  .session-chat-input .chat-input-toolbar {
+    padding: var(--space-2);
+  }
+
+  .session-chat-input .run-action-btn {
+    min-width: 72px;
+    padding: var(--space-1) var(--space-2);
+    font-size: 10px;
+  }
+
+  .session-chat-input .slash-commands-dropdown {
+    border-radius: var(--radius-lg);
+  }
+
+  .session-chat-input .add-menu-popup {
+    width: 180px;
+    border-radius: var(--radius-lg);
+  }
+}

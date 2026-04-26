@@ -3,6 +3,7 @@
 //! Commands for managing Hermes Agent sessions.
 //! Queries the Hermes SQLite database directly via WSL.
 
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde::{Deserialize, Serialize};
 use super::utils::create_command;
 
@@ -26,7 +27,12 @@ pub struct Session {
     pub status: String,
 }
 
-/// Session message - matches frontend SessionMessage type
+/// Search results wrapper with total count
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchResults {
+    pub results: Vec<serde_json::Value>,
+    pub total: usize,
+}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionMessage {
     pub role: String,
@@ -115,26 +121,29 @@ fn timestamp_to_iso(ts: f64) -> String {
         .unwrap_or_else(|| ts.to_string())
 }
 
-/// Query SQLite database via WSL Python
-fn query_db(sql: &str) -> Result<Vec<serde_json::Value>, String> {
+/// Query SQLite database via WSL Python with parameterized queries
+fn query_db(sql: &str, params: &[serde_json::Value]) -> Result<Vec<serde_json::Value>, String> {
+    let params_json = serde_json::to_string(params)
+        .map_err(|e| format!("Failed to serialize params: {}", e))?;
+    let params_b64 = STANDARD.encode(params_json);
+
+    // Escape single quotes for the shell-embedded Python string
+    let escaped_sql = sql.replace('\n', " ").replace('\'', "'\\''");
+
     let script = format!(
         r#"python3 -c "
-import sqlite3
-import json
-import os
-
+import sqlite3, json, os, base64
 conn = sqlite3.connect(os.path.expanduser('~/.hermes/state.db'))
 conn.row_factory = sqlite3.Row
 cursor = conn.cursor()
-
-cursor.execute('''{}''')
+params = json.loads(base64.b64decode('{}').decode())
+cursor.execute('{}', params)
 rows = cursor.fetchall()
-
 result = [dict(row) for row in rows]
 print(json.dumps(result))
 conn.close()
-""#,
-        sql.replace('\n', " ").replace('"', r#"\"#)
+"#,
+        params_b64, escaped_sql
     );
 
     let output = create_command("wsl")
@@ -158,16 +167,50 @@ conn.close()
         .map_err(|e| format!("Failed to parse JSON: {}", e))
 }
 
+/// Execute SQL via WSL Python with parameterized queries (no rows returned)
+fn exec_db(sql: &str, params: &[serde_json::Value]) -> Result<(), String> {
+    let params_json = serde_json::to_string(params)
+        .map_err(|e| format!("Failed to serialize params: {}", e))?;
+    let params_b64 = STANDARD.encode(params_json);
+    let escaped_sql = sql.replace('\n', " ").replace('\'', "'\\''");
+
+    let script = format!(
+        r#"python3 -c "
+import sqlite3, json, os, base64
+conn = sqlite3.connect(os.path.expanduser('~/.hermes/state.db'))
+cursor = conn.cursor()
+params = json.loads(base64.b64decode('{}').decode())
+cursor.execute('{}', params)
+conn.commit()
+conn.close()
+print('ok')
+"#,
+        params_b64, escaped_sql
+    );
+
+    let output = create_command("wsl")
+        .args(["bash", "-c", &script])
+        .output()
+        .map_err(|e| format!("Failed to execute: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Database exec failed: {}", stderr));
+    }
+    Ok(())
+}
+
 /// Count total sessions
 #[tauri::command]
 pub fn count_sessions(platform: Option<String>) -> Result<usize, String> {
-    let sql = if let Some(ref p) = platform {
-        format!("SELECT COUNT(*) as count FROM sessions WHERE source = '{}'", p)
+    let (sql, params): (_, Vec<serde_json::Value>) = if let Some(ref p) = platform {
+        ("SELECT COUNT(*) as count FROM sessions WHERE source = ?".to_string(),
+         vec![serde_json::json!(p)])
     } else {
-        "SELECT COUNT(*) as count FROM sessions".to_string()
+        ("SELECT COUNT(*) as count FROM sessions".to_string(), vec![])
     };
 
-    let rows = query_db(&sql)?;
+    let rows = query_db(&sql, &params)?;
     
     if let Some(row) = rows.first() {
         let count = row.get("count")
@@ -190,22 +233,22 @@ pub fn list_sessions(platform: Option<String>, limit: Option<usize>, offset: Opt
     // Get total count first
     let total = count_sessions(platform.clone())?;
 
-    let sql = if let Some(ref p) = platform {
-        format!(
+    let (sql, params): (_, Vec<serde_json::Value>) = if let Some(ref p) = platform {
+        (
             r#"
             SELECT
                 id, source, model, started_at, ended_at, message_count,
                 input_tokens, output_tokens, cache_read_tokens, reasoning_tokens,
                 estimated_cost_usd, actual_cost_usd, end_reason, title
             FROM sessions
-            WHERE source = '{}'
+            WHERE source = ?
             ORDER BY COALESCE(ended_at, started_at) DESC
-            LIMIT {} OFFSET {}
-            "#,
-            p, limit, offset
+            LIMIT ? OFFSET ?
+            "#.to_string(),
+            vec![serde_json::json!(p), serde_json::json!(limit), serde_json::json!(offset)],
         )
     } else {
-        format!(
+        (
             r#"
             SELECT
                 id, source, model, started_at, ended_at, message_count,
@@ -213,13 +256,13 @@ pub fn list_sessions(platform: Option<String>, limit: Option<usize>, offset: Opt
                 estimated_cost_usd, actual_cost_usd, end_reason, title
             FROM sessions
             ORDER BY COALESCE(ended_at, started_at) DESC
-            LIMIT {} OFFSET {}
-            "#,
-            limit, offset
+            LIMIT ? OFFSET ?
+            "#.to_string(),
+            vec![serde_json::json!(limit), serde_json::json!(offset)],
         )
     };
 
-    let rows = query_db(&sql)?;
+    let rows = query_db(&sql, &params)?;
 
     let sessions: Vec<Session> = rows.iter().map(|row| {
         let started_at = row.get("started_at")
@@ -269,19 +312,16 @@ pub fn get_session(id: String) -> Result<SessionDetail, String> {
     println!("[Sessions] Getting session: {}", id);
 
     // Get session info
-    let session_sql = format!(
-        r#"
+    let session_sql = r#"
         SELECT
             id, source, model, started_at, ended_at, message_count,
             input_tokens, output_tokens, cache_read_tokens, reasoning_tokens,
             estimated_cost_usd, actual_cost_usd, end_reason, title
         FROM sessions
-        WHERE id = '{}'
-        "#,
-        id
-    );
+        WHERE id = ?
+        "#;
 
-    let session_rows = query_db(&session_sql)?;
+    let session_rows = query_db(session_sql, &[serde_json::json!(id)])?;
 
     if session_rows.is_empty() {
         return Err(format!("Session not found: {}", id));
@@ -315,18 +355,15 @@ pub fn get_session(id: String) -> Result<SessionDetail, String> {
     };
 
     // Get messages
-    let messages_sql = format!(
-        r#"
+    let messages_sql = r#"
         SELECT role, content, timestamp, tool_calls, reasoning
         FROM messages
-        WHERE session_id = '{}'
+        WHERE session_id = ?
         ORDER BY timestamp ASC
         LIMIT 200
-        "#,
-        id
-    );
+        "#;
 
-    let message_rows = query_db(&messages_sql)?;
+    let message_rows = query_db(messages_sql, &[serde_json::json!(id)])?;
 
     let messages: Vec<SessionMessage> = message_rows.iter().map(|row| {
         let timestamp = row.get("timestamp")
@@ -362,30 +399,14 @@ pub fn get_session(id: String) -> Result<SessionDetail, String> {
 /// Delete a session
 #[tauri::command]
 pub fn delete_session(id: String) -> Result<(), String> {
-    let script = format!(
-        r#"python3 -c "
-import sqlite3
-import os
-conn = sqlite3.connect(os.path.expanduser('~/.hermes/state.db'))
-cursor = conn.cursor()
-cursor.execute('DELETE FROM messages WHERE session_id = ?', ('{}',))
-cursor.execute('DELETE FROM sessions WHERE id = ?', ('{}',))
-conn.commit()
-conn.close()
-print('ok')
-""#,
-        id, id
-    );
-
-    let output = create_command("wsl")
-        .args(["bash", "-c", &script])
-        .output()
-        .map_err(|e| format!("Failed to delete session: {}", e))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Failed to delete session: {}", stderr));
-    }
+    exec_db(
+        "DELETE FROM messages WHERE session_id = ?",
+        &[serde_json::json!(id)],
+    )?;
+    exec_db(
+        "DELETE FROM sessions WHERE id = ?",
+        &[serde_json::json!(id)],
+    )?;
 
     println!("[Sessions] Deleted session: {}", id);
     Ok(())
@@ -402,30 +423,154 @@ pub fn get_sessions_path() -> String {
 pub fn update_session_title(id: String, title: String) -> Result<(), String> {
     println!("[Sessions] Updating title for session {}: {}", id, title);
 
-    let script = format!(
-        r#"python3 -c "
-import sqlite3
-import os
-conn = sqlite3.connect(os.path.expanduser('~/.hermes/state.db'))
-cursor = conn.cursor()
-cursor.execute('UPDATE sessions SET title = ? WHERE id = ?', ('{}', '{}'))
-conn.commit()
-conn.close()
-print('ok')
-""#,
-        title.replace("'", "''"), id.replace("'", "''")
-    );
-
-    let output = create_command("wsl")
-        .args(["bash", "-c", &script])
-        .output()
-        .map_err(|e| format!("Failed to update session title: {}", e))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Failed to update session title: {}", stderr));
-    }
+    exec_db(
+        "UPDATE sessions SET title = ? WHERE id = ?",
+        &[serde_json::json!(title), serde_json::json!(id)],
+    )?;
 
     println!("[Sessions] Updated title for session: {}", id);
     Ok(())
+}
+
+/// Search sessions by text content in messages
+#[tauri::command]
+pub fn search_sessions(q: String, platform: Option<String>, days: Option<u64>) -> Result<SearchResults, String> {
+    println!("[Sessions] Searching for: \"{}\" (platform: {:?}, days: {:?})", q, platform, days);
+
+    // Build the SQL query with filters
+    let mut conditions = vec![r#"m.content LIKE '%' || ? || '%'"#.to_string()];
+    let mut params: Vec<serde_json::Value> = vec![serde_json::json!(q)];
+
+    if let Some(ref p) = platform {
+        conditions.push("s.source = ?".to_string());
+        params.push(serde_json::json!(p));
+    }
+
+    if let Some(d) = days {
+        conditions.push("s.started_at >= strftime('%s', 'now', '-' || ? || ' days')".to_string());
+        params.push(serde_json::json!(d.to_string()));
+    }
+
+    let where_clause = conditions.join(" AND ");
+
+    // Count total matching results
+    let count_sql = format!(
+        r#"SELECT COUNT(DISTINCT s.id) as total
+           FROM sessions s
+           JOIN messages m ON m.session_id = s.id
+           WHERE {}"#,
+        where_clause
+    );
+    let count_rows = query_db(&count_sql, &params)?;
+    let total = count_rows.first()
+        .and_then(|row| row.get("total"))
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0) as usize;
+
+    // Fetch results with LIMIT
+    let sql = format!(
+        r#"SELECT DISTINCT s.id, s.source, s.started_at, s.title,
+           SUBSTR(m.content, 1, 200) as matched_content
+           FROM sessions s
+           JOIN messages m ON m.session_id = s.id
+           WHERE {}
+           ORDER BY s.started_at DESC
+           LIMIT 50"#,
+        where_clause
+    );
+
+    let rows = query_db(&sql, &params)?;
+
+    let results: Vec<serde_json::Value> = rows.into_iter().filter_map(|row| {
+        let session_id = row.get("id")?.as_str()?.to_string();
+        let platform = row.get("source").and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
+        let started_at = row.get("started_at").and_then(|v| v.as_f64()).map(timestamp_to_iso).unwrap_or_default();
+        let context = row.get("matched_content").and_then(|v| v.as_str()).unwrap_or("").to_string();
+
+        // Relevance score: exact matches score higher
+        let q_lower = q.to_lowercase();
+        let context_lower = context.to_lowercase();
+        let relevance_score = if context_lower.starts_with(&q_lower) {
+            0.95
+        } else if context_lower.contains(&q_lower) {
+            0.75
+        } else {
+            0.5
+        };
+
+        Some(serde_json::json!({
+            "session_id": session_id,
+            "platform": platform,
+            "matched_at": started_at,
+            "context": context,
+            "relevance_score": relevance_score
+        }))
+    }).collect();
+
+    println!("[Sessions] Found {} results for query: \"{}\" (total: {})", results.len(), q, total);
+    Ok(SearchResults { results, total })
+}
+
+/// Export a session in the specified format
+#[tauri::command]
+pub fn export_session(format: String, session_id: String) -> Result<String, String> {
+    println!("[Sessions] Exporting session {} as {}", session_id, format);
+
+    // Fetch session data
+    let sql = "SELECT * FROM sessions WHERE id = ?";
+    let rows = query_db(sql, &[serde_json::json!(session_id)])?;
+    let session = rows.into_iter().next().ok_or_else(|| format!("Session not found: {}", session_id))?;
+
+    // Fetch messages
+    let msg_sql = "SELECT role, content, timestamp, tool_calls FROM messages WHERE session_id = ? ORDER BY timestamp ASC";
+    let messages = query_db(msg_sql, &[serde_json::json!(session_id)])?;
+
+    match format.as_str() {
+        "json" => {
+            // Single JSON object with session + messages
+            let export = serde_json::json!({
+                "session": session,
+                "messages": messages
+            });
+            serde_json::to_string_pretty(&export)
+                .map_err(|e| format!("Failed to serialize: {}", e))
+        }
+        "jsonl" => {
+            // One JSON object per line: first line = session, rest = messages
+            let mut lines = Vec::new();
+            lines.push(serde_json::to_string(&session)
+                .map_err(|e| format!("Failed to serialize session: {}", e))?);
+            for msg in &messages {
+                lines.push(serde_json::to_string(msg)
+                    .map_err(|e| format!("Failed to serialize message: {}", e))?);
+            }
+            Ok(lines.join("\n"))
+        }
+        "markdown" => {
+            // Human-readable markdown
+            let mut md = String::new();
+            md.push_str(&format!("# Session: {}\n\n", session_id));
+            md.push_str(&format!("- **Platform**: {}\n", session.get("source").and_then(|v| v.as_str()).unwrap_or("unknown")));
+            md.push_str(&format!("- **Started**: {}\n", session.get("started_at").and_then(|v| v.as_f64()).map(timestamp_to_iso).unwrap_or_default()));
+            if let Some(title) = session.get("title").and_then(|v| v.as_str()) {
+                if !title.is_empty() {
+                    md.push_str(&format!("- **Title**: {}\n", title));
+                }
+            }
+            md.push('\n');
+
+            md.push_str("## Messages\n\n");
+            for msg in &messages {
+                let role = msg.get("role").and_then(|v| v.as_str()).unwrap_or("unknown");
+                let content = msg.get("content").and_then(|v| v.as_str()).unwrap_or("");
+                let timestamp = msg.get("timestamp").and_then(|v| v.as_f64()).map(timestamp_to_iso).unwrap_or_default();
+
+                md.push_str(&format!("### {} ({})\n\n", role, timestamp));
+                md.push_str(&format!("{}\n\n", content));
+            }
+
+            Ok(md)
+        }
+        _ => Err(format!("Unsupported export format: {}", format)),
+    }
 }

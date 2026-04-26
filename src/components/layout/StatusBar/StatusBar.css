@@ -2,7 +2,7 @@
 .status-bar {
   position: fixed;
   bottom: 0;
-  left: 0;
+  left: calc(var(--sidebar-width) + var(--session-sidebar-width));
   right: 0;
   height: 32px;
   background: var(--color-surface-container-high);
@@ -15,6 +15,12 @@
   color: var(--color-text-secondary);
   z-index: 1000;
   user-select: none;
+  transition: left var(--duration-normal) var(--ease-out);
+}
+
+/* When sidebar is collapsed */
+.layout.sidebar-collapsed .status-bar {
+  left: calc(var(--sidebar-collapsed-width) + var(--session-sidebar-width));
 }
 
 /* Left section */
@@ -138,5 +144,23 @@
 @keyframes status-spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+/* ============================================
+   Responsive Styles
+   ============================================ */
+
+/* Tablet: 768px - 1024px - sidebar auto-collapsed, session sidebar narrower */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .status-bar {
+    left: calc(var(--sidebar-collapsed-width) + 200px);
+  }
+}
+
+/* Mobile: < 768px - no sidebars */
+@media (max-width: 767px) {
+  .status-bar {
+    left: 0;
   }
 }

@@ -133,3 +133,59 @@
   padding: var(--space-8);
   color: var(--text-tertiary);
 }
+
+/* ============================================
+   Mobile Responsive Enhancements
+   ============================================ */
+
+@media (max-width: 767px) {
+  .gateway-page {
+    padding: var(--space-4);
+  }
+
+  .gateway-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-3);
+  }
+
+  .gateway-header h1 {
+    font-size: var(--text-xl);
+  }
+
+  .gateway-actions {
+    width: 100%;
+  }
+
+  .gateway-actions button {
+    flex: 1;
+  }
+
+  .gateway-status-overview {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-4);
+  }
+
+  .gateway-info-grid {
+    width: 100%;
+  }
+
+  .gateway-info-item .info-label {
+    font-size: 10px;
+  }
+
+  .gateway-info-item .info-value {
+    font-size: var(--text-sm);
+  }
+
+  .connection-list {
+    gap: var(--space-1);
+  }
+
+  .connection-item {
+    padding: var(--space-1) var(--space-2);
+    font-size: var(--text-xs);
+  }
+}

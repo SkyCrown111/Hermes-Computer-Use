@@ -27,12 +27,3 @@ pub fn create_command(program: &str) -> Command {
     Command::new(program)
 }
 
-/// Execute a WSL command and return output
-pub fn wsl_exec(script: &str) -> Option<String> {
-    create_command("wsl")
-        .args(["bash", "-c", script])
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
-}

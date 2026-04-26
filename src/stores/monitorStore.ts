@@ -29,11 +29,14 @@ interface MonitorState {
   rawLines: string[];
   currentFile: LogFile;
   isLoadingLogs: boolean;
-  
+
   // 筛选条件
   filterLevel: LogLevel | null;
   filterComponent: string | null;
   searchQuery: string;
+
+  // 搜索防抖
+  searchTimeoutId: ReturnType<typeof setTimeout> | null;
   
   // 日志统计
   logStats: LogStats | null;
@@ -61,6 +64,7 @@ interface MonitorState {
   setFilterLevel: (level: LogLevel | null) => void;
   setFilterComponent: (component: string | null) => void;
   setSearchQuery: (query: string) => void;
+  cleanupSearchTimer: () => void;
   fetchLogStats: () => Promise<void>;
   fetchGatewayStatus: () => Promise<void>;
   fetchPerformanceMetrics: (minutes?: number) => Promise<void>;
@@ -80,6 +84,7 @@ export const useMonitorStore = create<MonitorState>((set, get) => ({
   filterLevel: null,
   filterComponent: null,
   searchQuery: '',
+  searchTimeoutId: null,
   logStats: null,
   gatewayStatus: null,
   isLoadingGateway: false,
@@ -131,13 +136,29 @@ export const useMonitorStore = create<MonitorState>((set, get) => ({
 
   // 设置搜索查询
   setSearchQuery: (query) => {
-    set({ searchQuery: query });
+    // 清除上一次防抖定时器
+    const { searchTimeoutId } = get();
+    if (searchTimeoutId) clearTimeout(searchTimeoutId);
+
+    set({ searchQuery: query, searchTimeoutId: null });
     // 防抖搜索
-    setTimeout(() => {
-      if (get().searchQuery === query) {
+    const timeoutId = setTimeout(() => {
+      // 检查 store 中的 query 是否还是当前值，且 timer 未被清理
+      const state = get();
+      if (state.searchQuery === query && state.searchTimeoutId === null) {
         get().fetchLogs();
       }
     }, 300);
+    set({ searchTimeoutId: timeoutId });
+  },
+
+  // 清理搜索定时器（组件卸载时调用）
+  cleanupSearchTimer: () => {
+    const { searchTimeoutId } = get();
+    if (searchTimeoutId) {
+      clearTimeout(searchTimeoutId);
+      set({ searchTimeoutId: null });
+    }
   },
 
   // 获取日志统计
@@ -147,6 +168,7 @@ export const useMonitorStore = create<MonitorState>((set, get) => ({
       set({ logStats: stats });
     } catch (err) {
       logger.error('Failed to fetch log stats:', err);
+      set({ error: (err as Error).message });
     }
   },
 
@@ -179,6 +201,7 @@ export const useMonitorStore = create<MonitorState>((set, get) => ({
       set({ availableComponents: components });
     } catch (err) {
       logger.error('Failed to fetch components:', err);
+      set({ error: (err as Error).message });
     }
   },
 

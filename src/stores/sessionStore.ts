@@ -4,6 +4,7 @@
 import { create } from 'zustand';
 import type { Session, SessionMessage } from '../types';
 import { sessionApi } from '../services';
+import { useNavigationStore } from './navigationStore';
 import { logger } from '../lib/logger';
 
 interface SessionState {
@@ -135,61 +136,54 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       }
 
       // Check for open tabs that are not in the session list
-      // This handles the case where a session exists but wasn't returned in this batch
-      try {
-        const { useNavigationStore } = await import('./navigationStore');
-        const { openTabs } = useNavigationStore.getState();
+      const { openTabs } = useNavigationStore.getState();
 
-        logger.debug('[SessionStore] Open tabs to check:', openTabs.map(t => t.id));
+      logger.debug('[SessionStore] Open tabs to check:', openTabs.map(t => t.id));
 
-        // For each open tab that's not in mergedSessions
-        for (const tab of openTabs) {
-          if (mergedSessions.some(s => s.id === tab.id)) continue;
+      // For each open tab that's not in mergedSessions
+      for (const tab of openTabs) {
+        if (mergedSessions.some(s => s.id === tab.id)) continue;
 
-          // Handle "new_" tabs - create optimistic session entry
-          if (tab.id.startsWith('new_')) {
-            const now = new Date().toISOString();
-            const newSession: Session = {
-              id: tab.id,
-              platform: 'cli',
-              chat_id: '',
-              chat_name: tab.title || '新会话',
-              started_at: now,
-              last_activity_at: now,
-              message_count: 0,
-              model: '',
-              input_tokens: 0,
-              output_tokens: 0,
-              estimated_cost_usd: 0,
-              status: 'active',
-            };
-            mergedSessions.unshift(newSession);
-            logger.debug('[SessionStore] Created optimistic session for new_ tab:', tab.id);
-            continue;
-          }
-
-          logger.debug('[SessionStore] Tab not in session list, fetching:', tab.id);
-
-          // Try to fetch this session individually
-          try {
-            const sessionResponse = await sessionApi.getSession(tab.id);
-            if (sessionResponse.session) {
-              // Use the tab title if it's more descriptive than the session's chat_name
-              const sessionWithTitle = {
-                ...sessionResponse.session,
-                chat_name: tab.title || sessionResponse.session.chat_name || `会话 ${tab.id.slice(0, 12)}`,
-              };
-              mergedSessions.unshift(sessionWithTitle);
-              logger.debug('[SessionStore] Fetched missing session:', tab.id, 'title:', sessionWithTitle.chat_name);
-            }
-          } catch (err) {
-            // Session might not exist on server anymore - remove from optimistic tracking
-            logger.debug('[SessionStore] Could not fetch session:', tab.id, err);
-            newOptimisticIds.delete(tab.id);
-          }
+        // Handle "new_" tabs - create optimistic session entry
+        if (tab.id.startsWith('new_')) {
+          const now = new Date().toISOString();
+          const newSession: Session = {
+            id: tab.id,
+            platform: 'cli',
+            chat_id: '',
+            chat_name: tab.title || '新会话',
+            started_at: now,
+            last_activity_at: now,
+            message_count: 0,
+            model: '',
+            input_tokens: 0,
+            output_tokens: 0,
+            estimated_cost_usd: 0,
+            status: 'active',
+          };
+          mergedSessions.unshift(newSession);
+          logger.debug('[SessionStore] Created optimistic session for new_ tab:', tab.id);
+          continue;
         }
-      } catch (err) {
-        logger.debug('[SessionStore] Could not import navigationStore:', err);
+
+        logger.debug('[SessionStore] Tab not in session list, fetching:', tab.id);
+
+        // Try to fetch this session individually
+        try {
+          const sessionResponse = await sessionApi.getSession(tab.id);
+          if (sessionResponse.session) {
+            const sessionWithTitle = {
+              ...sessionResponse.session,
+              chat_name: tab.title || sessionResponse.session.chat_name || `会话 ${tab.id.slice(0, 12)}`,
+            };
+            mergedSessions.unshift(sessionWithTitle);
+            logger.debug('[SessionStore] Fetched missing session:', tab.id, 'title:', sessionWithTitle.chat_name);
+          }
+        } catch (err) {
+          // Session might not exist on server anymore
+          logger.debug('[SessionStore] Could not fetch session:', tab.id, err);
+          newOptimisticIds.delete(tab.id);
+        }
       }
 
       // Sort by last_activity_at descending
@@ -197,9 +191,18 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         new Date(b.last_activity_at).getTime() - new Date(a.last_activity_at).getTime()
       );
 
+      // Deduplicate by session id (in case of any duplicates from merge or server)
+      const deduplicatedSessions = mergedSessions.filter((session, index, self) =>
+        index === self.findIndex(s => s.id === session.id)
+      );
+
+      if (deduplicatedSessions.length !== mergedSessions.length) {
+        logger.debug('[SessionStore] Removed duplicates:', mergedSessions.length - deduplicatedSessions.length);
+      }
+
       set({
-        sessions: mergedSessions,
-        total: mergedSessions.length,
+        sessions: deduplicatedSessions,
+        total: response.total,
         isLoading: false,
         optimisticSessionIds: newOptimisticIds,
       });
@@ -318,7 +321,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     } catch (err) {
       logger.error('[SessionStore] Error:', err);
       const errorMsg = err instanceof Error ? err.message : String(err);
-      set({ error: errorMsg || 'Unknown error', isLoading: false });
+      set({ error: errorMsg || 'Unknown error', isLoading: false, currentSession: null, messages: [] });
       return [];
     }
   },
@@ -418,20 +421,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       }
 
       // Update the tab title in navigation store
-      try {
-        const { useNavigationStore } = await import('./navigationStore');
-        useNavigationStore.getState().updateTabTitle(id, title);
-      } catch {
-        // Ignore if navigation store not available
-      }
+      useNavigationStore.getState().updateTabTitle(id, title);
 
       // Save tabs to persist the updated title
-      try {
-        const { useNavigationStore } = await import('./navigationStore');
-        useNavigationStore.getState().saveTabs();
-      } catch {
-        // Ignore if navigation store not available
-      }
+      useNavigationStore.getState().saveTabs();
 
       logger.debug('[SessionStore] Updated session title:', id, title);
     } catch (err) {

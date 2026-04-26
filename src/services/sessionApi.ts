@@ -21,70 +21,33 @@ export interface SessionSearchResult {
 }
 
 export interface SessionSearchResponse {
+  query: string;
   results: SessionSearchResult[];
   total: number;
 }
 
 // List all sessions
 export async function listSessions(platform?: string, limit?: number, offset?: number): Promise<SessionListResponse> {
-  try {
-    const params: Record<string, unknown> = {};
-    if (platform) params.platform = platform;
-    if (limit) params.limit = limit;
-    if (offset) params.offset = offset;
+  const params: Record<string, unknown> = {};
+  if (platform) params.platform = platform;
+  if (limit) params.limit = limit;
+  if (offset) params.offset = offset;
 
-    logger.debug('[SessionApi] Calling list_sessions with params:', params);
-    const response = await safeInvoke<SessionListResponse>('list_sessions', Object.keys(params).length > 0 ? params : undefined);
-    logger.debug('[SessionApi] Sessions fetched:', response?.sessions?.length || 0, 'total:', response?.total);
-    
-    // Handle both old format (Session[]) and new format (SessionListResponse)
-    if (response && 'sessions' in response) {
-      return response;
-    }
-    
-    // Fallback for old format
-    const sessions = response as unknown as Session[];
-    return {
-      sessions: sessions || [],
-      total: sessions?.length || 0,
-    };
-  } catch (error) {
-    logger.error('[SessionApi] Failed to list sessions:', error);
-    // Return mock data for development
-    return {
-      sessions: [
-        {
-          id: '20260420_123015_abc123',
-          platform: 'cli',
-          chat_id: '',
-          chat_name: 'Recent CLI Session',
-          started_at: new Date().toISOString(),
-          last_activity_at: new Date().toISOString(),
-          message_count: 10,
-          model: 'astron-code-latest',
-          input_tokens: 50000,
-          output_tokens: 2000,
-          estimated_cost_usd: 0.05,
-          status: 'completed',
-        },
-        {
-          id: 'cron_255c5e8adde',
-          platform: 'cron',
-          chat_id: '',
-          chat_name: 'Scheduled Task',
-          started_at: new Date(Date.now() - 3600000).toISOString(),
-          last_activity_at: new Date(Date.now() - 3600000).toISOString(),
-          message_count: 1,
-          model: 'astron-code-latest',
-          input_tokens: 15000,
-          output_tokens: 500,
-          estimated_cost_usd: 0.01,
-          status: 'completed',
-        },
-      ],
-      total: 2,
-    };
+  logger.debug('[SessionApi] Calling list_sessions with params:', params);
+  const response = await safeInvoke<SessionListResponse>('list_sessions', Object.keys(params).length > 0 ? params : undefined);
+  logger.debug('[SessionApi] Sessions fetched:', response?.sessions?.length || 0, 'total:', response?.total);
+
+  // Handle both old format (Session[]) and new format (SessionListResponse)
+  if (response && 'sessions' in response) {
+    return response;
   }
+
+  // Fallback for old format
+  const sessions = response as unknown as Session[];
+  return {
+    sessions: sessions || [],
+    total: sessions?.length || 0,
+  };
 }
 
 // Get a single session by ID with messages
@@ -115,10 +78,11 @@ export async function getSession(id: string): Promise<SessionDetailResponse> {
 
 // Search sessions
 export async function searchSessions(params: { q: string; platform?: string; days?: number }): Promise<SessionSearchResponse> {
-  const results = await safeInvoke<SessionSearchResult[]>('search_sessions', params);
+  const response = await safeInvoke<{ results: SessionSearchResult[]; total: number }>('search_sessions', params);
   return {
-    results: results || [],
-    total: results?.length || 0,
+    query: params.q,
+    results: response?.results || [],
+    total: response?.total || 0,
   };
 }
 

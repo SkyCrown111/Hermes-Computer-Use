@@ -76,6 +76,38 @@ pub struct FileOperationResult {
     pub path: Option<String>,
 }
 
+/// Validate path against shell injection and directory traversal
+fn validate_path(path: &str) -> Result<String, String> {
+    // Reject empty paths
+    if path.trim().is_empty() {
+        return Err("Path is empty".to_string());
+    }
+
+    // Reject dangerous shell characters
+    let dangerous = [';', '|', '`', '$', '\\', '>', '<', '&', '!', '*', '?', '[', ']', '(', ')', '{', '}', '\n', '\r'];
+    for ch in dangerous {
+        if path.contains(ch) {
+            return Err(format!("Path contains invalid character: '{}'", ch));
+        }
+    }
+
+    // Reject path traversal that escapes the home directory
+    let normalized = path.replace("//", "/");
+    if normalized.contains("..") {
+        // Allow only if it stays within the user's home
+        let resolved = if normalized.starts_with('~') || normalized.starts_with("/home/") || normalized.starts_with("/mnt/") {
+            normalized
+        } else {
+            return Err("Path must start with ~, /home/, or /mnt/".to_string());
+        };
+        if resolved.contains("/../") || resolved.ends_with("/..") {
+            return Err("Path traversal not allowed".to_string());
+        }
+    }
+
+    Ok(path.to_string())
+}
+
 /// Get file extension and mime type
 fn get_file_info(name: &str) -> (Option<String>, Option<String>) {
     let ext = name.rsplit('.').next().map(|s| s.to_lowercase());
@@ -115,6 +147,7 @@ pub async fn list_directory(
     sort_order: Option<String>,
 ) -> Result<DirectoryContent, String> {
     println!("[Files] Listing directory: {}", path);
+    let _ = validate_path(&path)?;
 
     let recursive = recursive.unwrap_or(false);
     let include_hidden = include_hidden.unwrap_or(false);
@@ -333,6 +366,7 @@ fn format_timestamp(ts: i64) -> String {
 #[tauri::command]
 pub async fn read_file(path: String) -> Result<FileContent, String> {
     println!("[Files] Reading file: {}", path);
+    let _ = validate_path(&path)?;
 
     let cmd = format!("cat {} 2>/dev/null", path);
     let output = create_command("wsl")
@@ -382,6 +416,7 @@ pub async fn read_file(path: String) -> Result<FileContent, String> {
 #[tauri::command]
 pub async fn write_file(path: String, content: String) -> Result<FileOperationResult, String> {
     println!("[Files] Writing file: {}", path);
+    let _ = validate_path(&path)?;
 
     // Create parent directory if needed
     let parent_cmd = format!("mkdir -p $(dirname '{}')", path);
@@ -414,6 +449,7 @@ pub async fn write_file(path: String, content: String) -> Result<FileOperationRe
 #[tauri::command]
 pub async fn create_directory(path: String) -> Result<FileOperationResult, String> {
     println!("[Files] Creating directory: {}", path);
+    let _ = validate_path(&path)?;
 
     let cmd = format!("mkdir -p '{}'", path);
     let output = create_command("wsl")
@@ -437,6 +473,7 @@ pub async fn create_directory(path: String) -> Result<FileOperationResult, Strin
 #[tauri::command]
 pub async fn delete_file(path: String) -> Result<FileOperationResult, String> {
     println!("[Files] Deleting: {}", path);
+    let _ = validate_path(&path)?;
 
     let cmd = format!("rm -rf '{}'", path);
     let output = create_command("wsl")
@@ -460,6 +497,8 @@ pub async fn delete_file(path: String) -> Result<FileOperationResult, String> {
 #[tauri::command]
 pub async fn move_file(source: String, destination: String) -> Result<FileOperationResult, String> {
     println!("[Files] Moving {} to {}", source, destination);
+    let _ = validate_path(&source)?;
+    let _ = validate_path(&destination)?;
 
     let cmd = format!("mv '{}' '{}'", source, destination);
     let output = create_command("wsl")
@@ -483,6 +522,8 @@ pub async fn move_file(source: String, destination: String) -> Result<FileOperat
 #[tauri::command]
 pub async fn copy_file(source: String, destination: String) -> Result<FileOperationResult, String> {
     println!("[Files] Copying {} to {}", source, destination);
+    let _ = validate_path(&source)?;
+    let _ = validate_path(&destination)?;
 
     let cmd = format!("cp -r '{}' '{}'", source, destination);
     let output = create_command("wsl")
@@ -506,6 +547,7 @@ pub async fn copy_file(source: String, destination: String) -> Result<FileOperat
 #[tauri::command]
 pub async fn file_exists(path: String) -> Result<serde_json::Value, String> {
     println!("[Files] Checking if exists: {}", path);
+    let _ = validate_path(&path)?;
 
     let cmd = format!("test -e '{}' && echo 'exists' || echo 'not_found'; test -d '{}' && echo 'directory' || test -f '{}' && echo 'file'", path, path, path);
     let output = create_command("wsl")
@@ -529,6 +571,7 @@ pub async fn file_exists(path: String) -> Result<serde_json::Value, String> {
 #[tauri::command]
 pub async fn get_file_tree(path: String, depth: Option<u32>) -> Result<serde_json::Value, String> {
     println!("[Files] Getting file tree for: {}", path);
+    let _ = validate_path(&path)?;
 
     let max_depth = depth.unwrap_or(3);
     let cmd = format!("find {} -maxdepth {} -type d 2>/dev/null | head -100", path, max_depth);
@@ -572,6 +615,7 @@ pub struct BinaryFileContent {
 #[tauri::command]
 pub async fn read_file_binary(path: String) -> Result<BinaryFileContent, String> {
     println!("[Files] Reading binary file: {}", path);
+    let _ = validate_path(&path)?;
 
     // Use base64 command to encode the file
     let cmd = format!("base64 -w 0 {} 2>/dev/null", path);
@@ -624,6 +668,7 @@ pub async fn read_file_binary(path: String) -> Result<BinaryFileContent, String>
 #[tauri::command]
 pub async fn write_file_binary(path: String, content: String) -> Result<FileOperationResult, String> {
     println!("[Files] Writing binary file: {} ({} bytes base64)", path, content.len());
+    let _ = validate_path(&path)?;
 
     // Create parent directory if needed
     let parent_cmd = format!("mkdir -p $(dirname '{}')", path);
@@ -631,16 +676,21 @@ pub async fn write_file_binary(path: String, content: String) -> Result<FileOper
         .args(["bash", "-c", &parent_cmd])
         .output();
 
-    // Decode base64 and write to file
-    let cmd = format!("echo '{}' | base64 -d > '{}' 2>/dev/null", content, path);
-    let output = create_command("wsl")
-        .args(["bash", "-c", &cmd])
-        .output()
+    // Decode base64 and write to file via stdin to avoid shell injection
+    let mut child = create_command("wsl")
+        .args(["bash", "-c", &format!("base64 -d > '{}' 2>/dev/null", path)])
+        .stdin(std::process::Stdio::piped())
+        .spawn()
         .map_err(|e| format!("Failed to write binary file: {}", e))?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Failed to write binary file: {}", stderr));
+    use std::io::Write;
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(content.as_bytes()).map_err(|e| format!("Failed to write content: {}", e))?;
+    }
+
+    let status = child.wait().map_err(|e| format!("Failed to wait for process: {}", e))?;
+    if !status.success() {
+        return Err("Failed to write binary file".to_string());
     }
 
     Ok(FileOperationResult {

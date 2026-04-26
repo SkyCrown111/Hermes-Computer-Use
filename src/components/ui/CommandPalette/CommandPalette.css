@@ -117,3 +117,62 @@
   color: var(--text-tertiary, #888);
   font-size: 14px;
 }
+
+/* ============================================
+   Mobile Responsive Enhancements
+   ============================================ */
+
+@media (max-width: 767px) {
+  .command-palette-overlay {
+    padding-top: 10vh;
+    padding-left: var(--space-2);
+    padding-right: var(--space-2);
+  }
+
+  .command-palette {
+    width: 100%;
+    max-width: 100%;
+    border-radius: var(--radius-lg, 8px);
+  }
+
+  .command-palette-header {
+    padding: var(--space-2) var(--space-3);
+    gap: var(--space-2);
+  }
+
+  .command-palette-icon {
+    font-size: 16px;
+  }
+
+  .command-palette-input {
+    font-size: 14px;
+  }
+
+  .command-palette-results {
+    max-height: 250px;
+    padding: var(--space-2);
+  }
+
+  .command-item {
+    padding: var(--space-2) var(--space-3);
+    gap: var(--space-2);
+  }
+
+  .command-icon {
+    font-size: 16px;
+    width: 24px;
+  }
+
+  .command-label {
+    font-size: 13px;
+  }
+
+  .command-desc {
+    font-size: 11px;
+  }
+
+  .command-empty {
+    padding: var(--space-4);
+    font-size: 13px;
+  }
+}

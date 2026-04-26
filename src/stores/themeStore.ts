@@ -8,8 +8,11 @@ interface ThemeState {
   language: Language;
   accentColor: string;
   sidebarCollapsed: boolean;
+  mobileSidebarOpen: boolean;
   toggleSidebar: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
+  setMobileSidebarOpen: (open: boolean) => void;
+  toggleMobileSidebar: () => void;
   toggleTheme: () => void;
   setTheme: (mode: 'dark' | 'light') => void;
   setLanguage: (lang: Language) => void;
@@ -22,8 +25,11 @@ export const useThemeStore = create<ThemeState>()(
       language: 'en', // Default to English
       accentColor: '#8F482F',
       sidebarCollapsed: false,
+      mobileSidebarOpen: false,
       toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
       setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
+      setMobileSidebarOpen: (open) => set({ mobileSidebarOpen: open }),
+      toggleMobileSidebar: () => set((state) => ({ mobileSidebarOpen: !state.mobileSidebarOpen })),
       toggleTheme: () => set((state) => ({ mode: state.mode === 'dark' ? 'light' : 'dark' })),
       setTheme: (mode) => set({ mode }),
       setLanguage: (language) => set({ language }),

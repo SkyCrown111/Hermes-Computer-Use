@@ -90,123 +90,116 @@ fn read_file_content(path_in_hermes: &str) -> Option<String> {
     None
 }
 
-/// Parse YAML config into structured config
+/// Parse YAML config into structured config using serde_yaml
 fn parse_config(yaml_content: &str) -> HermesConfig {
     let mut config = HermesConfig {
         raw: Some(yaml_content.to_string()),
         ..Default::default()
     };
 
-    // Track current YAML section based on indentation
-    let mut current_section: Option<&str> = None;
-    let mut section_indent: usize = 0;
-
-    for line in yaml_content.lines() {
-        let trimmed = line.trim();
-
-        // Skip empty lines and comments
-        if trimmed.is_empty() || trimmed.starts_with('#') {
-            continue;
+    // Parse YAML to generic value (handles comments, variable indentation, etc.)
+    let root: serde_yaml::Value = match serde_yaml::from_str(yaml_content) {
+        Ok(v) => v,
+        Err(e) => {
+            println!("[Config] Failed to parse YAML with serde_yaml: {}", e);
+            return config;
         }
+    };
+    let root = match root.as_mapping() {
+        Some(m) => m,
+        None => return config,
+    };
 
-        // Calculate indentation level
-        let indent = line.len() - line.trim_start().len();
+    /// Helper: get a string field from a mapping at a given key
+    fn get_str(map: &serde_yaml::Mapping, key: &str) -> Option<String> {
+        map.get(&serde_yaml::Value::String(key.to_string()))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+    }
 
-        // Detect top-level sections (no indentation)
-        if indent == 0 && trimmed.ends_with(':') && !trimmed.contains(' ') {
-            current_section = Some(trimmed.trim_end_matches(':'));
-            section_indent = 0;
-            continue;
-        }
+    /// Helper: get an integer field from a mapping at a given key
+    fn get_i64(map: &serde_yaml::Mapping, key: &str) -> Option<i64> {
+        map.get(&serde_yaml::Value::String(key.to_string()))
+            .and_then(|v| v.as_i64())
+    }
 
-        // Update section if we're back to a lower indentation
-        if indent <= section_indent {
-            current_section = None;
-        }
+    /// Helper: get a boolean field from a mapping at a given key
+    fn get_bool(map: &serde_yaml::Mapping, key: &str) -> Option<bool> {
+        map.get(&serde_yaml::Value::String(key.to_string()))
+            .and_then(|v| v.as_bool())
+    }
 
-        // Only parse fields inside specific sections
-        match current_section {
-            Some("model") => {
-                // Only parse model fields at indent level 2 (inside model:)
-                if indent == 2 {
-                    if trimmed.starts_with("default:") {
-                        config.model.get_or_insert_with(Default::default).default =
-                            Some(trimmed.strip_prefix("default:").unwrap_or("").trim().trim_matches('"').to_string());
-                    } else if trimmed.starts_with("provider:") {
-                        config.model.get_or_insert_with(Default::default).provider =
-                            Some(trimmed.strip_prefix("provider:").unwrap_or("").trim().trim_matches('"').to_string());
-                    } else if trimmed.starts_with("api_key:") {
-                        config.model.get_or_insert_with(Default::default).api_key =
-                            Some(trimmed.strip_prefix("api_key:").unwrap_or("").trim().trim_matches('"').to_string());
-                    } else if trimmed.starts_with("base_url:") {
-                        config.model.get_or_insert_with(Default::default).base_url =
-                            Some(trimmed.strip_prefix("base_url:").unwrap_or("").trim().trim_matches('"').to_string());
-                    }
-                }
-                section_indent = indent;
-            }
-            Some("agent") => {
-                if indent == 2 {
-                    if trimmed.starts_with("max_turns:") {
-                        config.agent.get_or_insert_with(Default::default).max_turns =
-                            trimmed.strip_prefix("max_turns:").unwrap_or("").trim().parse().ok();
-                    } else if trimmed.starts_with("timeout:") {
-                        config.agent.get_or_insert_with(Default::default).timeout =
-                            trimmed.strip_prefix("timeout:").unwrap_or("").trim().parse().ok();
-                    } else if trimmed.starts_with("reasoning_effort:") {
-                        config.agent.get_or_insert_with(Default::default).reasoning_effort =
-                            Some(trimmed.strip_prefix("reasoning_effort:").unwrap_or("").trim().trim_matches('"').to_string());
-                    }
-                }
-                section_indent = indent;
-            }
-            Some("terminal") => {
-                if indent == 2 {
-                    if trimmed.starts_with("backend:") {
-                        config.terminal.get_or_insert_with(Default::default).backend =
-                            Some(trimmed.strip_prefix("backend:").unwrap_or("").trim().trim_matches('"').to_string());
-                    } else if trimmed.starts_with("timeout:") {
-                        config.terminal.get_or_insert_with(Default::default).timeout =
-                            trimmed.strip_prefix("timeout:").unwrap_or("").trim().parse().ok();
-                    } else if trimmed.starts_with("cwd:") {
-                        config.terminal.get_or_insert_with(Default::default).cwd =
-                            Some(trimmed.strip_prefix("cwd:").unwrap_or("").trim().trim_matches('"').to_string());
-                    }
-                }
-                section_indent = indent;
-            }
-            Some("compression") => {
-                if indent == 2 {
-                    if trimmed.starts_with("enabled:") {
-                        config.compression.get_or_insert_with(Default::default).enabled =
-                            trimmed.strip_prefix("enabled:").unwrap_or("").trim().parse().ok();
-                    } else if trimmed.starts_with("threshold:") {
-                        config.compression.get_or_insert_with(Default::default).threshold =
-                            trimmed.strip_prefix("threshold:").unwrap_or("").trim().parse().ok();
-                    } else if trimmed.starts_with("target_ratio:") {
-                        config.compression.get_or_insert_with(Default::default).target_ratio =
-                            trimmed.strip_prefix("target_ratio:").unwrap_or("").trim().parse().ok();
-                    }
-                }
-                section_indent = indent;
-            }
-            Some("checkpoints") => {
-                if indent == 2 {
-                    if trimmed.starts_with("enabled:") {
-                        config.checkpoint.get_or_insert_with(Default::default).enabled =
-                            trimmed.strip_prefix("enabled:").unwrap_or("").trim().parse().ok();
-                    } else if trimmed.starts_with("max_snapshots:") {
-                        config.checkpoint.get_or_insert_with(Default::default).max_snapshots =
-                            trimmed.strip_prefix("max_snapshots:").unwrap_or("").trim().parse().ok();
-                    }
-                }
-                section_indent = indent;
-            }
-            _ => {}
-        }
+    /// Helper: get a float field from a mapping at a given key
+    fn get_f64(map: &serde_yaml::Mapping, key: &str) -> Option<f64> {
+        map.get(&serde_yaml::Value::String(key.to_string()))
+            .and_then(|v| v.as_f64())
+    }
+
+    // Extract model section
+    if let Some(model_map) = root.get(&serde_yaml::Value::String("model".to_string()))
+        .and_then(|v| v.as_mapping())
+    {
+        config.model = Some(ModelConfig {
+            default: get_str(model_map, "default"),
+            provider: get_str(model_map, "provider"),
+            api_key: get_str(model_map, "api_key"),
+            base_url: get_str(model_map, "base_url"),
+        });
+    }
+
+    // Extract agent section
+    if let Some(agent_map) = root.get(&serde_yaml::Value::String("agent".to_string()))
+        .and_then(|v| v.as_mapping())
+    {
+        config.agent = Some(AgentConfig {
+            max_turns: get_i64(agent_map, "max_turns").map(|v| v as i32),
+            timeout: get_i64(agent_map, "timeout").map(|v| v as i32),
+            reasoning_effort: get_str(agent_map, "reasoning_effort"),
+        });
+    }
+
+    // Extract terminal section
+    if let Some(terminal_map) = root.get(&serde_yaml::Value::String("terminal".to_string()))
+        .and_then(|v| v.as_mapping())
+    {
+        config.terminal = Some(TerminalConfig {
+            backend: get_str(terminal_map, "backend"),
+            timeout: get_i64(terminal_map, "timeout").map(|v| v as i32),
+            cwd: get_str(terminal_map, "cwd"),
+        });
+    }
+
+    // Extract compression section
+    if let Some(compression_map) = root.get(&serde_yaml::Value::String("compression".to_string()))
+        .and_then(|v| v.as_mapping())
+    {
+        config.compression = Some(CompressionConfig {
+            enabled: get_bool(compression_map, "enabled"),
+            threshold: get_f64(compression_map, "threshold"),
+            target_ratio: get_f64(compression_map, "target_ratio"),
+        });
+    }
+
+    // Extract checkpoints section
+    if let Some(checkpoint_map) = root.get(&serde_yaml::Value::String("checkpoints".to_string()))
+        .and_then(|v| v.as_mapping())
+    {
+        config.checkpoint = Some(CheckpointConfig {
+            enabled: get_bool(checkpoint_map, "enabled"),
+            max_snapshots: get_i64(checkpoint_map, "max_snapshots").map(|v| v as i32),
+        });
     }
 
     config
+}
+
+/// Mask API key for frontend display, keeping only last 4 chars
+fn mask_api_key(key: &str) -> String {
+    if key.len() <= 8 {
+        return "••••••••".to_string();
+    }
+    let visible = &key[key.len()-4..];
+    format!("••••••••{}", visible)
 }
 
 /// Load Hermes configuration
@@ -222,7 +215,13 @@ pub fn load_config() -> Result<HermesConfig, String> {
         if output.status.success() && !output.stdout.is_empty() {
             let raw = String::from_utf8_lossy(&output.stdout).to_string();
             println!("[Config] Raw YAML:\n{}", raw);
-            let config = parse_config(&raw);
+            let mut config = parse_config(&raw);
+            // Mask API key before sending to frontend
+            if let Some(ref mut model) = config.model {
+                if let Some(ref api_key) = model.api_key.clone() {
+                    model.api_key = Some(mask_api_key(api_key));
+                }
+            }
             println!("[Config] Parsed config - model: {:?}, provider: {:?}",
                 config.model.as_ref().and_then(|m| m.default.as_ref()),
                 config.model.as_ref().and_then(|m| m.provider.as_ref()));
@@ -237,7 +236,13 @@ pub fn load_config() -> Result<HermesConfig, String> {
 
     // Fallback to Windows path
     if let Some(raw) = read_file_content("config.yaml") {
-        let config = parse_config(&raw);
+        let mut config = parse_config(&raw);
+        // Mask API key before sending to frontend
+        if let Some(ref mut model) = config.model {
+            if let Some(ref api_key) = model.api_key.clone() {
+                model.api_key = Some(mask_api_key(api_key));
+            }
+        }
         println!("[Config] Loaded from Windows - model: {:?}, provider: {:?}",
             config.model.as_ref().and_then(|m| m.default.as_ref()),
             config.model.as_ref().and_then(|m| m.provider.as_ref()));
@@ -303,7 +308,7 @@ pub fn save_config(config: HermesConfig) -> Result<(), String> {
             }
         }
         if let Some(api_key) = &model.api_key {
-            if !api_key.is_empty() {
+            if !api_key.is_empty() && !api_key.starts_with("••••••••") {
                 hermes_config_set("model.api_key", api_key)?;
             }
         }

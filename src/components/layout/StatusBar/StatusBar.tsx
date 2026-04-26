@@ -5,6 +5,7 @@ import { useNavigationStore, useChatStore, useSessionStore } from '../../../stor
 import type { SystemStatus } from '../../../types/status';
 import { toast } from '../../../stores/toastStore';
 import { TokenIcon, CpuIcon } from '../../ui/Icons';
+import { useTranslation } from '../../../hooks/useTranslation';
 import './StatusBar.css';
 
 function formatTokens(n: number): string {
@@ -16,6 +17,7 @@ function formatTokens(n: number): string {
 export const StatusBar: React.FC = () => {
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const { t } = useTranslation();
 
   // Active tab / session
   const activeTabId = useNavigationStore((s) => s.activeTabId);
@@ -63,10 +65,10 @@ export const StatusBar: React.FC = () => {
 
   const statusDotClass = isOnline ? 'online' : isDegraded ? 'degraded' : 'offline';
   const statusLabel = isOnline
-    ? 'Connected'
+    ? t('status.connected')
     : isDegraded
-      ? 'Degraded'
-      : 'Offline';
+      ? t('status.degraded')
+      : t('status.offline');
 
   const handleGatewayClick = async () => {
     try {
@@ -76,7 +78,7 @@ export const StatusBar: React.FC = () => {
       const platforms = gw.connected_platforms?.map((p) => p.name).join(', ') || 'none';
       toast.info('Hermes Gateway', `Status: ${gw.status}\nPlatforms: ${platforms}\nUptime: ${Math.floor(gw.uptime_seconds / 60)}m`);
     } catch {
-      toast.error('Status check failed', 'Could not reach Hermes Gateway');
+      toast.error(t('status.checkFailed'), t('status.cannotReach'));
     }
   };
 
@@ -87,10 +89,10 @@ export const StatusBar: React.FC = () => {
         <div
           className="status-gateway"
           onClick={handleGatewayClick}
-          title="Click to refresh gateway status"
+          title={t('status.clickRefresh')}
         >
           <span className={`status-dot ${statusDotClass}`} />
-          <span className="status-label">Gateway: {statusLabel}</span>
+          <span className="status-label">{t('status.gateway')}: {statusLabel}</span>
         </div>
 
         <span className="status-separator" />
@@ -98,7 +100,7 @@ export const StatusBar: React.FC = () => {
         {/* Active model */}
         {activeSessionModel && (
           <>
-            <div className="status-model" title="Current model">
+            <div className="status-model" title={t('status.currentModel')}>
               <CpuIcon size={12} />
               <span>{activeSessionModel}</span>
             </div>
@@ -109,7 +111,7 @@ export const StatusBar: React.FC = () => {
         {/* Token usage for active session */}
         {hasTokenUsage && (
           <>
-            <div className="status-tokens" title="Token usage (current session)">
+            <div className="status-tokens" title={t('status.tokenUsage')}>
               <TokenIcon size={12} />
               <span className="status-tokens-value">
                 ↑{formatTokens(inputTokens)} ↓{formatTokens(outputTokens)}
@@ -123,8 +125,8 @@ export const StatusBar: React.FC = () => {
       <div className="status-bar-right">
         {/* Active sessions count */}
         {activeSessions > 0 && (
-          <span className="status-tokens" title="Active sessions">
-            {activeSessions} session{activeSessions !== 1 ? 's' : ''}
+          <span className="status-tokens" title={t('status.activeSessions')}>
+            {activeSessions} {t('status.sessions')}
           </span>
         )}
 
@@ -132,7 +134,7 @@ export const StatusBar: React.FC = () => {
         {pendingTasks > 0 && (
           <>
             <span className="status-separator" />
-            <div className="status-tasks" title={`${pendingTasks} pending task${pendingTasks !== 1 ? 's' : ''}`}>
+            <div className="status-tasks" title={`${pendingTasks} ${t('status.pendingTasksLabel')}`}>
               <span className="status-tasks-spinner" />
               <span className="status-tasks-count">{pendingTasks}</span>
             </div>

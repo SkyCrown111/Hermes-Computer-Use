@@ -642,3 +642,96 @@
   color: var(--text-secondary);
   line-height: 1.5;
 }
+
+/* ============================================
+   Mobile Responsive Enhancements
+   ============================================ */
+
+@media (max-width: 767px) {
+  .memory {
+    gap: var(--space-4);
+  }
+
+  .memory-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-3);
+  }
+
+  .memory-tabs {
+    flex-wrap: wrap;
+  }
+
+  .memory-tab {
+    flex: 1;
+    min-width: calc(50% - var(--space-1));
+    justify-content: center;
+  }
+
+  .memory-actions {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .memory-search-wrapper {
+    width: 100%;
+  }
+
+  .memory-search {
+    min-width: auto;
+    width: 100%;
+  }
+
+  .search-options {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .memory-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .memory-file-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+  }
+
+  .memory-file-stats {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+  }
+
+  .section-meta {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .edit-footer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-3);
+  }
+
+  .edit-buttons {
+    justify-content: flex-end;
+  }
+
+  .search-result-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-1);
+  }
+
+  .expand-controls {
+    width: 100%;
+    justify-content: flex-end;
+    margin-bottom: var(--space-2);
+  }
+}

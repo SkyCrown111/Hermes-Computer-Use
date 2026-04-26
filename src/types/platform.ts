@@ -1,11 +1,12 @@
 // Platform Types - 平台接入类型定义
 
-export type PlatformType = 
+export type PlatformType =
   | 'telegram'
   | 'discord'
   | 'slack'
   | 'whatsapp'
   | 'wechat'
+  | 'weixin'
   | 'lark'
   | 'api'
   | 'webhook';

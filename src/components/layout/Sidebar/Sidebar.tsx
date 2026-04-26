@@ -122,7 +122,7 @@ function PlusIcon() {
 
 export const Sidebar: React.FC = () => {
   const { activeItem, setActiveItem, openChat } = useNavigationStore();
-  const { sidebarCollapsed, toggleSidebar } = useThemeStore();
+  const { sidebarCollapsed, toggleSidebar, mobileSidebarOpen, setMobileSidebarOpen } = useThemeStore();
   const { t } = useTranslation();
 
   // Navigation items with translated labels
@@ -144,9 +144,15 @@ export const Sidebar: React.FC = () => {
   ];
 
   return (
-    <aside className={`sidebar ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
-      {/* Header */}
-      <div className="sidebar-header">
+    <>
+      {/* Mobile overlay backdrop */}
+      <div
+        className={`sidebar-overlay ${mobileSidebarOpen ? 'active' : ''}`}
+        onClick={() => setMobileSidebarOpen(false)}
+      />
+      <aside className={`sidebar ${sidebarCollapsed ? 'sidebar-collapsed' : ''} ${mobileSidebarOpen ? 'mobile-open' : ''}`}>
+        {/* Header */}
+        <div className="sidebar-header">
         <div className="sidebar-logo">
           {!sidebarCollapsed && (
             <span className="logo-text">
@@ -225,16 +231,7 @@ export const Sidebar: React.FC = () => {
           ))}
         </ul>
       </nav>
-
-      {/* Footer */}
-      <div className="sidebar-footer">
-        {!sidebarCollapsed && (
-          <div className="sidebar-status">
-            <span className="status-dot status-dot-online" />
-            <span className="status-text">{t('nav.running')}</span>
-          </div>
-        )}
-      </div>
     </aside>
+    </>
   );
 };

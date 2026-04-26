@@ -39,11 +39,19 @@ const defaultPlatforms: Platform[] = [
     enabled: false,
   },
   {
-    type: 'wechat',
+    type: 'weixin',
     name: '微信',
-    description: '企业微信/个人微信接入',
+    description: '个人微信扫码接入',
     status: 'disconnected',
     icon: '🟢',
+    enabled: false,
+  },
+  {
+    type: 'wechat',
+    name: '企业微信',
+    description: '企业微信 Work 接入',
+    status: 'disconnected',
+    icon: '🏢',
     enabled: false,
   },
   {

@@ -49,6 +49,7 @@ const translations: Translations = {
   'sessions.search': { zh: '搜索会话内容...', en: 'Search sessions...' },
   'sessions.all': { zh: '全部', en: 'All' },
   'sessions.messages': { zh: '条消息', en: 'messages' },
+  'sessions.countUnit': { zh: '条', en: '' },
   'sessions.noSessions': { zh: '暂无会话', en: 'No sessions' },
   'sessions.export': { zh: '导出', en: 'Export' },
   'sessions.batchExport': { zh: '批量导出', en: 'Batch Export' },
@@ -86,6 +87,20 @@ const translations: Translations = {
   'sidebar.rename': { zh: '重命名', en: 'Rename' },
   'sidebar.renameSession': { zh: '重命名会话', en: 'Rename Session' },
   'sidebar.enterSessionName': { zh: '请输入会话名称', en: 'Enter session name' },
+
+  // Status Bar
+  'status.gateway': { zh: '网关', en: 'Gateway' },
+  'status.connected': { zh: '已连接', en: 'Connected' },
+  'status.degraded': { zh: '降级', en: 'Degraded' },
+  'status.offline': { zh: '离线', en: 'Offline' },
+  'status.clickRefresh': { zh: '点击刷新网关状态', en: 'Click to refresh gateway status' },
+  'status.currentModel': { zh: '当前模型', en: 'Current model' },
+  'status.tokenUsage': { zh: 'Token 使用量 (当前会话)', en: 'Token usage (current session)' },
+  'status.activeSessions': { zh: '活跃会话', en: 'Active sessions' },
+  'status.sessions': { zh: '个会话', en: 'sessions' },
+  'status.pendingTasksLabel': { zh: '个待处理任务', en: 'pending task(s)' },
+  'status.checkFailed': { zh: '状态检查失败', en: 'Status check failed' },
+  'status.cannotReach': { zh: '无法连接到 Hermes Gateway', en: 'Could not reach Hermes Gateway' },
 
   // Skills Page
   'skills.title': { zh: 'Skills', en: 'Skills' },
@@ -407,6 +422,7 @@ const translations: Translations = {
   'chat.slashCommands': { zh: '斜杠命令', en: 'Slash commands' },
   'chat.stop': { zh: '停止', en: 'Stop' },
   'chat.run': { zh: '运行', en: 'Run' },
+  'chat.messageQueued': { zh: '消息已排队，等待发送...', en: 'Message queued, waiting to send...' },
   'chat.navigate': { zh: '导航', en: 'Navigate' },
   'chat.select': { zh: '选择', en: 'Select' },
   'chat.close': { zh: '关闭', en: 'Close' },

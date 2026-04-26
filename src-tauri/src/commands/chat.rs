@@ -2,35 +2,18 @@
 // Direct Hermes Agent calling with real-time streaming via Python wrapper
 
 use serde::{Deserialize, Serialize};
-use std::process::{Command, Stdio};
 use std::io::{BufRead, BufReader, Write};
+use std::process::Stdio;
 use std::sync::{Arc, Mutex};
 use tauri::AppHandle;
 use tauri::Emitter;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
-
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
-
-#[cfg(windows)]
-const CREATE_NO_WINDOW: u32 = 0x08000000;
+use super::utils::create_command;
 
 // Global state to track running chat processes
 // Key: session_id (or empty string for single session), Value: process handle
 lazy_static::lazy_static! {
     static ref RUNNING_PROCESSES: Arc<Mutex<Option<u32>>> = Arc::new(Mutex::new(None));
-}
-
-#[cfg(windows)]
-fn create_command(program: &str) -> Command {
-    let mut cmd = Command::new(program);
-    cmd.creation_flags(CREATE_NO_WINDOW);
-    cmd
-}
-
-#[cfg(not(windows))]
-fn create_command(program: &str) -> Command {
-    Command::new(program)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -124,7 +107,7 @@ pub fn send_chat_message(
     );
 
     if let Some(sid) = session_id {
-        cmd_str.push_str(&format!(" '{}'", sid));
+        cmd_str.push_str(&format!(" '{}'", sid.replace("'", "'\\''")));
     }
 
     let output = create_command("wsl")
@@ -406,10 +389,16 @@ pub async fn stream_chat_realtime(
 pub fn respond_approval(approval_id: String, choice: String) -> Result<(), String> {
     println!("[Approval] Responding to approval {}: {}", approval_id, choice);
 
+    // Validate approval_id to prevent shell injection (only allow safe chars)
+    if approval_id.chars().any(|c| !c.is_alphanumeric() && c != '-' && c != '_') {
+        return Err("Invalid approval_id".to_string());
+    }
+
     // Write response file in WSL
     let response_cmd = format!(
         "echo '{}' > ~/.hermes/approvals/{}.response",
-        choice, approval_id
+        choice.replace("'", "'\\''"),
+        approval_id
     );
 
     let output = create_command("wsl")

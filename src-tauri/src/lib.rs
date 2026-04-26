@@ -16,7 +16,7 @@ use commands::{
     // Config commands
     load_config, save_config, get_data_dir, check_data_dir_exists,
     // Session commands
-    list_sessions, get_session, delete_session, get_sessions_path, update_session_title,
+    list_sessions, get_session, delete_session, get_sessions_path, update_session_title, search_sessions, export_session,
     // Skill commands
     list_skills, get_skill, get_skill_detail, get_skill_categories, save_skill, create_skill, delete_skill, toggle_skill, get_skills_path,
     // Cron job commands
@@ -24,7 +24,7 @@ use commands::{
     // System commands
     get_system_status, get_usage_analytics, health_check,
     // Platform commands
-    get_platforms, get_platform_status, enable_platform, disable_platform, test_platform_connection, reconnect_platform, update_platform_config,
+    get_platforms, get_platform_status, enable_platform, disable_platform, test_platform_connection, reconnect_platform, update_platform_config, get_wechat_qrcode, check_wechat_qrcode_status,
     // Memory commands
     get_memories, save_memory, get_memories_path,
     // Chat commands
@@ -41,13 +41,12 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
             // Auto-start Hermes Gateway on app launch
             println!("[HermesApp] Auto-starting Gateway...");
-            let handle = app.handle().clone();
-
             // Run in background to not block startup
-            std::thread::spawn(move || {
+            std::thread::spawn(|| {
                 std::thread::sleep(std::time::Duration::from_secs(2));
                 match crate::commands::start_hermes_gateway() {
                     Ok(msg) => println!("[HermesApp] {}", msg),
@@ -134,6 +133,8 @@ pub fn run() {
             delete_session,
             get_sessions_path,
             update_session_title,
+            search_sessions,
+            export_session,
             // Skill commands
             list_skills,
             get_skill,
@@ -165,6 +166,8 @@ pub fn run() {
             test_platform_connection,
             reconnect_platform,
             update_platform_config,
+            get_wechat_qrcode,
+            check_wechat_qrcode_status,
             // Memory commands
             get_memories,
             save_memory,

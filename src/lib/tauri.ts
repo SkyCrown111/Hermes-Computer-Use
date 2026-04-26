@@ -44,53 +44,59 @@ export async function safeInvoke<T>(cmd: string, args?: Record<string, unknown>)
 }
 
 // Mock data for browser development
+let mockQRCodeCreatedAt = Date.now();
 function getMockData(cmd: string): unknown {
   switch (cmd) {
     case 'list_sessions':
-      return [
-        {
-          id: '20260420_123015_abc123',
-          platform: 'cli',
-          chat_id: '',
-          chat_name: 'Recent CLI Session',
-          started_at: new Date().toISOString(),
-          last_activity_at: new Date().toISOString(),
-          message_count: 10,
-          model: 'astron-code-latest',
-          input_tokens: 50000,
-          output_tokens: 2000,
-          estimated_cost_usd: 0.05,
-          status: 'completed',
-        },
-        {
-          id: 'cron_255c5e8adde',
-          platform: 'cron',
-          chat_id: '',
-          chat_name: 'Scheduled Task',
-          started_at: new Date(Date.now() - 3600000).toISOString(),
-          last_activity_at: new Date(Date.now() - 3600000).toISOString(),
-          message_count: 1,
-          model: 'astron-code-latest',
-          input_tokens: 15000,
-          output_tokens: 500,
-          estimated_cost_usd: 0.01,
-          status: 'completed',
-        },
-        {
-          id: '20260419_weixin_xyz',
-          platform: 'weixin',
-          chat_id: 'user_123',
-          chat_name: 'WeChat Conversation',
-          started_at: new Date(Date.now() - 86400000).toISOString(),
-          last_activity_at: new Date(Date.now() - 86400000).toISOString(),
-          message_count: 5,
-          model: 'astron-code-latest',
-          input_tokens: 8000,
-          output_tokens: 300,
-          estimated_cost_usd: 0.008,
-          status: 'completed',
-        },
-      ];
+      return {
+        sessions: [
+          {
+            id: '20260420_123015_abc123',
+            platform: 'cli',
+            chat_id: '',
+            chat_name: 'Recent CLI Session',
+            started_at: new Date().toISOString(),
+            last_activity_at: new Date().toISOString(),
+            message_count: 10,
+            model: 'astron-code-latest',
+            input_tokens: 50000,
+            output_tokens: 2000,
+            estimated_cost_usd: 0.05,
+            status: 'completed',
+          },
+          {
+            id: 'cron_255c5e8adde',
+            platform: 'cron',
+            chat_id: '',
+            chat_name: 'Scheduled Task',
+            started_at: new Date(Date.now() - 3600000).toISOString(),
+            last_activity_at: new Date(Date.now() - 3600000).toISOString(),
+            message_count: 1,
+            model: 'astron-code-latest',
+            input_tokens: 15000,
+            output_tokens: 500,
+            estimated_cost_usd: 0.01,
+            status: 'completed',
+          },
+          {
+            id: '20260419_weixin_xyz',
+            platform: 'weixin',
+            chat_id: 'user_123',
+            chat_name: 'WeChat Conversation',
+            started_at: new Date(Date.now() - 86400000).toISOString(),
+            last_activity_at: new Date(Date.now() - 86400000).toISOString(),
+            message_count: 5,
+            model: 'astron-code-latest',
+            input_tokens: 8000,
+            output_tokens: 300,
+            estimated_cost_usd: 0.008,
+            status: 'completed',
+          },
+        ],
+        total: 3,
+        limit: 100,
+        offset: 0,
+      };
     case 'get_session':
       return {
         session: {
@@ -273,36 +279,21 @@ function getMockData(cmd: string): unknown {
     // ===== Platforms =====
     case 'get_platforms':
       return [
-        {
-          type: 'cli',
-          name: 'CLI',
-          enabled: true,
-          status: 'connected',
-          description: 'Command Line Interface',
-        },
-        {
-          type: 'weixin',
-          name: 'WeChat',
-          enabled: false,
-          status: 'disconnected',
-          description: 'WeChat Official Account',
-        },
-        {
-          type: 'web',
-          name: 'Web',
-          enabled: true,
-          status: 'connected',
-          description: 'Web Chat Interface',
-        },
+        { type: 'telegram', name: 'Telegram', description: 'Telegram Bot 接入', status: 'connected', icon: '📱', enabled: true, config: { bot_token: '' } },
+        { type: 'discord', name: 'Discord', description: 'Discord Bot 接入', status: 'disconnected', icon: '🎮', enabled: false, config: {} },
+        { type: 'slack', name: 'Slack', description: 'Slack Bot 接入', status: 'disconnected', icon: '💼', enabled: false, config: {} },
+        { type: 'whatsapp', name: 'WhatsApp', description: 'WhatsApp Business API', status: 'disconnected', icon: '💬', enabled: false, config: {} },
+        { type: 'weixin', name: '微信', description: '个人微信扫码接入', status: 'disconnected', icon: '🟢', enabled: false, config: {} },
+        { type: 'wechat', name: '企业微信', description: '企业微信 Work 接入', status: 'disconnected', icon: '🏢', enabled: false, config: {} },
+        { type: 'lark', name: '飞书', description: '飞书机器人接入', status: 'disconnected', icon: '🦜', enabled: false, config: {} },
+        { type: 'api', name: 'API Gateway', description: 'REST API 接口', status: 'disconnected', icon: '🔌', enabled: false, config: {} },
+        { type: 'webhook', name: 'Webhook', description: '自定义 Webhook 接入', status: 'disconnected', icon: '🔗', enabled: false, config: {} },
       ];
     case 'get_platform_status':
       return {
-        type: 'cli',
-        enabled: true,
+        type: 'telegram',
         status: 'connected',
-        last_activity: new Date().toISOString(),
-        message_count: 42,
-        config: { auto_reconnect: true },
+        lastConnected: new Date().toISOString(),
       };
     case 'update_platform_config':
     case 'enable_platform':
@@ -310,6 +301,21 @@ function getMockData(cmd: string): unknown {
     case 'test_platform_connection':
     case 'reconnect_platform':
       return { success: true };
+
+    // ===== WeChat QR Code =====
+    case 'get_wechat_qrcode':
+      mockQRCodeCreatedAt = Date.now();
+      return {
+        qrcode_url: `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=wechat_auth_mock_${Date.now()}`,
+        status: 'pending',
+        expires_at: new Date(Date.now() + 120000).toISOString(),
+      };
+    case 'check_wechat_qrcode_status':
+      // Mock: simulate scanning after 12 seconds
+      if (Date.now() - mockQRCodeCreatedAt > 12000) {
+        return { status: 'scanned' };
+      }
+      return { status: 'pending' };
 
     // ===== Skills =====
     case 'get_skill_detail':

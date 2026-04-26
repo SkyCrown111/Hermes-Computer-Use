@@ -308,3 +308,106 @@
     justify-content: center;
   }
 }
+
+/* ============================================
+   Mobile Responsive Enhancements
+   ============================================ */
+
+@media (max-width: 767px) {
+  .preferences-page {
+    gap: var(--space-4);
+  }
+
+  .preferences-header h1 {
+    font-size: var(--text-xl);
+  }
+
+  .preferences-header p {
+    font-size: var(--text-sm);
+  }
+
+  .preferences-card {
+    padding: var(--space-4);
+  }
+
+  .preferences-section {
+    gap: var(--space-4);
+  }
+
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+  }
+
+  .section-icon {
+    font-size: 20px;
+  }
+
+  .section-header h2 {
+    font-size: var(--text-base);
+  }
+
+  .preference-item {
+    padding: var(--space-3);
+  }
+
+  .preference-label {
+    font-size: var(--text-sm);
+  }
+
+  .preference-description {
+    font-size: var(--text-xs);
+  }
+
+  .theme-btn,
+  .lang-btn {
+    padding: var(--space-1) var(--space-2);
+    font-size: var(--text-xs);
+  }
+
+  .about-logo {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+  }
+
+  .logo-icon {
+    font-size: 36px;
+  }
+
+  .logo-text h3 {
+    font-size: var(--text-lg);
+  }
+
+  .about-description {
+    font-size: var(--text-sm);
+  }
+
+  .about-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-1);
+  }
+
+  .about-label {
+    min-width: auto;
+  }
+
+  .social-links {
+    flex-direction: column;
+  }
+
+  .social-link {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .credits-list {
+    grid-template-columns: 1fr;
+  }
+
+  .credit-item {
+    padding: var(--space-2);
+  }
+}

@@ -486,6 +486,7 @@ export function resolveSessionId(id: string): string {
 // Approximate localStorage limit (most browsers allow ~5MB)
 const LS_LIMIT_BYTES = 5 * 1024 * 1024;
 const LS_WARN_THRESHOLD = 0.8; // warn at 80% usage
+const MAX_MESSAGES_PER_SESSION = 1000; // cap per session to prevent unbounded growth
 
 // Estimate the byte size of a string
 function estimateByteSize(str: string): number {
@@ -505,7 +506,13 @@ function persistMessages(sessions: Record<string, PerSessionState>) {
     const messagesToSave: Record<string, ChatMessage[]> = {};
     for (const [sessionId, state] of Object.entries(sessions)) {
       if (state.messages.length > 0) {
-        messagesToSave[sessionId] = state.messages;
+        // Cap per-session message count to prevent unbounded growth
+        if (state.messages.length > MAX_MESSAGES_PER_SESSION) {
+          logger.warn(`[ChatStore] Session ${sessionId} has ${state.messages.length} messages, capping to ${MAX_MESSAGES_PER_SESSION}`);
+          messagesToSave[sessionId] = state.messages.slice(-MAX_MESSAGES_PER_SESSION);
+        } else {
+          messagesToSave[sessionId] = state.messages;
+        }
       }
     }
 

@@ -190,3 +190,83 @@
   background: var(--bg-secondary);
   border-color: var(--border-color);
 }
+
+/* ============================================
+   Mobile Responsive Enhancements
+   ============================================ */
+
+@media (max-width: 767px) {
+  .shortcuts-help-overlay {
+    padding: var(--space-2);
+    align-items: flex-end;
+  }
+
+  .shortcuts-help-modal {
+    width: 100%;
+    max-width: 100%;
+    max-height: 85vh;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  }
+
+  .shortcuts-help-header {
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .shortcuts-help-header h2 {
+    font-size: 16px;
+  }
+
+  .shortcuts-help-close {
+    font-size: 16px;
+  }
+
+  .shortcuts-help-content {
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .shortcuts-group {
+    margin-bottom: var(--space-4);
+  }
+
+  .shortcuts-group-title {
+    font-size: 11px;
+    margin-bottom: var(--space-2);
+  }
+
+  .shortcut-item {
+    padding: var(--space-2) var(--space-3);
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .shortcut-description {
+    font-size: 13px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .shortcut-keys {
+    flex-wrap: wrap;
+  }
+
+  .shortcut-key {
+    min-width: 22px;
+    height: 22px;
+    font-size: 11px;
+  }
+
+  .shortcuts-help-footer {
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .shortcuts-hint {
+    font-size: 11px;
+    text-align: center;
+  }
+
+  .shortcuts-hint kbd {
+    min-width: 20px;
+    height: 18px;
+    font-size: 10px;
+  }
+}
