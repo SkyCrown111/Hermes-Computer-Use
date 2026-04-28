@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { logger } from '../lib/logger';
 import { t } from '../lib/i18n';
 import { useThemeStore } from './themeStore';
+import { restoreMessages } from './chatStore';
 
 const TAB_STORAGE_KEY = 'hermes-open-tabs';
 
@@ -171,16 +172,29 @@ export const useNavigationStore = create<NavigationState>((set, get) => ({
       const data = JSON.parse(raw) as TabPersistence;
       if (!data.openTabs || data.openTabs.length === 0) return;
 
-      // Keep all tabs including "new_" ones - they might have messages
-      // The session store will try to fetch them or create them
+      // Get persisted messages to check if new_ tabs have content
+      const persistedMessages = restoreMessages();
+
+      // Filter tabs: keep real session IDs, but only keep new_ tabs if they have messages
       const validTabs: OpenTab[] = data.openTabs
+        .filter(t => {
+          // Always keep real session IDs (not starting with new_)
+          if (!t.id.startsWith('new_')) return true;
+          // Only keep new_ tabs if they have persisted messages
+          const msgs = persistedMessages[t.id];
+          return msgs && msgs.length > 0;
+        })
         .map(t => ({
           id: t.id,
           title: t.title,
           type: t.type || 'session',
         }));
 
-      if (validTabs.length === 0) return;
+      if (validTabs.length === 0) {
+        // No valid tabs, clear localStorage and go to dashboard
+        localStorage.removeItem(TAB_STORAGE_KEY);
+        return;
+      }
 
       const activeId = data.activeTabId && validTabs.some(t => t.id === data.activeTabId)
         ? data.activeTabId

@@ -9,6 +9,8 @@ export { SimpleDiffViewer } from './SimpleDiffViewer';
 export { ToolItem } from './ToolItem';
 export { ToolsBlock } from './ToolsBlock';
 export { PermissionCard } from './PermissionCard';
+export { ClarifyCard } from './ClarifyCard';
+export { SecretCard } from './SecretCard';
 export { ToolErrorCard } from './ToolErrorCard';
 export { SessionSearchCard } from './SessionSearchCard';
 

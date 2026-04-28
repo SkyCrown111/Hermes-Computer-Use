@@ -3,7 +3,26 @@
 
 import { safeInvoke } from '../lib/tauri';
 import { logger } from '../lib/logger';
-import type { LogsResponse, LogsQueryParams, LogStats, GatewayDetailedStatus, PerformanceMetrics, LogFile } from '../types/monitor';
+import type { LogsResponse, LogsQueryParams, LogStats, GatewayDetailedStatus, PerformanceMetrics, LogFile, ErrorStats, ConnectionEvent, ThroughputStats } from '../types/monitor';
+
+// Default error stats
+const defaultErrorStats: ErrorStats = {
+  total_errors: 0,
+  by_type: {},
+  last_hour: 0,
+  last_24h: 0,
+};
+
+// Default connection history
+const defaultConnectionHistory: ConnectionEvent[] = [];
+
+// Default throughput stats
+const defaultThroughput: ThroughputStats = {
+  requests_per_second: 0,
+  bytes_per_second: 0,
+  peak_requests_per_second: 0,
+  peak_bytes_per_second: 0,
+};
 
 export const monitorApi = {
   // 获取日志
@@ -71,6 +90,29 @@ export const monitorApi = {
         connections: Array<{ platform: string; status: string }>;
         total_messages: number;
         messages_per_minute: number;
+        active_requests: number;
+        queue_depth: number;
+        avg_response_time_ms: number;
+        memory_usage_mb: number;
+        cpu_usage_percent: number;
+        error_stats: {
+          total_errors: number;
+          by_type: Record<string, number>;
+          last_hour: number;
+          last_24h: number;
+        };
+        connection_history: Array<{
+          timestamp: string;
+          event_type: string;
+          platform: string;
+          message?: string;
+        }>;
+        throughput: {
+          requests_per_second: number;
+          bytes_per_second: number;
+          peak_requests_per_second: number;
+          peak_bytes_per_second: number;
+        };
       }>('get_gateway_status');
       logger.debug('[MonitorAPI] Gateway status:', response.status);
       return {
@@ -85,6 +127,19 @@ export const monitorApi = {
         })),
         total_messages: response.total_messages,
         messages_per_minute: response.messages_per_minute,
+        active_requests: response.active_requests ?? 0,
+        queue_depth: response.queue_depth ?? 0,
+        avg_response_time_ms: response.avg_response_time_ms ?? 0,
+        memory_usage_mb: response.memory_usage_mb ?? 0,
+        cpu_usage_percent: response.cpu_usage_percent ?? 0,
+        error_stats: response.error_stats ?? defaultErrorStats,
+        connection_history: (response.connection_history ?? []).map(e => ({
+          timestamp: e.timestamp,
+          event_type: e.event_type as ConnectionEvent['event_type'],
+          platform: e.platform,
+          message: e.message,
+        })),
+        throughput: response.throughput ?? defaultThroughput,
       };
     } catch (err) {
       logger.error('[MonitorAPI] Failed to get gateway status:', err);
@@ -95,6 +150,14 @@ export const monitorApi = {
         connections: [],
         total_messages: 0,
         messages_per_minute: 0,
+        active_requests: 0,
+        queue_depth: 0,
+        avg_response_time_ms: 0,
+        memory_usage_mb: 0,
+        cpu_usage_percent: 0,
+        error_stats: defaultErrorStats,
+        connection_history: defaultConnectionHistory,
+        throughput: defaultThroughput,
       };
     }
   },
@@ -142,6 +205,18 @@ export const monitorApi = {
     } catch (err) {
       logger.error('[MonitorAPI] Failed to clear logs:', err);
       return { ok: false };
+    }
+  },
+
+  // 重载 Gateway 配置 (热重载)
+  reloadGatewayConfig: async (): Promise<{ ok: boolean }> => {
+    try {
+      logger.debug('[MonitorAPI] Reloading gateway config');
+      await safeInvoke<void>('reload_gateway_config');
+      return { ok: true };
+    } catch (err) {
+      logger.error('[MonitorAPI] Failed to reload config:', err);
+      throw err;
     }
   },
 };

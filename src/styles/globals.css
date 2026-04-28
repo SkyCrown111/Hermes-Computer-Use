@@ -5,6 +5,7 @@
 :root {
   /* ─── Primary Colors (Warm Brown/Copper) ─── */
   --color-primary: #8F482F;
+  --color-primary-rgb: 143, 72, 47;
   --color-primary-container: #AD5F45;
   --color-primary-fixed: #FFDBD0;
   --color-primary-fixed-dim: #FFB59D;
@@ -40,7 +41,11 @@
   --color-error: #BA1A1A;
   --color-error-container: #FFDAD6;
   --color-success: #16A34A;
+  --color-success-container: #DCFCE7;
   --color-warning: #CA8A04;
+  --color-warning-container: #FEF3C7;
+  --color-info: #2563EB;
+  --color-info-container: #DBEAFE;
 
   /* ─── Inverse Colors (for dark elements on light bg) ─── */
   --color-inverse-surface: #2F312E;
@@ -187,6 +192,7 @@
 
   /* ─── Primary Colors (Dark) - Muted for dark theme ─── */
   --color-primary: #9A6248;
+  --color-primary-rgb: 154, 98, 72;
   --color-primary-container: #B87A5E;
   --color-primary-fixed: #4A2215;
   --color-primary-fixed-dim: #3D1A10;
@@ -201,7 +207,11 @@
   --color-error: #FFB4AB;
   --color-error-container: #93000A;
   --color-success: #4ADE80;
+  --color-success-container: #14532D;
   --color-warning: #FBBF24;
+  --color-warning-container: #713F12;
+  --color-info: #60A5FA;
+  --color-info-container: #1E3A5F;
 
   /* ─── Shadows (Dark) ─── */
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
@@ -427,4 +437,190 @@ select option {
   .show-desktop {
     display: block !important;
   }
+}
+
+/* ============================================
+   Common Utility Classes
+   ============================================ */
+
+/* ─── Loading Spinner ─── */
+.loading-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--color-surface-container-high);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.loading-spinner.large {
+  width: 48px;
+  height: 48px;
+  border-width: 4px;
+}
+
+.loading-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8);
+}
+
+/* ─── Error Message ─── */
+.error-message {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: rgba(186, 26, 26, 0.1);
+  border: 1px solid rgba(186, 26, 26, 0.2);
+  color: var(--color-error);
+  font-size: var(--text-sm);
+}
+
+.error-message .dismiss-btn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: var(--text-lg);
+  opacity: 0.7;
+  transition: opacity var(--duration-fast);
+}
+
+.error-message .dismiss-btn:hover {
+  opacity: 1;
+}
+
+/* ─── Empty State ─── */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8);
+  text-align: center;
+  color: var(--color-text-tertiary);
+}
+
+.empty-state-icon {
+  font-size: 48px;
+  margin-bottom: var(--space-4);
+  opacity: 0.5;
+}
+
+.empty-state-title {
+  font-size: var(--text-lg);
+  font-weight: var(--font-medium);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-2);
+}
+
+.empty-state-description {
+  font-size: var(--text-sm);
+  color: var(--color-text-tertiary);
+  max-width: 300px;
+}
+
+/* ─── Toggle Switch ─── */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 48px;
+  height: 28px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.toggle-switch input {
+  position: absolute;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  cursor: pointer;
+  z-index: 2;
+}
+
+.toggle-switch .toggle-slider {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--color-surface-container-high);
+  border: 1px solid var(--color-outline);
+  border-radius: var(--radius-full);
+  transition: all var(--duration-normal) var(--ease-out);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.toggle-switch .toggle-slider::before {
+  position: absolute;
+  content: '';
+  height: 22px;
+  width: 22px;
+  left: 2px;
+  bottom: 2px;
+  background: var(--color-text-secondary);
+  border-radius: 50%;
+  transition: all var(--duration-normal) var(--ease-out);
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.toggle-switch input:checked + .toggle-slider::before {
+  transform: translateX(20px);
+  background: white;
+}
+
+.toggle-switch input:disabled + .toggle-slider {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.toggle-switch input:disabled + .toggle-slider::before {
+  opacity: 0.5;
+}
+
+.toggle-switch input:focus-visible + .toggle-slider {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+
+/* ─── Success Message ─── */
+.success-message {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: rgba(22, 163, 74, 0.1);
+  border: 1px solid rgba(22, 163, 74, 0.2);
+  color: var(--color-success);
+  font-size: var(--text-sm);
+}
+
+.success-message .dismiss-btn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: var(--text-lg);
+  opacity: 0.7;
+  transition: opacity var(--duration-fast);
+}
+
+.success-message .dismiss-btn:hover {
+  opacity: 1;
 }

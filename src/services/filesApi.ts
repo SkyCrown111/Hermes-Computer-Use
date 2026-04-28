@@ -3,6 +3,7 @@
 
 import { safeInvoke } from '../lib/tauri';
 import { logger } from '../lib/logger';
+import { getErrorMessage } from '../lib/errorUtils';
 import type {
   FileInfo,
   DirectoryContent,
@@ -76,9 +77,9 @@ export const filesApi = {
       const response = await safeInvoke<BackendDirectoryContent>('list_directory', {
         path: request.path,
         recursive: request.recursive,
-        includeHidden: request.includeHidden,
-        sortBy: request.sortBy,
-        sortOrder: request.sortOrder,
+        include_hidden: request.includeHidden,
+        sort_by: request.sortBy,
+        sort_order: request.sortOrder,
       });
 
       return {
@@ -297,7 +298,7 @@ export const filesApi = {
       } catch (err) {
         results.push({
           success: false,
-          message: (err as Error).message,
+          message: getErrorMessage(err),
           path,
         });
       }
@@ -315,7 +316,7 @@ export const filesApi = {
       } catch (err) {
         results.push({
           success: false,
-          message: (err as Error).message,
+          message: getErrorMessage(err),
           path: item.source,
         });
       }
@@ -333,7 +334,7 @@ export const filesApi = {
       } catch (err) {
         results.push({
           success: false,
-          message: (err as Error).message,
+          message: getErrorMessage(err),
           path: item.source,
         });
       }
@@ -341,30 +342,181 @@ export const filesApi = {
     return results;
   },
 
-  // 获取最近文件
-  getRecentFiles: async (_limit?: number): Promise<FileInfo[]> => {
-    // Not implemented - would need to track recent files
-    logger.debug('[FilesAPI] getRecentFiles not implemented');
-    return [];
-  },
+  // ---- Favorites Management ----
+
+  FAVORITES_STORAGE_KEY: 'hermes-file-favorites',
+  RECENT_FILES_STORAGE_KEY: 'hermes-file-recent',
+  WORKSPACES_STORAGE_KEY: 'hermes-file-workspaces',
 
   // 获取收藏文件
   getFavoriteFiles: async (): Promise<FileInfo[]> => {
-    // Not implemented - would need to track favorites
-    logger.debug('[FilesAPI] getFavoriteFiles not implemented');
-    return [];
+    try {
+      const raw = localStorage.getItem('hermes-file-favorites');
+      return raw ? JSON.parse(raw) : [];
+    } catch (err) {
+      logger.error('[FilesAPI] Failed to get favorites:', err);
+      return [];
+    }
   },
 
   // 添加收藏
   addFavorite: async (path: string): Promise<FileOperationResult> => {
-    logger.debug('[FilesAPI] addFavorite not implemented:', path);
-    return { success: true, message: 'Favorite added' };
+    try {
+      const favorites = await filesApi.getFavoriteFiles();
+      const exists = favorites.some(f => f.path === path);
+      if (!exists) {
+        const fileName = path.split('/').pop() || path;
+        const ext = fileName.includes('.') ? '.' + fileName.split('.').pop() : undefined;
+        favorites.push({
+          name: fileName,
+          path,
+          type: 'file',
+          size: 0,
+          modified: new Date().toISOString(),
+          created: new Date().toISOString(),
+          isHidden: false,
+          extension: ext,
+        });
+        localStorage.setItem('hermes-file-favorites', JSON.stringify(favorites));
+      }
+      return { success: true, message: 'Favorite added' };
+    } catch (err) {
+      logger.error('[FilesAPI] Failed to add favorite:', err);
+      return { success: false, message: getErrorMessage(err) };
+    }
   },
 
   // 移除收藏
   removeFavorite: async (path: string): Promise<FileOperationResult> => {
-    logger.debug('[FilesAPI] removeFavorite not implemented:', path);
-    return { success: true, message: 'Favorite removed' };
+    try {
+      const favorites = await filesApi.getFavoriteFiles();
+      const filtered = favorites.filter(f => f.path !== path);
+      localStorage.setItem('hermes-file-favorites', JSON.stringify(filtered));
+      return { success: true, message: 'Favorite removed' };
+    } catch (err) {
+      logger.error('[FilesAPI] Failed to remove favorite:', err);
+      return { success: false, message: getErrorMessage(err) };
+    }
+  },
+
+  // 检查是否已收藏
+  isFavorite: async (path: string): Promise<boolean> => {
+    const favorites = await filesApi.getFavoriteFiles();
+    return favorites.some(f => f.path === path);
+  },
+
+  // ---- Recent Files Management ----
+
+  // 获取最近文件
+  getRecentFiles: async (limit: number = 10): Promise<FileInfo[]> => {
+    try {
+      const raw = localStorage.getItem('hermes-file-recent');
+      const recent = raw ? JSON.parse(raw) : [];
+      return recent.slice(0, limit);
+    } catch (err) {
+      logger.error('[FilesAPI] Failed to get recent files:', err);
+      return [];
+    }
+  },
+
+  // 添加最近文件
+  addRecentFile: async (path: string): Promise<void> => {
+    try {
+      const raw = localStorage.getItem('hermes-file-recent');
+      let recent: FileInfo[] = raw ? JSON.parse(raw) : [];
+
+      // Remove if already exists (to move to top)
+      recent = recent.filter(f => f.path !== path);
+
+      // Add to beginning
+      const fileName = path.split('/').pop() || path;
+      const ext = fileName.includes('.') ? '.' + fileName.split('.').pop() : undefined;
+      recent.unshift({
+        name: fileName,
+        path,
+        type: 'file',
+        size: 0,
+        modified: new Date().toISOString(),
+        created: new Date().toISOString(),
+        isHidden: false,
+        extension: ext,
+      });
+
+      // Keep only last 20
+      recent = recent.slice(0, 20);
+
+      localStorage.setItem('hermes-file-recent', JSON.stringify(recent));
+    } catch (err) {
+      logger.error('[FilesAPI] Failed to add recent file:', err);
+    }
+  },
+
+  // 清除最近文件
+  clearRecentFiles: async (): Promise<void> => {
+    localStorage.removeItem('hermes-file-recent');
+  },
+
+  // ---- Workspaces Management ----
+
+  // 获取工作区列表
+  getWorkspaces: async (): Promise<Array<{ id: string; name: string; path: string }>> => {
+    try {
+      const raw = localStorage.getItem('hermes-file-workspaces');
+      return raw ? JSON.parse(raw) : [];
+    } catch (err) {
+      logger.error('[FilesAPI] Failed to get workspaces:', err);
+      return [];
+    }
+  },
+
+  // 添加工作区
+  addWorkspace: async (name: string, path: string): Promise<FileOperationResult> => {
+    try {
+      const workspaces = await filesApi.getWorkspaces();
+      const id = `ws-${Date.now()}`;
+
+      // Check if path already exists
+      if (workspaces.some(w => w.path === path)) {
+        return { success: false, message: 'Workspace path already exists' };
+      }
+
+      workspaces.push({ id, name, path });
+      localStorage.setItem('hermes-file-workspaces', JSON.stringify(workspaces));
+      return { success: true, message: 'Workspace added', path };
+    } catch (err) {
+      logger.error('[FilesAPI] Failed to add workspace:', err);
+      return { success: false, message: getErrorMessage(err) };
+    }
+  },
+
+  // 移除工作区
+  removeWorkspace: async (id: string): Promise<FileOperationResult> => {
+    try {
+      const workspaces = await filesApi.getWorkspaces();
+      const filtered = workspaces.filter(w => w.id !== id);
+      localStorage.setItem('hermes-file-workspaces', JSON.stringify(filtered));
+      return { success: true, message: 'Workspace removed' };
+    } catch (err) {
+      logger.error('[FilesAPI] Failed to remove workspace:', err);
+      return { success: false, message: getErrorMessage(err) };
+    }
+  },
+
+  // 更新工作区
+  updateWorkspace: async (id: string, name: string, path: string): Promise<FileOperationResult> => {
+    try {
+      const workspaces = await filesApi.getWorkspaces();
+      const index = workspaces.findIndex(w => w.id === id);
+      if (index === -1) {
+        return { success: false, message: 'Workspace not found' };
+      }
+      workspaces[index] = { id, name, path };
+      localStorage.setItem('hermes-file-workspaces', JSON.stringify(workspaces));
+      return { success: true, message: 'Workspace updated' };
+    } catch (err) {
+      logger.error('[FilesAPI] Failed to update workspace:', err);
+      return { success: false, message: getErrorMessage(err) };
+    }
   },
 
   // ---- Cache Management ----

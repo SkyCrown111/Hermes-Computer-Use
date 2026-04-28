@@ -5,7 +5,8 @@ import { TerminalIcon, ChatIcon, SmartphoneIcon, GlobeIcon, ClockIcon, PlugIcon,
 /**
  * Format large numbers with K/M suffix
  */
-export const formatNumber = (num: number): string => {
+export const formatNumber = (num: number | undefined | null): string => {
+  if (num === undefined || num === null || Number.isNaN(num)) return '0';
   if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
   if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
   return num.toString();
@@ -14,7 +15,10 @@ export const formatNumber = (num: number): string => {
 /**
  * Format currency with dollar sign
  */
-export const formatCurrency = (amount: number, decimals: number = 4): string => {
+export const formatCurrency = (amount: number | undefined | null, decimals: number = 4): string => {
+  if (amount === undefined || amount === null || Number.isNaN(amount)) {
+    return `$${(0).toFixed(decimals)}`;
+  }
   return `$${amount.toFixed(decimals)}`;
 };
 

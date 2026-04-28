@@ -20,6 +20,7 @@ const Files = lazy(() => import('./pages/Files').then(m => ({ default: m.Files }
 const ChatPageLazy = lazy(() => import('./pages/Chat').then(m => ({ default: m.ChatPage })));
 const Preferences = lazy(() => import('./pages/Preferences').then(m => ({ default: m.Preferences })));
 const Gateway = lazy(() => import('./pages/Gateway').then(m => ({ default: m.Gateway })));
+const MCP = lazy(() => import('./pages/MCP').then(m => ({ default: m.MCP })));
 
 // Suspense fallback with i18n
 const PageFallback: React.FC = () => {
@@ -94,6 +95,8 @@ function App() {
           return <Files key="files" />;
         case 'gateway':
           return <Gateway key="gateway" />;
+        case 'mcp':
+          return <MCP key="mcp" />;
         case 'preferences':
           return <Preferences key="preferences" />;
         case 'chat':

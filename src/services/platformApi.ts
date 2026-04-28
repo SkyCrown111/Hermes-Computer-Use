@@ -18,32 +18,32 @@ export const platformApi = {
 
   // 获取单个平台状态
   async getPlatformStatus(type: PlatformType): Promise<PlatformStatusResponse> {
-    return safeInvoke<PlatformStatusResponse>('get_platform_status', { platformType: type });
+    return safeInvoke<PlatformStatusResponse>('get_platform_status', { platform_type: type });
   },
 
   // 更新平台配置
   async updatePlatformConfig(type: PlatformType, config: Record<string, unknown>): Promise<void> {
-    await safeInvoke('update_platform_config', { platformType: type, config });
+    await safeInvoke('update_platform_config', { platform_type: type, config });
   },
 
   // 启用平台
   async enablePlatform(type: PlatformType): Promise<void> {
-    await safeInvoke('enable_platform', { platformType: type });
+    await safeInvoke('enable_platform', { platform_type: type });
   },
 
   // 禁用平台
   async disablePlatform(type: PlatformType): Promise<void> {
-    await safeInvoke('disable_platform', { platformType: type });
+    await safeInvoke('disable_platform', { platform_type: type });
   },
 
   // 测试平台连接
   async testConnection(type: PlatformType): Promise<{ ok: boolean; message?: string; details?: string }> {
-    return safeInvoke('test_platform_connection', { platformType: type });
+    return safeInvoke('test_platform_connection', { platform_type: type });
   },
 
   // 重连平台
   async reconnect(type: PlatformType): Promise<void> {
-    await safeInvoke('reconnect_platform', { platformType: type });
+    await safeInvoke('reconnect_platform', { platform_type: type });
   },
 
   // 获取微信二维码

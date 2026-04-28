@@ -26,6 +26,7 @@ interface ChatInputProps {
   onSendMessage: (text: string, attachedFiles: AttachedFile[]) => void;
   onStop: () => void;
   isStreaming: boolean;
+  hasPendingPermission?: boolean; // Allow sending even when streaming if there's a pending permission
   disabled?: boolean;
 }
 
@@ -47,7 +48,7 @@ const getHermesCommands = (t: (key: string) => string) => [
 // ---- Component ----
 
 export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
-  ({ onSendMessage, onStop, isStreaming }, ref) => {
+  ({ onSendMessage, onStop, isStreaming, hasPendingPermission }, ref) => {
     const { t } = useTranslation();
     const HERMES_COMMANDS = getHermesCommands(t);
 
@@ -130,8 +131,9 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const handleSend = () => {
       if (!inputValue.trim()) return;
 
-      // If streaming, queue the message to be sent when streaming ends
-      if (isStreaming) {
+      // If streaming AND no pending permission, queue the message
+      // If there's a pending permission, allow sending new message (will auto-deny permission)
+      if (isStreaming && !hasPendingPermission) {
         logger.debug('[ChatInput] Streaming in progress, queuing message');
         setPendingMessage({ text: inputValue.trim(), files: attachedFiles });
         setInputValue('');
@@ -348,12 +350,12 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 
             <div className="toolbar-right">
               <button
-                className={`run-action-btn ${isStreaming ? 'running' : ''}`}
-                onClick={isStreaming ? onStop : handleSend}
-                disabled={!isStreaming && !inputValue.trim()}
+                className={`run-action-btn ${isStreaming && !hasPendingPermission ? 'running' : ''}`}
+                onClick={isStreaming && !hasPendingPermission ? onStop : handleSend}
+                disabled={!isStreaming && !hasPendingPermission && !inputValue.trim()}
               >
-                {isStreaming ? <StopIcon size={14} /> : <PlayIcon size={14} />}
-                <span>{isStreaming ? t('chat.stop') : t('chat.run')}</span>
+                {isStreaming && !hasPendingPermission ? <StopIcon size={14} /> : <PlayIcon size={14} />}
+                <span>{isStreaming && !hasPendingPermission ? t('chat.stop') : t('chat.run')}</span>
               </button>
             </div>
           </div>

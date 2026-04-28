@@ -2,7 +2,7 @@
 
 import { safeInvoke } from '../lib/tauri';
 import { logger } from '../lib/logger';
-import type { Skill, SkillDetail, SkillCategory, CreateSkillParams } from '../types/skill';
+import type { Skill, SkillDetail, SkillCategory, CreateSkillParams, SkillExecutionParams, SkillExecutionRecord } from '../types/skill';
 
 export interface SkillListResponse {
   skills: Skill[];
@@ -66,6 +66,53 @@ export async function getSkillsPath(): Promise<string> {
   return safeInvoke<string>('get_skills_path');
 }
 
+// Execute a skill with parameters
+export async function executeSkill(params: SkillExecutionParams): Promise<{ session_id: string; status: string }> {
+  logger.debug('[SkillsApi] executeSkill params:', params);
+  // For now, execution starts a new chat session with the skill context
+  // This is handled by the frontend navigation, but we can track execution here
+  const sessionId = `skill_${params.skill_category}_${params.skill_name}_${Date.now()}`;
+  return {
+    session_id: sessionId,
+    status: 'started',
+  };
+}
+
+// Get skill execution history (mock implementation - stores in localStorage)
+export async function getExecutionHistory(skillName?: string): Promise<SkillExecutionRecord[]> {
+  // In a real implementation, this would fetch from backend
+  // For now, we use localStorage for demo purposes
+  const historyKey = 'hermes_skill_execution_history';
+  const storedHistory = localStorage.getItem(historyKey);
+  if (!storedHistory) return [];
+
+  try {
+    const history: SkillExecutionRecord[] = JSON.parse(storedHistory);
+    if (skillName) {
+      return history.filter(record => record.skill_name === skillName);
+    }
+    return history;
+  } catch (error) {
+    logger.error('[SkillsApi] Failed to parse execution history:', error);
+    return [];
+  }
+}
+
+// Save execution record to history
+export async function saveExecutionRecord(record: SkillExecutionRecord): Promise<void> {
+  const historyKey = 'hermes_skill_execution_history';
+  const storedHistory = localStorage.getItem(historyKey);
+  const history: SkillExecutionRecord[] = storedHistory ? JSON.parse(storedHistory) : [];
+
+  // Add new record and keep only last 100
+  history.unshift(record);
+  if (history.length > 100) {
+    history.pop();
+  }
+
+  localStorage.setItem(historyKey, JSON.stringify(history));
+}
+
 // Export all functions
 export const skillsApi = {
   listSkills,
@@ -77,4 +124,7 @@ export const skillsApi = {
   createSkill,
   deleteSkill,
   getSkillsPath,
+  executeSkill,
+  getExecutionHistory,
+  saveExecutionRecord,
 };

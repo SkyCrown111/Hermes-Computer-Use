@@ -7,6 +7,15 @@ import type {
   TerminalConfig,
   CompressionConfig,
   CheckpointConfig,
+  MemoryConfig,
+  AuxiliaryConfig,
+  AuxiliaryTaskType,
+  AuxiliaryTaskConfig,
+  ProvidersConfig,
+  DisplayConfig,
+  CredentialPoolStrategy,
+  ApprovalConfig,
+  ApprovalMode,
 } from '../types/config';
 import { settingsApi } from '../services/settingsApi';
 import { logger } from '../lib/logger';
@@ -39,6 +48,52 @@ interface ConfigResponse {
     enabled?: boolean;
     max_snapshots?: number;
   };
+  memory?: {
+    enabled?: boolean;
+    max_chars?: number;
+    auto_cleanup?: boolean;
+    cleanup_threshold?: number;
+    retention_days?: number;
+  };
+  auxiliary?: {
+    vision?: AuxiliaryTaskConfig;
+    web_extract?: AuxiliaryTaskConfig;
+    compression?: AuxiliaryTaskConfig;
+    session_search?: AuxiliaryTaskConfig;
+    title_generation?: AuxiliaryTaskConfig;
+    mcp?: AuxiliaryTaskConfig;
+    approval?: AuxiliaryTaskConfig;
+    flush_memories?: AuxiliaryTaskConfig;
+    skills_hub?: AuxiliaryTaskConfig;
+  };
+  providers?: {
+    custom_providers?: Array<{ name: string; base_url: string; api_key?: string; model?: string }>;
+    fallback_providers?: Array<{ name: string; model?: string; priority?: number }>;
+    credential_pool_strategies?: Record<string, string>;
+  };
+  display?: {
+    compact?: boolean;
+    skin?: string;
+    streaming?: boolean;
+    show_reasoning?: boolean;
+    tool_preview?: boolean;
+    personality?: string;
+    resume_display?: string;
+    busy_input_mode?: string;
+    bell_on_complete?: boolean;
+    final_response_markdown?: string;
+    inline_diffs?: boolean;
+    show_cost?: boolean;
+    tool_progress?: string;
+  };
+  approval?: {
+    mode?: ApprovalMode;
+    safe_commands?: string[];
+    dangerous_commands?: string[];
+    remember_session?: boolean;
+    show_command_preview?: boolean;
+    timeout_seconds?: number;
+  };
 }
 
 interface SettingsState {
@@ -61,6 +116,26 @@ interface SettingsState {
   // 检查点配置
   checkpointConfig: CheckpointConfig | null;
   isLoadingCheckpoint: boolean;
+
+  // Memory 配置
+  memoryConfig: MemoryConfig | null;
+  isLoadingMemory: boolean;
+
+  // Auxiliary 配置
+  auxiliaryConfig: AuxiliaryConfig | null;
+  isLoadingAuxiliary: boolean;
+
+  // Providers 配置
+  providersConfig: ProvidersConfig | null;
+  isLoadingProviders: boolean;
+
+  // Display 配置
+  displayConfig: DisplayConfig | null;
+  isLoadingDisplay: boolean;
+
+  // Approval 配置
+  approvalConfig: ApprovalConfig | null;
+  isLoadingApproval: boolean;
 
   // 原始 YAML 配置
   rawYaml: string;
@@ -92,6 +167,19 @@ interface SettingsState {
   updateCheckpointConfig: (data: Partial<CheckpointConfig>) => Promise<void>;
   updateRawYaml: (yaml: string) => Promise<void>;
 
+  updateMemoryConfig: (data: Partial<MemoryConfig>) => Promise<void>;
+  updateAuxiliaryTaskConfig: (taskType: AuxiliaryTaskType, data: AuxiliaryTaskConfig) => Promise<void>;
+  deleteAuxiliaryTaskConfig: (taskType: AuxiliaryTaskType) => Promise<void>;
+  updateProvidersConfig: (data: Partial<ProvidersConfig>) => Promise<void>;
+  addCustomProvider: (provider: { name: string; base_url: string; api_key?: string; model?: string }) => Promise<void>;
+  updateCustomProvider: (index: number, provider: { name: string; base_url: string; api_key?: string; model?: string }) => Promise<void>;
+  deleteCustomProvider: (index: number) => Promise<void>;
+  addFallbackProvider: (provider: { name: string; model?: string; priority?: number }) => Promise<void>;
+  deleteFallbackProvider: (index: number) => Promise<void>;
+  updateCredentialPoolStrategy: (provider: string, strategy: 'fill_first' | 'round_robin' | 'least_used' | 'random') => Promise<void>;
+  updateDisplayConfig: (data: Partial<DisplayConfig>) => Promise<void>;
+  updateApprovalConfig: (data: Partial<ApprovalConfig>) => Promise<void>;
+
   setEditMode: (mode: 'form' | 'yaml') => void;
   setRawYaml: (yaml: string) => void;
   clearError: () => void;
@@ -114,6 +202,16 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   isLoadingCompression: false,
   checkpointConfig: null,
   isLoadingCheckpoint: false,
+  memoryConfig: null,
+  isLoadingMemory: false,
+  auxiliaryConfig: null,
+  isLoadingAuxiliary: false,
+  providersConfig: null,
+  isLoadingProviders: false,
+  displayConfig: null,
+  isLoadingDisplay: false,
+  approvalConfig: null,
+  isLoadingApproval: false,
   rawYaml: '',
   isLoadingRaw: false,
   editMode: 'form',
@@ -151,12 +249,53 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
           enabled: config.checkpoint?.enabled ?? true,
           max_snapshots: config.checkpoint?.max_snapshots || 10,
         },
+        memoryConfig: {
+          enabled: config.memory?.enabled ?? true,
+          max_chars: config.memory?.max_chars || 10000,
+          auto_cleanup: config.memory?.auto_cleanup ?? false,
+          cleanup_threshold: config.memory?.cleanup_threshold || 90,
+          retention_days: config.memory?.retention_days || 30,
+        },
+        auxiliaryConfig: config.auxiliary || null,
+        providersConfig: config.providers ? {
+          custom_providers: config.providers.custom_providers || [],
+          fallback_providers: config.providers.fallback_providers || [],
+          credential_pool_strategies: (config.providers.credential_pool_strategies || {}) as Record<string, CredentialPoolStrategy>,
+        } : null,
+        displayConfig: {
+          compact: config.display?.compact ?? false,
+          skin: config.display?.skin || 'default',
+          streaming: config.display?.streaming ?? true,
+          show_reasoning: config.display?.show_reasoning ?? false,
+          tool_preview: config.display?.tool_preview ?? true,
+          personality: config.display?.personality || 'default',
+          resume_display: (config.display?.resume_display as 'full' | 'summary' | 'none') || 'full',
+          busy_input_mode: (config.display?.busy_input_mode as 'interrupt' | 'queue' | 'block') || 'interrupt',
+          bell_on_complete: config.display?.bell_on_complete ?? false,
+          final_response_markdown: (config.display?.final_response_markdown as 'render' | 'strip' | 'raw') || 'render',
+          inline_diffs: config.display?.inline_diffs ?? true,
+          show_cost: config.display?.show_cost ?? false,
+          tool_progress: (config.display?.tool_progress as 'all' | 'minimal' | 'none') || 'all',
+        },
+        approvalConfig: {
+          mode: (config.approval?.mode as ApprovalMode) || 'ask',
+          safe_commands: config.approval?.safe_commands || [],
+          dangerous_commands: config.approval?.dangerous_commands || [],
+          remember_session: config.approval?.remember_session ?? false,
+          show_command_preview: config.approval?.show_command_preview ?? true,
+          timeout_seconds: config.approval?.timeout_seconds || 300,
+        },
         rawYaml: config.raw || '',
         isLoadingModel: false,
         isLoadingAgent: false,
         isLoadingTerminal: false,
         isLoadingCompression: false,
         isLoadingCheckpoint: false,
+        isLoadingMemory: false,
+        isLoadingAuxiliary: false,
+        isLoadingProviders: false,
+        isLoadingDisplay: false,
+        isLoadingApproval: false,
       });
     } catch (err) {
       const msg = (err as Error).message;
@@ -167,6 +306,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         isLoadingTerminal: false,
         isLoadingCompression: false,
         isLoadingCheckpoint: false,
+        isLoadingMemory: false,
+        isLoadingAuxiliary: false,
+        isLoadingProviders: false,
+        isLoadingDisplay: false,
+        isLoadingApproval: false,
       });
     }
   },
@@ -354,7 +498,194 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       await settingsApi.saveConfig({ raw: yaml });
       set({ rawYaml: yaml, isSaving: false, successMessage: '配置已保存' });
       // Refresh all configs
-      get().fetchAllConfigs();
+      await get().fetchAllConfigs();
+      setTimeout(() => set({ successMessage: null }), 3000);
+    } catch (err) {
+      set({ error: (err as Error).message, isSaving: false });
+    }
+  },
+
+  // 更新 Memory 配置
+  updateMemoryConfig: async (data: Partial<MemoryConfig>) => {
+    set({ isSaving: true, error: null });
+    try {
+      const currentConfig = await settingsApi.loadConfig();
+      const { raw: _raw, ...configWithoutRaw } = currentConfig;
+      await settingsApi.saveConfig({ ...configWithoutRaw, memory: data });
+      set({ memoryConfig: data as MemoryConfig, isSaving: false, successMessage: 'Memory 配置已保存' });
+      setTimeout(() => set({ successMessage: null }), 3000);
+    } catch (err) {
+      set({ error: (err as Error).message, isSaving: false });
+    }
+  },
+
+  // 更新 Auxiliary 任务配置
+  updateAuxiliaryTaskConfig: async (taskType: AuxiliaryTaskType, data: AuxiliaryTaskConfig) => {
+    set({ isSaving: true, error: null });
+    try {
+      const currentConfig = await settingsApi.loadConfig();
+      const { raw: _raw, ...configWithoutRaw } = currentConfig;
+      const currentAuxiliary = configWithoutRaw.auxiliary || {};
+      await settingsApi.saveConfig({ ...configWithoutRaw, auxiliary: { ...currentAuxiliary, [taskType]: data } });
+      set({ auxiliaryConfig: { ...get().auxiliaryConfig, [taskType]: data } as AuxiliaryConfig, isSaving: false, successMessage: 'Auxiliary 任务配置已保存' });
+      setTimeout(() => set({ successMessage: null }), 3000);
+    } catch (err) {
+      set({ error: (err as Error).message, isSaving: false });
+    }
+  },
+
+  // 删除 Auxiliary 任务配置
+  deleteAuxiliaryTaskConfig: async (taskType: AuxiliaryTaskType) => {
+    set({ isSaving: true, error: null });
+    try {
+      const currentConfig = await settingsApi.loadConfig();
+      const { raw: _raw, ...configWithoutRaw } = currentConfig;
+      const currentAuxiliary = configWithoutRaw.auxiliary || {};
+      const newAuxiliary = { ...currentAuxiliary };
+      delete newAuxiliary[taskType];
+      await settingsApi.saveConfig({ ...configWithoutRaw, auxiliary: newAuxiliary });
+      set({ auxiliaryConfig: newAuxiliary as AuxiliaryConfig, isSaving: false, successMessage: 'Auxiliary 任务配置已删除' });
+      setTimeout(() => set({ successMessage: null }), 3000);
+    } catch (err) {
+      set({ error: (err as Error).message, isSaving: false });
+    }
+  },
+
+  // 更新 Providers 配置
+  updateProvidersConfig: async (data: Partial<ProvidersConfig>) => {
+    set({ isSaving: true, error: null });
+    try {
+      const currentConfig = await settingsApi.loadConfig();
+      const { raw: _raw, ...configWithoutRaw } = currentConfig;
+      await settingsApi.saveConfig({ ...configWithoutRaw, providers: data });
+      set({ providersConfig: data as ProvidersConfig, isSaving: false, successMessage: 'Providers 配置已保存' });
+      setTimeout(() => set({ successMessage: null }), 3000);
+    } catch (err) {
+      set({ error: (err as Error).message, isSaving: false });
+    }
+  },
+
+  // 添加自定义 Provider
+  addCustomProvider: async (provider: { name: string; base_url: string; api_key?: string; model?: string }) => {
+    set({ isSaving: true, error: null });
+    try {
+      const currentConfig = await settingsApi.loadConfig();
+      const { raw: _raw, ...configWithoutRaw } = currentConfig;
+      const currentProviders = configWithoutRaw.providers || { custom_providers: [], fallback_providers: [], credential_pool_strategies: {} };
+      const newCustomProviders = [...(currentProviders.custom_providers || []), provider];
+      await settingsApi.saveConfig({ ...configWithoutRaw, providers: { ...currentProviders, custom_providers: newCustomProviders } });
+      set({ providersConfig: { ...get().providersConfig, custom_providers: newCustomProviders } as ProvidersConfig, isSaving: false, successMessage: '自定义 Provider 已添加' });
+      setTimeout(() => set({ successMessage: null }), 3000);
+    } catch (err) {
+      set({ error: (err as Error).message, isSaving: false });
+    }
+  },
+
+  // 更新自定义 Provider
+  updateCustomProvider: async (index: number, provider: { name: string; base_url: string; api_key?: string; model?: string }) => {
+    set({ isSaving: true, error: null });
+    try {
+      const currentConfig = await settingsApi.loadConfig();
+      const { raw: _raw, ...configWithoutRaw } = currentConfig;
+      const currentProviders = configWithoutRaw.providers || { custom_providers: [], fallback_providers: [], credential_pool_strategies: {} };
+      const newCustomProviders = [...(currentProviders.custom_providers || [])];
+      newCustomProviders[index] = provider;
+      await settingsApi.saveConfig({ ...configWithoutRaw, providers: { ...currentProviders, custom_providers: newCustomProviders } });
+      set({ providersConfig: { ...get().providersConfig, custom_providers: newCustomProviders } as ProvidersConfig, isSaving: false, successMessage: '自定义 Provider 已更新' });
+      setTimeout(() => set({ successMessage: null }), 3000);
+    } catch (err) {
+      set({ error: (err as Error).message, isSaving: false });
+    }
+  },
+
+  // 删除自定义 Provider
+  deleteCustomProvider: async (index: number) => {
+    set({ isSaving: true, error: null });
+    try {
+      const currentConfig = await settingsApi.loadConfig();
+      const { raw: _raw, ...configWithoutRaw } = currentConfig;
+      const currentProviders = configWithoutRaw.providers || { custom_providers: [], fallback_providers: [], credential_pool_strategies: {} };
+      const newCustomProviders = [...(currentProviders.custom_providers || [])];
+      newCustomProviders.splice(index, 1);
+      await settingsApi.saveConfig({ ...configWithoutRaw, providers: { ...currentProviders, custom_providers: newCustomProviders } });
+      set({ providersConfig: { ...get().providersConfig, custom_providers: newCustomProviders } as ProvidersConfig, isSaving: false, successMessage: '自定义 Provider 已删除' });
+      setTimeout(() => set({ successMessage: null }), 3000);
+    } catch (err) {
+      set({ error: (err as Error).message, isSaving: false });
+    }
+  },
+
+  // 添加备用 Provider
+  addFallbackProvider: async (provider: { name: string; model?: string; priority?: number }) => {
+    set({ isSaving: true, error: null });
+    try {
+      const currentConfig = await settingsApi.loadConfig();
+      const { raw: _raw, ...configWithoutRaw } = currentConfig;
+      const currentProviders = configWithoutRaw.providers || { custom_providers: [], fallback_providers: [], credential_pool_strategies: {} };
+      const newFallbackProviders = [...(currentProviders.fallback_providers || []), provider];
+      await settingsApi.saveConfig({ ...configWithoutRaw, providers: { ...currentProviders, fallback_providers: newFallbackProviders } });
+      set({ providersConfig: { ...get().providersConfig, fallback_providers: newFallbackProviders } as ProvidersConfig, isSaving: false, successMessage: '备用 Provider 已添加' });
+      setTimeout(() => set({ successMessage: null }), 3000);
+    } catch (err) {
+      set({ error: (err as Error).message, isSaving: false });
+    }
+  },
+
+  // 删除备用 Provider
+  deleteFallbackProvider: async (index: number) => {
+    set({ isSaving: true, error: null });
+    try {
+      const currentConfig = await settingsApi.loadConfig();
+      const { raw: _raw, ...configWithoutRaw } = currentConfig;
+      const currentProviders = configWithoutRaw.providers || { custom_providers: [], fallback_providers: [], credential_pool_strategies: {} };
+      const newFallbackProviders = [...(currentProviders.fallback_providers || [])];
+      newFallbackProviders.splice(index, 1);
+      await settingsApi.saveConfig({ ...configWithoutRaw, providers: { ...currentProviders, fallback_providers: newFallbackProviders } });
+      set({ providersConfig: { ...get().providersConfig, fallback_providers: newFallbackProviders } as ProvidersConfig, isSaving: false, successMessage: '备用 Provider 已删除' });
+      setTimeout(() => set({ successMessage: null }), 3000);
+    } catch (err) {
+      set({ error: (err as Error).message, isSaving: false });
+    }
+  },
+
+  // 更新凭据池策略
+  updateCredentialPoolStrategy: async (provider: string, strategy: 'fill_first' | 'round_robin' | 'least_used' | 'random') => {
+    set({ isSaving: true, error: null });
+    try {
+      const currentConfig = await settingsApi.loadConfig();
+      const { raw: _raw, ...configWithoutRaw } = currentConfig;
+      const currentProviders = configWithoutRaw.providers || { custom_providers: [], fallback_providers: [], credential_pool_strategies: {} };
+      const newStrategies = { ...(currentProviders.credential_pool_strategies || {}), [provider]: strategy };
+      await settingsApi.saveConfig({ ...configWithoutRaw, providers: { ...currentProviders, credential_pool_strategies: newStrategies } });
+      set({ providersConfig: { ...get().providersConfig, credential_pool_strategies: newStrategies } as ProvidersConfig, isSaving: false, successMessage: '凭据池策略已更新' });
+      setTimeout(() => set({ successMessage: null }), 3000);
+    } catch (err) {
+      set({ error: (err as Error).message, isSaving: false });
+    }
+  },
+
+  // 更新 Display 配置
+  updateDisplayConfig: async (data: Partial<DisplayConfig>) => {
+    set({ isSaving: true, error: null });
+    try {
+      const currentConfig = await settingsApi.loadConfig();
+      const { raw: _raw, ...configWithoutRaw } = currentConfig;
+      await settingsApi.saveConfig({ ...configWithoutRaw, display: data });
+      set({ displayConfig: data as DisplayConfig, isSaving: false, successMessage: 'Display 配置已保存' });
+      setTimeout(() => set({ successMessage: null }), 3000);
+    } catch (err) {
+      set({ error: (err as Error).message, isSaving: false });
+    }
+  },
+
+  // 更新 Approval 配置
+  updateApprovalConfig: async (data: Partial<ApprovalConfig>) => {
+    set({ isSaving: true, error: null });
+    try {
+      const currentConfig = await settingsApi.loadConfig();
+      const { raw: _raw, ...configWithoutRaw } = currentConfig;
+      await settingsApi.saveConfig({ ...configWithoutRaw, approval: data });
+      set({ approvalConfig: data as ApprovalConfig, isSaving: false, successMessage: '审批配置已保存' });
       setTimeout(() => set({ successMessage: null }), 3000);
     } catch (err) {
       set({ error: (err as Error).message, isSaving: false });

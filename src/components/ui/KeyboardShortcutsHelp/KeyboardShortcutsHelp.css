@@ -53,7 +53,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .shortcuts-help-header h2 {
@@ -141,7 +141,7 @@
   height: 24px;
   padding: 0 6px;
   background: var(--bg-primary);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
   border-radius: 4px;
   font-size: 12px;
   font-family: inherit;
@@ -156,7 +156,7 @@
 
 .shortcuts-help-footer {
   padding: 12px 20px;
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--color-border);
   display: flex;
   justify-content: center;
 }
@@ -174,7 +174,7 @@
   height: 20px;
   padding: 0 4px;
   background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
   border-radius: 3px;
   font-size: 11px;
   font-family: inherit;
@@ -188,7 +188,7 @@
 
 [data-theme="dark"] .shortcut-key {
   background: var(--bg-secondary);
-  border-color: var(--border-color);
+  border-color: var(--color-border);
 }
 
 /* ============================================

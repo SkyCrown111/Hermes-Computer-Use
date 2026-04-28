@@ -2,6 +2,7 @@
 
 import { create } from 'zustand';
 import type { Platform, PlatformType } from '../types/platform';
+import { getErrorMessage } from '../lib/errorUtils';
 import { platformApi } from '../services/platformApi';
 import {
   SmartphoneIcon,
@@ -153,7 +154,7 @@ export const usePlatformStore = create<PlatformState>((set, get) => ({
       set({ platforms: updated });
       return true;
     } catch (err) {
-      set({ error: (err as Error).message });
+      set({ error: getErrorMessage(err) });
       return false;
     }
   },
@@ -169,7 +170,7 @@ export const usePlatformStore = create<PlatformState>((set, get) => ({
       set({ platforms: updated });
       return true;
     } catch (err) {
-      set({ error: (err as Error).message });
+      set({ error: getErrorMessage(err) });
       return false;
     }
   },
@@ -185,7 +186,7 @@ export const usePlatformStore = create<PlatformState>((set, get) => ({
       set({ platforms: updated });
       return true;
     } catch (err) {
-      set({ error: (err as Error).message });
+      set({ error: getErrorMessage(err) });
       return false;
     }
   },
@@ -203,7 +204,7 @@ export const usePlatformStore = create<PlatformState>((set, get) => ({
       }
       return result;
     } catch (err) {
-      return { ok: false, message: (err as Error).message, details: undefined };
+      return { ok: false, message: getErrorMessage(err), details: undefined };
     }
   },
 
@@ -218,7 +219,7 @@ export const usePlatformStore = create<PlatformState>((set, get) => ({
       set({ platforms: updated });
       return true;
     } catch (err) {
-      set({ error: (err as Error).message });
+      set({ error: getErrorMessage(err) });
       return false;
     }
   },

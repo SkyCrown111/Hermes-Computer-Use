@@ -1,20 +1,43 @@
 import type { SessionSearchResponse } from './constants';
 
+// Cache for parsed results to avoid re-parsing identical content
+const parseCache = new Map<string, {
+  cleanContent: string;
+  errors: Array<{ error: string }>;
+  sessionSearchResults: SessionSearchResponse | null;
+}>();
+const MAX_CACHE_SIZE = 100;
+
 /**
  * Parse various JSON formats from tool outputs.
  * Only extract errors - other JSON is part of tool execution and should be removed.
+ *
+ * Performance optimizations:
+ * - Uses caching to avoid re-parsing identical content
+ * - Pre-compiled regex patterns
+ * - Early termination for empty content
  */
 export function parseToolJson(content: string): {
   cleanContent: string;
   errors: Array<{ error: string }>;
   sessionSearchResults: SessionSearchResponse | null;
 } {
+  // Fast path for empty content
+  if (!content || content.trim() === '') {
+    return { cleanContent: '', errors: [], sessionSearchResults: null };
+  }
+
+  // Check cache first
+  const cached = parseCache.get(content);
+  if (cached) {
+    return cached;
+  }
+
   const errors: Array<{ error: string }> = [];
   let sessionSearchResults: SessionSearchResponse | null = null;
   let cleanContent = content;
 
-  // Pre-process: remove lines that look like tool output (npm errors, file listings, etc.)
-  // These are typically multi-line outputs that don't form valid JSON
+  // Pre-compiled regex patterns - combined for single pass
   const toolOutputPatterns = [
     /^npm error.*$/gm,
     /^npm\s+error\s+at async.*$/gm,
@@ -32,20 +55,22 @@ export function parseToolJson(content: string): {
     /^npm\s+error\s+the command.*$/gm,
     /^npm\s+error\s+A complete log.*$/gm,
     /^npm\s+error$/gm,
-    /^-rwxrwxrwx.*$/gm,  // file listings
-    /^drwxrwxrwx.*$/gm,  // directory listings
-    /^total\s+\d+.*$/gm, // ls totals
-    /^生成.*架构图.*$/gm, // Chinese generation messages
+    /^-rwxrwxrwx.*$/gm,
+    /^drwxrwxrwx.*$/gm,
+    /^total\s+\d+.*$/gm,
+    /^生成.*架构图.*$/gm,
     /^架构图生成完成.*$/gm,
     /^继续检查状态.*$/gm,
-    /^Tool result:.*$/gm, // Tool result lines
-    /^Running tool:.*$/gm, // Tool execution messages
-    /^Executing:.*$/gm, // Command execution messages
+    /^Tool result:.*$/gm,
+    /^Running tool:.*$/gm,
+    /^Executing:.*$/gm,
   ];
 
+  // Apply all patterns in a single loop
   for (const pattern of toolOutputPatterns) {
-    cleanContent = cleanContent.replace(pattern, '').trim();
+    cleanContent = cleanContent.replace(pattern, '');
   }
+  cleanContent = cleanContent.trim();
 
   // Remove JSON-like structures that start with {"output": or {"bytes_written":
   // Use [\s\S] to match any character including newlines
@@ -173,10 +198,9 @@ export function parseToolJson(content: string): {
   // Clean up remaining artifacts
   cleanContent = cleanContent
     .replace(/^\s*,\s*"[^"]+"\s*:\s*[\d\[\{][^\n]*$/gm, '')
-    .replace(/\}\s*\{/g, '\n') // Separate adjacent JSON objects
+    .replace(/\}\s*\{/g, '\n')
     .replace(/\}\s*,\s*"[^"]+"\s*:\s*[\d\[\{]/g, '}')
     .replace(/\[\s*\{[^}]*"tool"[^}]*\}[\s\S]*?\]/g, '')
-    // Clean up JSON fragments like "0, }" or ", }"
     .replace(/,\s*\d+\s*,\s*\}/g, '')
     .replace(/,\s*\}/g, '}')
     .replace(/\{\s*\}/g, '')
@@ -185,5 +209,15 @@ export function parseToolJson(content: string): {
     .replace(/,\s*$/gm, '')
     .trim();
 
-  return { cleanContent, errors, sessionSearchResults };
+  const result = { cleanContent, errors, sessionSearchResults };
+
+  // Cache the result (with size limit)
+  if (parseCache.size >= MAX_CACHE_SIZE) {
+    // Remove oldest entry (first key)
+    const firstKey = parseCache.keys().next().value;
+    if (firstKey) parseCache.delete(firstKey);
+  }
+  parseCache.set(content, result);
+
+  return result;
 }

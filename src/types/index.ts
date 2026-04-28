@@ -12,3 +12,4 @@ export * from './monitor';
 export * from './memory';
 export * from './platform';
 export * from './files';
+export * from './checkpoint';

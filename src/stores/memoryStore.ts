@@ -4,6 +4,7 @@ import { create } from 'zustand';
 import type { MemoryData, MemorySection, MemoryFileType, MemorySearchResult } from '../types/memory';
 import { memoryApi } from '../services/memoryApi';
 import { logger } from '../lib/logger';
+import { getErrorMessage } from '../lib/errorUtils';
 
 // 解析记忆段落 (按 § 分隔符)
 const parseSections = (content: string, prefix: string): MemorySection[] => {
@@ -138,7 +139,7 @@ export const useMemoryStore = create<MemoryState>((set, get) => ({
         isLoading: false 
       });
     } catch (err) {
-      set({ error: (err as Error).message, isLoading: false });
+      set({ error: getErrorMessage(err), isLoading: false });
     }
   },
 
@@ -228,7 +229,7 @@ export const useMemoryStore = create<MemoryState>((set, get) => ({
       }
       return false;
     } catch (err) {
-      set({ saveError: (err as Error).message });
+      set({ saveError: getErrorMessage(err) });
       return false;
     }
   },

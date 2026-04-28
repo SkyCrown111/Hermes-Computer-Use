@@ -12,3 +12,7 @@ export * from './memoryStore';
 export * from './platformStore';
 export * from './filesStore';
 export * from './chatStore';
+export * from './mcpStore';
+
+// Re-export helper functions from themeStore
+export { resolveTheme, getSystemTheme } from './themeStore';

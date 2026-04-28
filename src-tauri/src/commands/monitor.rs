@@ -2,21 +2,23 @@
 //!
 //! Commands for log viewing and system monitoring.
 
-use serde::{Deserialize, Serialize};
 use super::utils::create_command;
+use serde::{Deserialize, Serialize};
 
 /// Escape a string for use in grep -E pattern (escape regex special chars)
 fn escape_grep_pattern(s: &str) -> String {
     // Escape . \ [ ] * ? + ^ $ { } ( ) |
-    s.chars().map(|c| match c {
-        '.' | '\\' | '[' | ']' | '*' | '?' | '+' | '^' | '$' | '{' | '}' | '(' | ')' | '|' => {
-            let mut out = String::with_capacity(2);
-            out.push('\\');
-            out.push(c);
-            out
-        }
-        c => c.to_string(),
-    }).collect::<String>()
+    s.chars()
+        .map(|c| match c {
+            '.' | '\\' | '[' | ']' | '*' | '?' | '+' | '^' | '$' | '{' | '}' | '(' | ')' | '|' => {
+                let mut out = String::with_capacity(2);
+                out.push('\\');
+                out.push(c);
+                out
+            }
+            c => c.to_string(),
+        })
+        .collect::<String>()
 }
 
 /// Logs response
@@ -49,6 +51,33 @@ pub struct PlatformConnection {
     pub status: String,
 }
 
+/// Error statistics
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ErrorStats {
+    pub total_errors: u64,
+    pub by_type: std::collections::HashMap<String, u64>,
+    pub last_hour: u64,
+    pub last_24h: u64,
+}
+
+/// Connection event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConnectionEvent {
+    pub timestamp: String,
+    pub event_type: String,  // "connect", "disconnect", "error"
+    pub platform: String,
+    pub message: Option<String>,
+}
+
+/// Throughput statistics
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThroughputStats {
+    pub requests_per_second: f64,
+    pub bytes_per_second: u64,
+    pub peak_requests_per_second: f64,
+    pub peak_bytes_per_second: u64,
+}
+
 /// Gateway detailed status
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GatewayDetailedStatus {
@@ -58,6 +87,15 @@ pub struct GatewayDetailedStatus {
     pub connections: Vec<PlatformConnection>,
     pub total_messages: u64,
     pub messages_per_minute: f64,
+    // Advanced metrics
+    pub active_requests: u64,
+    pub queue_depth: u64,
+    pub avg_response_time_ms: f64,
+    pub memory_usage_mb: f64,
+    pub cpu_usage_percent: f64,
+    pub error_stats: ErrorStats,
+    pub connection_history: Vec<ConnectionEvent>,
+    pub throughput: ThroughputStats,
 }
 
 /// Metric data point
@@ -88,7 +126,10 @@ pub async fn get_logs(
     let file_name = file.unwrap_or_else(|| "agent".to_string());
     let line_count = lines.unwrap_or(200);
 
-    println!("[Monitor] Getting logs from {} file, {} lines", file_name, line_count);
+    println!(
+        "[Monitor] Getting logs from {} file, {} lines",
+        file_name, line_count
+    );
 
     let log_path = match file_name.as_str() {
         "agent" => "~/.hermes/logs/agent.log",
@@ -249,14 +290,257 @@ pub async fn get_gateway_status() -> Result<GatewayDetailedStatus, String> {
         }
     }
 
+    // Calculate uptime from start_time (assuming start_time is Unix timestamp)
+    let current_time = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let uptime_seconds = if start_time > 0 && start_time < current_time {
+        current_time - start_time
+    } else {
+        start_time
+    };
+
+    // Get advanced metrics from gateway state
+    let active_requests = gateway_state
+        .get("active_requests")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+
+    let queue_depth = gateway_state
+        .get("queue_depth")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+
+    let avg_response_time_ms = gateway_state
+        .get("avg_response_time_ms")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.0);
+
+    let total_messages = gateway_state
+        .get("total_messages")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+
+    let messages_per_minute = gateway_state
+        .get("messages_per_minute")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.0);
+
+    // Get memory and CPU usage
+    let (cpu_usage_percent, memory_usage_mb) = get_gateway_resource_usage();
+
+    // Parse error statistics from gateway log
+    let error_stats = parse_gateway_error_stats();
+
+    // Parse connection history from gateway state
+    let connection_history = parse_connection_history(&gateway_state);
+
+    // Get throughput stats
+    let throughput = parse_throughput_stats(&gateway_state);
+
     Ok(GatewayDetailedStatus {
         status,
-        uptime_seconds: start_time,
+        uptime_seconds,
         version: env!("CARGO_PKG_VERSION").to_string(),
         connections,
-        total_messages: 0,
-        messages_per_minute: 0.0,
+        total_messages,
+        messages_per_minute,
+        active_requests,
+        queue_depth,
+        avg_response_time_ms,
+        memory_usage_mb,
+        cpu_usage_percent,
+        error_stats,
+        connection_history,
+        throughput,
     })
+}
+
+/// Get gateway process resource usage
+fn get_gateway_resource_usage() -> (f64, f64) {
+    // Try to find gateway process and get its resource usage
+    let script = r#"
+# Find gateway process PID
+GATEWAY_PID=$(pgrep -f "hermes.*gateway" | head -1)
+if [ -z "$GATEWAY_PID" ]; then
+    echo "0 0"
+    exit 0
+fi
+
+# Get memory usage in MB
+MEM_KB=$(ps -o rss= -p $GATEWAY_PID 2>/dev/null || echo 0)
+MEM_MB=$((MEM_KB / 1024))
+
+# Get CPU percentage (simplified - just get current CPU%)
+CPU_PERCENT=$(ps -o %cpu= -p $GATEWAY_PID 2>/dev/null || echo 0)
+
+echo "$CPU_PERCENT $MEM_MB"
+"#;
+
+    if let Ok(output) = create_command("wsl")
+        .args(["bash", "-c", script])
+        .output()
+    {
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let parts: Vec<&str> = stdout.trim().split_whitespace().collect();
+            if parts.len() >= 2 {
+                let cpu: f64 = parts[0].parse().unwrap_or(0.0);
+                let mem: f64 = parts[1].parse().unwrap_or(0.0);
+                return (cpu, mem);
+            }
+        }
+    }
+    (0.0, 0.0)
+}
+
+/// Parse error statistics from gateway log
+fn parse_gateway_error_stats() -> ErrorStats {
+    let script = r#"
+if [ -f ~/.hermes/logs/gateway.log ]; then
+    # Total errors
+    TOTAL=$(grep -c 'ERROR' ~/.hermes/logs/gateway.log 2>/dev/null || echo 0)
+
+    # Errors by type (extract error patterns)
+    TIMEOUT=$(grep -c 'timeout\|Timeout\|TIMEOUT' ~/.hermes/logs/gateway.log 2>/dev/null || echo 0)
+    CONNECTION=$(grep -c 'connection.*failed\|Connection.*refused\|ECONNREFUSED' ~/.hermes/logs/gateway.log 2>/dev/null || echo 0)
+    RATE_LIMIT=$(grep -c 'rate.*limit\|429\|Too Many Requests' ~/.hermes/logs/gateway.log 2>/dev/null || echo 0)
+    AUTH=$(grep -c 'unauthorized\|Unauthorized\|401\|403' ~/.hermes/logs/gateway.log 2>/dev/null || echo 0)
+
+    # Last hour errors (assuming log has timestamps)
+    LAST_HOUR=$(tail -1000 ~/.hermes/logs/gateway.log 2>/dev/null | grep -c 'ERROR' || echo 0)
+
+    # Last 24h (simplified - count from recent logs)
+    LAST_24H=$TOTAL
+
+    echo "$TOTAL $TIMEOUT $CONNECTION $RATE_LIMIT $AUTH $LAST_HOUR $LAST_24H"
+else
+    echo "0 0 0 0 0 0 0"
+fi
+"#;
+
+    let mut by_type = std::collections::HashMap::new();
+
+    if let Ok(output) = create_command("wsl")
+        .args(["bash", "-c", script])
+        .output()
+    {
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let parts: Vec<u64> = stdout
+                .trim()
+                .split_whitespace()
+                .filter_map(|p| p.parse().ok())
+                .collect();
+
+            if parts.len() >= 7 {
+                by_type.insert("timeout".to_string(), parts[1]);
+                by_type.insert("connection".to_string(), parts[2]);
+                by_type.insert("rate_limit".to_string(), parts[3]);
+                by_type.insert("auth".to_string(), parts[4]);
+
+                return ErrorStats {
+                    total_errors: parts[0],
+                    by_type,
+                    last_hour: parts[5],
+                    last_24h: parts[6],
+                };
+            }
+        }
+    }
+
+    ErrorStats {
+        total_errors: 0,
+        by_type,
+        last_hour: 0,
+        last_24h: 0,
+    }
+}
+
+/// Parse connection history from gateway state
+fn parse_connection_history(gateway_state: &serde_json::Value) -> Vec<ConnectionEvent> {
+    let mut history = Vec::new();
+
+    // Try to parse connection_history from state
+    if let Some(events) = gateway_state.get("connection_history").and_then(|v| v.as_array()) {
+        for event in events {
+            let timestamp = event
+                .get("timestamp")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let event_type = event
+                .get("event_type")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown")
+                .to_string();
+            let platform = event
+                .get("platform")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown")
+                .to_string();
+            let message = event
+                .get("message")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+
+            history.push(ConnectionEvent {
+                timestamp,
+                event_type,
+                platform,
+                message,
+            });
+        }
+    }
+
+    // If no history in state, generate from current platform states
+    if history.is_empty() {
+        let now = chrono::Local::now().to_rfc3339();
+        if let Some(platforms) = gateway_state.get("platforms").and_then(|v| v.as_object()) {
+            for (name, info) in platforms {
+                let state = info
+                    .get("state")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown");
+
+                history.push(ConnectionEvent {
+                    timestamp: now.clone(),
+                    event_type: if state == "connected" { "connect".to_string() } else { "disconnect".to_string() },
+                    platform: name.clone(),
+                    message: Some(format!("Platform {} is {}", name, state)),
+                });
+            }
+        }
+    }
+
+    // Limit to last 10 events
+    history.truncate(10);
+    history
+}
+
+/// Parse throughput statistics from gateway state
+fn parse_throughput_stats(gateway_state: &serde_json::Value) -> ThroughputStats {
+    let throughput_data = gateway_state.get("throughput").cloned().unwrap_or(serde_json::json!({}));
+
+    ThroughputStats {
+        requests_per_second: throughput_data
+            .get("requests_per_second")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0),
+        bytes_per_second: throughput_data
+            .get("bytes_per_second")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0),
+        peak_requests_per_second: throughput_data
+            .get("peak_requests_per_second")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0),
+        peak_bytes_per_second: throughput_data
+            .get("peak_bytes_per_second")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0),
+    }
 }
 
 /// Get performance metrics
@@ -276,8 +560,14 @@ pub async fn get_performance_metrics(minutes: Option<u32>) -> Result<Performance
         .as_secs();
 
     Ok(PerformanceMetrics {
-        cpu: vec![MetricPoint { timestamp: now, value: cpu }],
-        memory: vec![MetricPoint { timestamp: now, value: memory }],
+        cpu: vec![MetricPoint {
+            timestamp: now,
+            value: cpu,
+        }],
+        memory: vec![MetricPoint {
+            timestamp: now,
+            value: memory,
+        }],
         network_in: vec![],
         network_out: vec![],
     })
@@ -297,12 +587,14 @@ fn get_current_metrics() -> (f32, f32) {
 
             for line in stdout.lines() {
                 if line.starts_with("MemTotal:") {
-                    total_kb = line.split_whitespace()
+                    total_kb = line
+                        .split_whitespace()
                         .nth(1)
                         .and_then(|v| v.parse().ok())
                         .unwrap_or(0);
                 } else if line.starts_with("MemAvailable:") {
-                    available_kb = line.split_whitespace()
+                    available_kb = line
+                        .split_whitespace()
                         .nth(1)
                         .and_then(|v| v.parse().ok())
                         .unwrap_or(0);
@@ -371,5 +663,37 @@ pub async fn clear_logs(file: Option<String>) -> Result<(), String> {
         .map_err(|e| format!("Failed to clear logs: {}", e))?;
 
     println!("[Monitor] Cleared {} logs", file_name);
+    Ok(())
+}
+
+/// Reload gateway configuration (hot reload)
+#[tauri::command]
+pub async fn reload_gateway_config() -> Result<(), String> {
+    println!("[Monitor] Reloading gateway config...");
+
+    // Send SIGHUP to gateway process to trigger config reload
+    // Or use a dedicated reload mechanism
+    let script = r#"
+# Try to reload via gateway control socket if available
+if [ -S ~/.hermes/gateway.sock ]; then
+    echo "RELOAD" | nc -U ~/.hermes/gateway.sock 2>/dev/null && echo "reloaded" || echo "failed"
+else
+    # Fallback: touch config to trigger file watcher
+    touch ~/.hermes/config.yaml 2>/dev/null && echo "triggered" || echo "failed"
+fi
+"#;
+
+    let output = create_command("wsl")
+        .args(["bash", "-c", script])
+        .output()
+        .map_err(|e| format!("Failed to reload gateway config: {}", e))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    println!("[Monitor] Reload result: {}", stdout.trim());
+
+    if stdout.contains("failed") {
+        return Err("Failed to reload gateway config".to_string());
+    }
+
     Ok(())
 }

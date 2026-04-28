@@ -8,7 +8,7 @@ import type { Platform, PlatformType } from '../../types/platform';
 import './Platforms.css';
 
 // 平台配置表单字段
-const platformConfigFields: Record<PlatformType, { key: string; label: string; type: string; placeholder: string }[]> = {
+const platformConfigFields: Record<PlatformType, { key: string; label: string; type: string; placeholder: string; hint?: string }[]> = {
   telegram: [
     { key: 'bot_token', label: 'Bot Token', type: 'password', placeholder: 'Enter Telegram Bot Token' },
     { key: 'webhook_url', label: 'Webhook URL', type: 'text', placeholder: 'Optional: Webhook URL' },
@@ -16,6 +16,12 @@ const platformConfigFields: Record<PlatformType, { key: string; label: string; t
   discord: [
     { key: 'bot_token', label: 'Bot Token', type: 'password', placeholder: 'Enter Discord Bot Token' },
     { key: 'application_id', label: 'Application ID', type: 'text', placeholder: 'Discord Application ID' },
+    // Hermes Agent 特定配置
+    { key: 'require_mention', label: 'Require Mention', type: 'checkbox', placeholder: '', hint: 'Bot only responds when mentioned' },
+    { key: 'auto_thread', label: 'Auto Thread', type: 'checkbox', placeholder: '', hint: 'Automatically create threads for responses' },
+    { key: 'reactions', label: 'Reactions', type: 'checkbox', placeholder: '', hint: 'Add reactions to messages' },
+    { key: 'allowed_channels', label: 'Allowed Channels', type: 'text', placeholder: 'Channel IDs, comma-separated', hint: 'Restrict bot to these channels' },
+    { key: 'free_response_channels', label: 'Free Response Channels', type: 'text', placeholder: 'Channel IDs, comma-separated', hint: 'Channels where bot responds without mention' },
   ],
   slack: [
     { key: 'bot_token', label: 'Bot Token', type: 'password', placeholder: 'xoxb-...' },
@@ -31,7 +37,9 @@ const platformConfigFields: Record<PlatformType, { key: string; label: string; t
     { key: 'agent_id', label: 'Agent ID', type: 'text', placeholder: 'App Agent ID' },
     { key: 'secret', label: 'Secret', type: 'password', placeholder: 'App Secret' },
   ],
-  weixin: [], // 个人微信使用扫码登录，无需表单字段
+  weixin: [
+    // 个人微信使用扫码登录，allowed_users 在扫码成功后自动添加
+  ],
   lark: [
     { key: 'app_id', label: 'App ID', type: 'text', placeholder: 'Lark App ID' },
     { key: 'app_secret', label: 'App Secret', type: 'password', placeholder: 'Lark App Secret' },
@@ -133,8 +141,8 @@ export function Platforms() {
     }
   };
 
-  const handleConfigChange = (key: string, value: string) => {
-    setConfigForm(prev => ({ ...prev, [key]: value }));
+  const handleConfigChange = (key: string, value: string | boolean) => {
+    setConfigForm(prev => ({ ...prev, [key]: String(value) }));
   };
 
   const handleSaveConfig = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -161,7 +169,7 @@ export function Platforms() {
       const result = await platformApi.getWechatQRCode();
       setQrcodeUrl(result.qrcode_url);
     } catch {
-      setQrcodeError('Failed to load QR code');
+      setQrcodeError(t('platforms.wechat.loadFailed'));
     }
   };
 
@@ -287,7 +295,7 @@ export function Platforms() {
                   <div className="qrcode-error">
                     <p><WarningIcon size={16} /> {qrcodeError}</p>
                     <button className="btn btn-secondary" onClick={loadQRCode}>
-                      重新加载
+                      {t('common.refresh')}
                     </button>
                   </div>
                 ) : qrcodeUrl ? (
@@ -324,15 +332,32 @@ export function Platforms() {
                 <div className="modal-body">
                   {configFields.map(field => (
                     <div key={field.key} className="form-group">
-                      <label htmlFor={field.key}>{field.label}</label>
-                      <input
-                        id={field.key}
-                        name={field.key}
-                        type={field.type}
-                        placeholder={field.placeholder}
-                        value={configForm[field.key] || ''}
-                        onChange={(e) => handleConfigChange(field.key, e.target.value)}
-                      />
+                      {field.type === 'checkbox' ? (
+                        <label className="checkbox-label">
+                          <input
+                            id={field.key}
+                            name={field.key}
+                            type="checkbox"
+                            checked={configForm[field.key] === 'true'}
+                            onChange={(e) => handleConfigChange(field.key, e.target.checked)}
+                          />
+                          <span className="checkbox-text">{field.label}</span>
+                          {field.hint && <span className="field-hint">{field.hint}</span>}
+                        </label>
+                      ) : (
+                        <>
+                          <label htmlFor={field.key}>{field.label}</label>
+                          <input
+                            id={field.key}
+                            name={field.key}
+                            type={field.type}
+                            placeholder={field.placeholder}
+                            value={configForm[field.key] || ''}
+                            onChange={(e) => handleConfigChange(field.key, e.target.value)}
+                          />
+                          {field.hint && <span className="field-hint">{field.hint}</span>}
+                        </>
+                      )}
                     </div>
                   ))}
                 </div>

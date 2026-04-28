@@ -1,64 +1,149 @@
-import React, { useState, memo } from 'react';
+import React, { useState, memo, useMemo } from 'react';
+import { logger } from '../../lib/logger';
+import { useSettingsStore } from '../../stores';
+import { useTranslation } from '../../hooks/useTranslation';
+
+type ApprovalChoice = 'once' | 'session' | 'always' | 'deny';
 
 interface PermissionCardProps {
-  approval: { id: string; command: string; description: string; allow_permanent: boolean };
-  onRespond: (choice: 'once' | 'session' | 'always' | 'deny') => void;
+  approval: {
+    id: string;
+    command: string;
+    description: string;
+    allow_permanent: boolean;
+    choices?: ApprovalChoice[];  // Optional: backend may specify which choices are available
+  };
+  onRespond: (choice: ApprovalChoice) => void | Promise<void>;
 }
 
 const PermissionCardComponent: React.FC<PermissionCardProps> = ({ approval, onRespond }) => {
   const [showCommand, setShowCommand] = useState(false);
+  const [responding, setResponding] = useState(false);
+  const { t } = useTranslation();
+
+  // Get approval config from store
+  const approvalConfig = useSettingsStore((s) => s.approvalConfig);
+
+  // Determine available choices from backend response or fallback to defaults
+  const availableChoices = approval.choices || (
+    approval.allow_permanent
+      ? ['once', 'session', 'always', 'deny'] as ApprovalChoice[]
+      : ['once', 'session', 'deny'] as ApprovalChoice[]
+  );
+
+  const hasChoice = (choice: ApprovalChoice) => availableChoices.includes(choice);
+
+  // Check if command is in safe or dangerous list
+  const commandStatus = useMemo(() => {
+    const cmd = approval.command.toLowerCase();
+    const safeCommands = approvalConfig?.safe_commands || [];
+    const dangerousCommands = approvalConfig?.dangerous_commands || [];
+
+    // Check if any safe command pattern matches
+    for (const safeCmd of safeCommands) {
+      const pattern = safeCmd.toLowerCase();
+      if (cmd.startsWith(pattern) || cmd.includes(pattern)) {
+        return 'safe' as const;
+      }
+    }
+
+    // Check if any dangerous command pattern matches
+    for (const dangerousCmd of dangerousCommands) {
+      const pattern = dangerousCmd.toLowerCase();
+      if (cmd.startsWith(pattern) || cmd.includes(pattern)) {
+        return 'dangerous' as const;
+      }
+    }
+
+    return 'normal' as const;
+  }, [approval.command, approvalConfig?.safe_commands, approvalConfig?.dangerous_commands]);
+
+  // Determine if we should show command preview based on config
+  const showCommandPreview = approvalConfig?.show_command_preview ?? true;
+
+  const handleRespond = async (choice: ApprovalChoice) => {
+    if (responding) return;
+    setResponding(true);
+    logger.info('[PermissionCard] User clicked:', choice, 'for approval:', approval.id);
+    try {
+      await onRespond(choice);
+      logger.info('[PermissionCard] Response completed:', choice);
+    } catch (err) {
+      logger.error('[PermissionCard] Response failed:', err);
+    } finally {
+      setResponding(false);
+    }
+  };
 
   return (
-    <div className="permission-card">
+    <div className={`permission-card ${commandStatus}`}>
       <div className="permission-card-header">
         <div className="permission-card-icon">
-          <span className="material-symbols-outlined">shield</span>
+          <span className="material-symbols-outlined">
+            {commandStatus === 'safe' ? 'verified_user' : commandStatus === 'dangerous' ? 'warning' : 'shield'}
+          </span>
         </div>
         <div className="permission-card-title">
-          <span className="permission-card-label">需要确认</span>
+          <span className="permission-card-label">
+            {commandStatus === 'dangerous' ? t('permission.dangerousCommand') : t('permission.needsConfirm')}
+          </span>
           <span className="permission-card-desc">{approval.description}</span>
+          {commandStatus === 'safe' && (
+            <span className="permission-card-tag safe">{t('permission.safeCommand')}</span>
+          )}
+          {commandStatus === 'dangerous' && (
+            <span className="permission-card-tag dangerous">{t('permission.dangerousCommand')}</span>
+          )}
         </div>
         <span className="permission-card-badge">
           <span className="permission-pulse" />
-          等待确认
+          {t('permission.waitingConfirm')}
         </span>
       </div>
-      <div className="permission-card-body">
-        <div className="permission-command-preview">
-          <code>{approval.command.slice(0, 100)}{approval.command.length > 100 ? '...' : ''}</code>
+      {showCommandPreview && (
+        <div className="permission-card-body">
+          <div className="permission-command-preview">
+            <code>{approval.command.slice(0, 100)}{approval.command.length > 100 ? '...' : ''}</code>
+          </div>
+          {approval.command.length > 100 && (
+            <button
+              className="permission-show-more"
+              onClick={() => setShowCommand(v => !v)}
+            >
+              <span className="material-symbols-outlined">{showCommand ? 'expand_less' : 'expand_more'}</span>
+              {showCommand ? t('permission.collapse') : t('permission.viewFullCommand')}
+            </button>
+          )}
+          {showCommand && (
+            <pre className="permission-command-full">{approval.command}</pre>
+          )}
         </div>
-        {approval.command.length > 100 && (
-          <button
-            className="permission-show-more"
-            onClick={() => setShowCommand(v => !v)}
-          >
-            <span className="material-symbols-outlined">{showCommand ? 'expand_less' : 'expand_more'}</span>
-            {showCommand ? '收起' : '查看完整命令'}
-          </button>
-        )}
-        {showCommand && (
-          <pre className="permission-command-full">{approval.command}</pre>
-        )}
-      </div>
+      )}
       <div className="permission-card-actions">
-        <button className="permission-btn allow" onClick={() => onRespond('once')}>
-          <span className="material-symbols-outlined">check</span>
-          允许
-        </button>
-        <button className="permission-btn session" onClick={() => onRespond('session')}>
-          <span className="material-symbols-outlined">verified</span>
-          本次会话
-        </button>
-        {approval.allow_permanent && (
-          <button className="permission-btn always" onClick={() => onRespond('always')}>
-            <span className="material-symbols-outlined">done_all</span>
-            永久
+        {hasChoice('once') && (
+          <button className="permission-btn allow" onClick={() => handleRespond('once')} disabled={responding}>
+            <span className="material-symbols-outlined">check</span>
+            {t('permission.allow')}
           </button>
         )}
-        <button className="permission-btn deny" onClick={() => onRespond('deny')}>
-          <span className="material-symbols-outlined">close</span>
-          拒绝
-        </button>
+        {hasChoice('session') && (
+          <button className="permission-btn session" onClick={() => handleRespond('session')} disabled={responding}>
+            <span className="material-symbols-outlined">verified</span>
+            {t('permission.thisSession')}
+          </button>
+        )}
+        {hasChoice('always') && (
+          <button className="permission-btn always" onClick={() => handleRespond('always')} disabled={responding}>
+            <span className="material-symbols-outlined">done_all</span>
+            {t('permission.always')}
+          </button>
+        )}
+        {hasChoice('deny') && (
+          <button className="permission-btn deny" onClick={() => handleRespond('deny')} disabled={responding}>
+            <span className="material-symbols-outlined">close</span>
+            {t('permission.deny')}
+          </button>
+        )}
       </div>
     </div>
   );

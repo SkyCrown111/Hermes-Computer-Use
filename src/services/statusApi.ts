@@ -36,8 +36,9 @@ export const statusApi = {
   health: async (): Promise<{ status: string }> => {
     try {
       return await safeInvoke<{ status: string }>('health_check');
-    } catch {
-      return { status: 'ok' };
+    } catch (error) {
+      logger.error('Health check failed:', error);
+      return { status: 'error' };
     }
   },
 };

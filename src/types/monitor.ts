@@ -52,6 +52,30 @@ export interface GatewayConnection {
   message_count?: number;
 }
 
+// Error statistics
+export interface ErrorStats {
+  total_errors: number;
+  by_type: Record<string, number>;
+  last_hour: number;
+  last_24h: number;
+}
+
+// Connection event
+export interface ConnectionEvent {
+  timestamp: string;
+  event_type: 'connect' | 'disconnect' | 'error' | 'unknown';
+  platform: string;
+  message?: string;
+}
+
+// Throughput statistics
+export interface ThroughputStats {
+  requests_per_second: number;
+  bytes_per_second: number;
+  peak_requests_per_second: number;
+  peak_bytes_per_second: number;
+}
+
 // Gateway 详细状态
 export interface GatewayDetailedStatus {
   status: 'online' | 'offline' | 'degraded';
@@ -60,6 +84,15 @@ export interface GatewayDetailedStatus {
   connections: GatewayConnection[];
   total_messages: number;
   messages_per_minute: number;
+  // Advanced metrics
+  active_requests: number;
+  queue_depth: number;
+  avg_response_time_ms: number;
+  memory_usage_mb: number;
+  cpu_usage_percent: number;
+  error_stats: ErrorStats;
+  connection_history: ConnectionEvent[];
+  throughput: ThroughputStats;
 }
 
 // 组件统计

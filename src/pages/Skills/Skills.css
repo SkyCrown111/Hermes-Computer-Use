@@ -694,3 +694,315 @@
   padding-top: var(--space-5);
   border-top: 1px solid var(--color-border);
 }
+
+/* ============================================
+   Skills Stats Bar
+   ============================================ */
+
+.skills-stats {
+  display: flex;
+  gap: var(--space-6);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface-container);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-2);
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.stat-value {
+  font-size: var(--text-xl);
+  font-weight: var(--font-bold);
+  color: var(--text-primary);
+}
+
+.stat-value.stat-enabled {
+  color: var(--color-success, #34c759);
+}
+
+.stat-value.stat-disabled {
+  color: var(--text-tertiary);
+}
+
+.stat-label {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+/* ============================================
+   Detail Tabs
+   ============================================ */
+
+.detail-tabs {
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--color-surface-container);
+}
+
+.detail-tab {
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.detail-tab:hover {
+  color: var(--text-primary);
+  background: var(--color-surface-hover);
+}
+
+.detail-tab.active {
+  color: var(--color-primary);
+  background: var(--color-surface-selected);
+}
+
+/* ============================================
+   Detail Content Section
+   ============================================ */
+
+.detail-content-section,
+.detail-history-section,
+.detail-info-section {
+  padding: var(--space-6);
+  flex: 1;
+  overflow-y: auto;
+}
+
+.content-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+
+/* ============================================
+   Execution History
+   ============================================ */
+
+.execution-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.execution-record {
+  padding: var(--space-3);
+  background: var(--color-surface-container);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+}
+
+.record-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.record-status {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: var(--text-sm);
+  font-weight: var(--font-bold);
+}
+
+.record-status.status-success {
+  background: rgba(52, 199, 89, 0.2);
+  color: var(--color-success, #34c759);
+}
+
+.record-status.status-failed {
+  background: rgba(255, 59, 48, 0.2);
+  color: var(--accent-error, #ff3b30);
+}
+
+.record-status.status-running {
+  background: rgba(255, 149, 0, 0.2);
+  color: var(--color-warning, #ff9500);
+}
+
+.record-time {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.record-duration {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  margin-left: auto;
+}
+
+.record-input {
+  margin-top: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.record-label {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.record-value {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  background: var(--color-surface-container-high);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+}
+
+.empty-history {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8);
+  gap: var(--space-3);
+}
+
+.empty-history .empty-icon {
+  font-size: 48px;
+  opacity: 0.5;
+}
+
+.empty-history p {
+  color: var(--text-tertiary);
+  margin: 0;
+}
+
+/* ============================================
+   Detail Info Section
+   ============================================ */
+
+.detail-info-section .detail-meta {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+
+.meta-path {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  word-break: break-all;
+}
+
+.detail-tags,
+.related-skills {
+  margin-bottom: var(--space-4);
+}
+
+.tags-title,
+.related-title {
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--text-secondary);
+  margin-bottom: var(--space-3);
+}
+
+.tags-list,
+.related-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.no-tags {
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+
+/* ============================================
+   Category Select & Suggestions
+   ============================================ */
+
+.category-select-wrapper {
+  position: relative;
+}
+
+.category-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.category-suggestion {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-xs);
+  background: var(--color-surface-container);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.category-suggestion:hover {
+  background: var(--color-surface-selected);
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+/* ============================================
+   Execution Modal
+   ============================================ */
+
+.execution-modal {
+  max-width: 600px;
+}
+
+.execution-params {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.param-row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.param-row .input-container {
+  flex: 1;
+}
+
+/* ============================================
+   Skill Card Meta Inline
+   ============================================ */
+
+.skill-meta-inline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.skill-category-badge {
+  font-size: var(--text-xs);
+  padding: 1px var(--space-2);
+  background: var(--color-surface-container-high);
+  border-radius: var(--radius-sm);
+  color: var(--text-tertiary);
+}

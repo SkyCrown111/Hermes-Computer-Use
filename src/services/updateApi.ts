@@ -21,6 +21,8 @@ export type ProgressCallback = (progress: UpdateInfo) => void;
 
 let _currentVersion: string | null = null;
 let _pendingUpdate: Update | null = null;
+const isUpdaterConfigured = () =>
+  (import.meta.env.VITE_TAURI_UPDATER_PUBKEY?.trim() ?? '').length > 0;
 
 /**
  * Get the current application version
@@ -40,6 +42,15 @@ export async function getCurrentVersion(): Promise<string> {
  * Check for updates. Stores the Update instance internally for later install.
  */
 export async function checkForUpdates(): Promise<UpdateInfo> {
+  if (!isUpdaterConfigured()) {
+    return {
+      available: false,
+      currentVersion: await getCurrentVersion(),
+      status: 'error',
+      error: 'Updater is not configured for this build.',
+    };
+  }
+
   try {
     const currentVersion = await getCurrentVersion();
     _pendingUpdate = await check();
@@ -79,6 +90,10 @@ export async function checkForUpdates(): Promise<UpdateInfo> {
 export async function installPendingUpdate(
   onProgress?: ProgressCallback
 ): Promise<void> {
+  if (!isUpdaterConfigured()) {
+    throw new Error('Updater is not configured for this build.');
+  }
+
   if (!_pendingUpdate) {
     throw new Error('No pending update to install. Call checkForUpdates first.');
   }

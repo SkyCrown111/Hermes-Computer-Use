@@ -10,6 +10,7 @@ import type { ChatInputHandle, AttachedFile, SessionSearchResult } from '../../c
 import type { ChatMessage, ToolCallInfo } from '../../stores/chatStore';
 import { MarkdownRenderer, BotIcon, ThinkingIcon, XIcon } from '../../components';
 import { logger } from '../../lib/logger';
+import { getErrorMessage } from '../../lib/errorUtils';
 import type { Session, SessionMessage } from '../../types';
 import './SessionChat.css';
 
@@ -189,7 +190,7 @@ export const SessionChat: React.FC<SessionChatProps> = ({
       const errorMsg: ChatMessage = {
         id: nextId(),
         role: 'assistant',
-        content: `${t('chat.error')}: ${(error as Error).message}`,
+        content: `${t('chat.error')}: ${getErrorMessage(error)}`,
         timestamp: new Date().toISOString(),
       };
       setMessages(prev => [...prev, errorMsg]);

@@ -3,8 +3,9 @@
 //! Commands for managing Hermes Agent memories.
 //! Reads from ~/.hermes/memories/ in WSL.
 
-use serde::{Deserialize, Serialize};
 use super::utils::create_command;
+use base64::{engine::general_purpose::STANDARD, Engine as _};
+use serde::{Deserialize, Serialize};
 
 /// Memory section - matches frontend MemorySection
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,19 +36,55 @@ pub struct MemoryData {
     pub user_profile: MemoryFile,
 }
 
+/// Validate filename to prevent path traversal
+fn validate_memory_filename(filename: &str) -> Result<String, String> {
+    // Only allow specific allowed filenames
+    let allowed = ["MEMORY.md", "USER.md"];
+    if !allowed.contains(&filename) {
+        return Err(format!(
+            "Invalid filename: {}. Only MEMORY.md and USER.md are allowed.",
+            filename
+        ));
+    }
+    Ok(filename.to_string())
+}
+
 /// Read a memory file from WSL
 fn read_memory_file(filename: &str) -> Result<MemoryFile, String> {
+    let valid_filename = validate_memory_filename(filename)?;
+
     let script = format!(
-        r#"cat ~/.hermes/memories/{} 2>/dev/null || echo ''"#,
-        filename
+        r#"
+import os
+import json
+
+filename = "{}"
+filepath = os.path.expanduser("~/.hermes/memories/" + filename)
+
+if os.path.isfile(filepath):
+    with open(filepath, 'r', encoding='utf-8') as f:
+        content = f.read()
+    print(json.dumps({{"success": True, "content": content}}))
+else:
+    print(json.dumps({{"success": False, "content": ""}}))
+"#,
+        valid_filename
     );
 
     let output = create_command("wsl")
-        .args(["bash", "-c", &script])
+        .args(["python3", "-c", &script])
         .output()
         .map_err(|e| format!("Failed to read memory file: {}", e))?;
 
-    let content = String::from_utf8_lossy(&output.stdout).to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json_result: serde_json::Value = serde_json::from_str(&stdout)
+        .map_err(|e| format!("Failed to parse memory file response: {}", e))?;
+
+    let content = json_result
+        .get("content")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
     let char_count = content.chars().count();
 
     // Parse sections (split by ## headers)
@@ -100,21 +137,31 @@ fn read_memory_file(filename: &str) -> Result<MemoryFile, String> {
         });
     }
 
-    // Get last modified time
+    // Get last modified time using Python
     let stat_script = format!(
-        r#"stat -c %Y ~/.hermes/memories/{} 2>/dev/null || echo '0'"#,
-        filename
+        r#"
+import os
+import json
+
+filepath = os.path.expanduser("~/.hermes/memories/{}")
+if os.path.isfile(filepath):
+    mtime = os.path.getmtime(filepath)
+    print(json.dumps({{"mtime": int(mtime)}}))
+else:
+    print(json.dumps({{"mtime": 0}}))
+"#,
+        valid_filename
     );
 
     let last_modified = if let Ok(output) = create_command("wsl")
-        .args(["bash", "-c", &stat_script])
+        .args(["python3", "-c", &stat_script])
         .output()
     {
         if output.status.success() {
-            let ts_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if let Ok(ts) = ts_str.parse::<i64>() {
-                chrono::DateTime::from_timestamp(ts, 0)
-                    .map(|dt| dt.to_rfc3339())
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&stdout) {
+                let ts = json.get("mtime").and_then(|v| v.as_i64()).unwrap_or(0);
+                chrono::DateTime::from_timestamp(ts, 0).map(|dt| dt.to_rfc3339())
             } else {
                 None
             }
@@ -143,7 +190,10 @@ pub fn get_memories() -> Result<MemoryData, String> {
     let memory = read_memory_file("MEMORY.md")?;
     let user_profile = read_memory_file("USER.md")?;
 
-    println!("[Memory] Memory: {} chars, User: {} chars", memory.char_count, user_profile.char_count);
+    println!(
+        "[Memory] Memory: {} chars, User: {} chars",
+        memory.char_count, user_profile.char_count
+    );
 
     Ok(MemoryData {
         memory,
@@ -151,21 +201,44 @@ pub fn get_memories() -> Result<MemoryData, String> {
     })
 }
 
-/// Save memory content
+/// Save memory content - uses base64 encoding for safe shell transport
 #[tauri::command]
 pub fn save_memory(file_type: String, content: String) -> Result<serde_json::Value, String> {
-    let filename = if file_type == "user_profile" { "USER.md" } else { "MEMORY.md" };
+    let filename = if file_type == "user_profile" {
+        "USER.md"
+    } else {
+        "MEMORY.md"
+    };
+    let valid_filename = validate_memory_filename(filename)?;
 
-    // Write via WSL
+    // Encode content as base64 for safe shell transport
+    let encoded = STANDARD.encode(&content);
+
     let script = format!(
-        r#"cat > ~/.hermes/memories/{} << 'HERMES_EOF'
-{}
-HERMES_EOF"#,
-        filename, content
+        r#"
+import os
+import base64
+import json
+
+filename = "{}"
+filepath = os.path.expanduser("~/.hermes/memories/" + filename)
+
+# Ensure directory exists
+os.makedirs(os.path.dirname(filepath), exist_ok=True)
+
+# Decode base64 content and write
+content = base64.b64decode("{}").decode('utf-8')
+
+with open(filepath, 'w', encoding='utf-8') as f:
+    f.write(content)
+
+print(json.dumps({{"success": True}}))
+"#,
+        valid_filename, encoded
     );
 
     let output = create_command("wsl")
-        .args(["bash", "-c", &script])
+        .args(["python3", "-c", &script])
         .output()
         .map_err(|e| format!("Failed to save memory: {}", e))?;
 

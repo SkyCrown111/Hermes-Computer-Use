@@ -38,8 +38,15 @@ export async function safeInvoke<T>(cmd: string, args?: Record<string, unknown>)
       logger.debug(`[Tauri] Command ${cmd} succeeded:`, result);
       return result;
     } catch (error) {
-      // If invoke fails, we might be in browser dev mode
-      logger.warn(`[Tauri] Command ${cmd} failed, falling back to mock:`, error);
+      // If invoke fails, log the error
+      logger.warn(`[Tauri] Command ${cmd} failed:`, error);
+      // In production Tauri environment, still throw the error
+      if (inTauri) {
+        logger.error(`[Tauri] Command ${cmd} failed in Tauri environment`);
+        throw error;
+      }
+      // If invoke fails in browser dev mode, fall back to mock data
+      logger.warn(`[Tauri] Falling back to mock data for: ${cmd}`);
       return getMockData(cmd) as T;
     }
   }

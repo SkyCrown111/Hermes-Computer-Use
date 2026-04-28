@@ -4,6 +4,7 @@ import { useSessionStore, useNavigationStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
 import { toast } from '../../stores/toastStore';
 import type { Session, SessionMessage } from '../../types';
+import type { Checkpoint } from '../../types/checkpoint';
 import { sessionApi } from '../../services';
 import { formatNumber, formatCurrency, formatDateTime, formatRelativeTime, getPlatformIcon, getPlatformName } from '../../utils/format';
 import { logger } from '../../lib/logger';
@@ -216,6 +217,13 @@ export const Sessions: React.FC = () => {
     setSearchQuery,
     clearCurrentSession,
     setPagination,
+    // Checkpoint actions
+    checkpoints,
+    isLoadingCheckpoints,
+    fetchCheckpoints,
+    createCheckpoint,
+    restoreCheckpoint,
+    deleteCheckpoint,
   } = useSessionStore();
 
   // Navigation
@@ -227,8 +235,28 @@ export const Sessions: React.FC = () => {
   const [editingSession, setEditingSession] = useState<Session | null>(null);
   const [editName, setEditName] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<Session | null>(null);
+  // Batch mode state - explicit toggle to allow entering batch mode without pre-selection
+  const [isBatchMode, setIsBatchMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [batchDeleteConfirm, setBatchDeleteConfirm] = useState(false);
+
+  // Checkpoint UI state
+  const [restoreConfirm, setRestoreConfirm] = useState<{ checkpoint: Checkpoint; session: Session } | null>(null);
+  const [deleteCheckpointConfirm, setDeleteCheckpointConfirm] = useState<{ checkpoint: Checkpoint; sessionId: string } | null>(null);
+  const [createCheckpointModal, setCreateCheckpointModal] = useState<Session | null>(null);
+  const [checkpointName, setCheckpointName] = useState('');
+  const [checkpointDescription, setCheckpointDescription] = useState('');
+  const [isCreatingCheckpoint, setIsCreatingCheckpoint] = useState(false);
+
+  const toggleBatchMode = () => {
+    setIsBatchMode(prev => {
+      if (prev) {
+        // Exiting batch mode - clear selection
+        setSelectedIds(new Set());
+      }
+      return !prev;
+    });
+  };
 
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => {
@@ -264,7 +292,7 @@ export const Sessions: React.FC = () => {
     const ids = Array.from(selectedIds);
 
     if (ids.length === 0) {
-      toast.error('No sessions selected');
+      toast.error(t('sessions.noSelection'));
       return;
     }
 
@@ -324,7 +352,7 @@ export const Sessions: React.FC = () => {
       }
     } catch (err) {
       logger.error('[Sessions] Batch export failed:', err);
-      toast.error('Failed to export sessions');
+      toast.error(t('sessions.exportFailed'));
     }
 
     clearSelection();
@@ -358,6 +386,13 @@ export const Sessions: React.FC = () => {
     }
   }, [currentSession]);
 
+  // Fetch checkpoints when session detail is opened
+  useEffect(() => {
+    if (currentSession) {
+      fetchCheckpoints(currentSession.id);
+    }
+  }, [currentSession?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Handlers
   const handleSessionClick = (session: Session) => {
     logger.component('Sessions', 'Opening session as tab:', session.id);
@@ -370,7 +405,15 @@ export const Sessions: React.FC = () => {
       await fetchSession(session.id);
     } catch (err) {
       logger.error('[Sessions] Error fetching session:', err);
-      toast.error('Failed to load session details');
+      // Check if session was not found
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      if (errorMsg.includes('not found') || errorMsg.includes('Session not found')) {
+        toast.error(t('sessions.sessionNotFound').replace('{id}', session.id.slice(0, 12)));
+        // Refresh the session list to remove stale entries
+        useSessionStore.getState().refreshSessions();
+      } else {
+        toast.error(t('sessions.loadFailed') || 'Failed to load session details');
+      }
     }
   };
 
@@ -436,12 +479,73 @@ export const Sessions: React.FC = () => {
     setPagination(limit, newOffset);
   };
 
+  // Checkpoint handlers
+  const handleCreateCheckpoint = async () => {
+    if (!createCheckpointModal) return;
+    setIsCreatingCheckpoint(true);
+    try {
+      await createCheckpoint(
+        createCheckpointModal.id,
+        checkpointName || undefined,
+        checkpointDescription || undefined
+      );
+      toast.success(t('checkpoint.createSuccess'));
+      setCreateCheckpointModal(null);
+      setCheckpointName('');
+      setCheckpointDescription('');
+      // Refresh checkpoints
+      await fetchCheckpoints(createCheckpointModal.id);
+    } catch (err) {
+      toast.error(t('checkpoint.createFailed'));
+    } finally {
+      setIsCreatingCheckpoint(false);
+    }
+  };
+
+  const handleRestoreCheckpoint = async () => {
+    if (!restoreConfirm) return;
+    try {
+      await restoreCheckpoint(restoreConfirm.session.id, restoreConfirm.checkpoint.id);
+      toast.success(t('checkpoint.restoreSuccess'));
+      setRestoreConfirm(null);
+      // Refresh messages if viewing this session
+      if (currentSession?.id === restoreConfirm.session.id) {
+        await fetchSession(restoreConfirm.session.id);
+      }
+    } catch (err) {
+      toast.error(t('checkpoint.restoreFailed'));
+    }
+  };
+
+  const handleDeleteCheckpoint = async () => {
+    if (!deleteCheckpointConfirm) return;
+    try {
+      await deleteCheckpoint(deleteCheckpointConfirm.checkpoint.id, deleteCheckpointConfirm.sessionId);
+      toast.success(t('checkpoint.deleteSuccess'));
+      setDeleteCheckpointConfirm(null);
+    } catch (err) {
+      toast.error(t('checkpoint.deleteFailed'));
+    }
+  };
+
+  const formatBytes = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
   return (
     <div className="sessions-page">
       {/* Header */}
       <div className="sessions-header">
         <h1 className="sessions-title">{t('sessions.title')}</h1>
         <div className="sessions-actions">
+          <Button
+            variant={isBatchMode ? 'primary' : 'secondary'}
+            onClick={toggleBatchMode}
+          >
+            {isBatchMode ? t('sessions.exitBatchMode') || 'Exit Selection' : t('sessions.batchSelect') || 'Select'}
+          </Button>
           <Button
             variant="secondary"
             icon={<ExportIcon size={16} />}
@@ -524,7 +628,7 @@ export const Sessions: React.FC = () => {
               key={session.id}
               session={session}
               isSelected={selectedIds.has(session.id)}
-              isBatchMode={selectedIds.size > 0}
+              isBatchMode={isBatchMode}
               onClick={() => handleSessionClick(session)}
               onDetail={() => handleShowDetail(session)}
               onDelete={() => handleDeleteSession(session)}
@@ -616,30 +720,120 @@ export const Sessions: React.FC = () => {
                   </div>
                   <div className="detail-info-item">
                     <span className="detail-label">{t('sessions.model')}</span>
-                    <span className="detail-value">{currentSession.model}</span>
+                    <span className="detail-value model-badge">{currentSession.model}</span>
                   </div>
                   <div className="detail-info-item">
                     <span className="detail-label">{t('sessions.messageCount')}</span>
                     <span className="detail-value">{currentSession.message_count} {t('sessions.countUnit')}</span>
                   </div>
-                  <div className="detail-info-item">
-                    <span className="detail-label">{t('sessions.tokenUsage')}</span>
-                    <span className="detail-value">
-                      {t('sessions.tokenUsage').includes('Token') ? 'Input' : '输入'}: {formatNumber(currentSession.input_tokens)} /
-                      {t('sessions.tokenUsage').includes('Token') ? ' Output' : ' 输出'}: {formatNumber(currentSession.output_tokens)}
-                    </span>
-                  </div>
-                  <div className="detail-info-item">
-                    <span className="detail-label">{t('sessions.estimatedCost')}</span>
-                    <span className="detail-value">{formatCurrency(currentSession.estimated_cost_usd)}</span>
+                </div>
+
+                {/* Token Usage Section */}
+                <div className="detail-section">
+                  <h4 className="detail-section-title">{t('sessions.tokenUsage')}</h4>
+                  <div className="token-stats-grid">
+                    <div className="token-stat-item">
+                      <span className="token-stat-label">{t('sessions.inputTokens')}</span>
+                      <span className="token-stat-value">{formatNumber(currentSession.input_tokens)}</span>
+                    </div>
+                    <div className="token-stat-item">
+                      <span className="token-stat-label">{t('sessions.outputTokens')}</span>
+                      <span className="token-stat-value">{formatNumber(currentSession.output_tokens)}</span>
+                    </div>
+                    {currentSession.cache_read_tokens !== undefined && currentSession.cache_read_tokens > 0 && (
+                      <div className="token-stat-item token-stat-cache">
+                        <span className="token-stat-label">{t('sessions.cacheTokens')}</span>
+                        <span className="token-stat-value">{formatNumber(currentSession.cache_read_tokens)}</span>
+                      </div>
+                    )}
+                    {currentSession.reasoning_tokens !== undefined && currentSession.reasoning_tokens > 0 && (
+                      <div className="token-stat-item token-stat-reasoning">
+                        <span className="token-stat-label">{t('sessions.reasoningTokens')}</span>
+                        <span className="token-stat-value">{formatNumber(currentSession.reasoning_tokens)}</span>
+                      </div>
+                    )}
+                    <div className="token-stat-item token-stat-total">
+                      <span className="token-stat-label">{t('sessions.totalTokens')}</span>
+                      <span className="token-stat-value">
+                        {formatNumber(currentSession.input_tokens + currentSession.output_tokens + (currentSession.cache_read_tokens || 0) + (currentSession.reasoning_tokens || 0))}
+                      </span>
+                    </div>
                   </div>
                 </div>
+
+                {/* Cost Section */}
+                <div className="detail-section">
+                  <h4 className="detail-section-title">{t('sessions.costInfo')}</h4>
+                  <div className="cost-info">
+                    <div className="cost-item cost-estimated">
+                      <span className="cost-label">{t('sessions.estimatedCost')}</span>
+                      <span className="cost-value">{formatCurrency(currentSession.estimated_cost_usd)}</span>
+                    </div>
+                    {currentSession.actual_cost_usd !== undefined && currentSession.actual_cost_usd !== null && (
+                      <div className="cost-item cost-actual">
+                        <span className="cost-label">{t('sessions.actualCost')}</span>
+                        <span className="cost-value">{formatCurrency(currentSession.actual_cost_usd)}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Checkpoints Section */}
+                <div className="detail-section">
+                  <div className="checkpoint-header">
+                    <h4 className="detail-section-title">{t('checkpoint.title')}</h4>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setCreateCheckpointModal(currentSession)}
+                    >
+                      {t('checkpoint.create')}
+                    </Button>
+                  </div>
+                  <div className="checkpoint-list">
+                    {isLoadingCheckpoints ? (
+                      <div className="checkpoint-loading">{t('checkpoint.loading')}</div>
+                    ) : checkpoints.length > 0 ? (
+                      checkpoints.slice(0, 5).map((cp) => (
+                        <div key={cp.id} className="checkpoint-item">
+                          <div className="checkpoint-info">
+                            <span className="checkpoint-name">{cp.name || t('checkpoint.latest')}</span>
+                            <div className="checkpoint-meta">
+                              <span>{formatDateTime(cp.created_at)}</span>
+                              <span>{cp.message_count} {t('checkpoint.messageCount')}</span>
+                              <span>{formatBytes(cp.size_bytes)}</span>
+                            </div>
+                          </div>
+                          <div className="checkpoint-actions">
+                            <button
+                              className="action-btn"
+                              title={t('checkpoint.restore')}
+                              onClick={() => setRestoreConfirm({ checkpoint: cp, session: currentSession })}
+                            >
+                              <SettingsIcon size={14} />
+                            </button>
+                            <button
+                              className="action-btn action-btn-delete"
+                              title={t('checkpoint.delete')}
+                              onClick={() => setDeleteCheckpointConfirm({ checkpoint: cp, sessionId: currentSession.id })}
+                            >
+                              <TrashIcon size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="checkpoint-empty">{t('checkpoint.noCheckpoints')}</div>
+                    )}
+                  </div>
+                </div>
+
                 <div className="drawer-actions">
                   <Button
                     variant="primary"
                     icon={<ChatIcon size={16} />}
                     onClick={() => {
-                      openTab(currentSession.id, currentSession.chat_name || `会话 ${currentSession.id.slice(0, 8)}`, 'session');
+                      openTab(currentSession.id, currentSession.chat_name || t('sessions.untitled').replace('{id}', currentSession.id.slice(0, 8)), 'session');
                     }}
                   >
                     {t('sessions.continue')}
@@ -717,6 +911,67 @@ export const Sessions: React.FC = () => {
         variant="danger"
         onConfirm={handleBatchDelete}
         onCancel={() => setBatchDeleteConfirm(false)}
+      />
+
+      {/* Create Checkpoint Modal */}
+      {createCheckpointModal && (
+        <div className="edit-modal-overlay" onClick={() => setCreateCheckpointModal(null)}>
+          <div className="edit-modal checkpoint-modal" onClick={(e) => e.stopPropagation()}>
+            <h3 className="edit-modal-title">{t('checkpoint.create')}</h3>
+            <div className="checkpoint-form">
+              <div className="form-group">
+                <label>{t('checkpoint.namePlaceholder')}</label>
+                <input
+                  type="text"
+                  className="edit-modal-input"
+                  value={checkpointName}
+                  onChange={(e) => setCheckpointName(e.target.value)}
+                  placeholder={t('checkpoint.namePlaceholder')}
+                />
+              </div>
+              <div className="form-group">
+                <label>{t('checkpoint.descriptionPlaceholder')}</label>
+                <textarea
+                  className="edit-modal-textarea"
+                  value={checkpointDescription}
+                  onChange={(e) => setCheckpointDescription(e.target.value)}
+                  placeholder={t('checkpoint.descriptionPlaceholder')}
+                  rows={3}
+                />
+              </div>
+            </div>
+            <div className="edit-modal-actions">
+              <Button variant="ghost" onClick={() => setCreateCheckpointModal(null)}>{t('common.cancel')}</Button>
+              <Button variant="primary" onClick={handleCreateCheckpoint} disabled={isCreatingCheckpoint}>
+                {isCreatingCheckpoint ? t('checkpoint.creating') : t('checkpoint.create')}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Restore Checkpoint Confirmation */}
+      <ConfirmModal
+        isOpen={restoreConfirm !== null}
+        title={t('checkpoint.restore')}
+        message={t('checkpoint.confirmRestore')}
+        confirmText={t('checkpoint.restore')}
+        cancelText={t('common.cancel')}
+        variant="warning"
+        onConfirm={handleRestoreCheckpoint}
+        onCancel={() => setRestoreConfirm(null)}
+      />
+
+      {/* Delete Checkpoint Confirmation */}
+      <ConfirmModal
+        isOpen={deleteCheckpointConfirm !== null}
+        title={t('checkpoint.delete')}
+        message={t('checkpoint.confirmDelete')}
+        confirmText={t('common.delete')}
+        cancelText={t('common.cancel')}
+        variant="danger"
+        onConfirm={handleDeleteCheckpoint}
+        onCancel={() => setDeleteCheckpointConfirm(null)}
       />
     </div>
   );

@@ -63,6 +63,7 @@ export const Layout: React.FC<LayoutProps> = ({
       gateway: 'Gateway',
       files: t('nav.files'),
       preferences: t('nav.preferences'),
+      mcp: t('nav.mcp'),
     };
     return titles[activeItem] || 'Hermes';
   };

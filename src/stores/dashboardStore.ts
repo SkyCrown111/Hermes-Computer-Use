@@ -5,6 +5,7 @@ import type { UsageAnalytics, SystemStatus, CronJob, Skill } from '../types';
 import { analyticsApi, statusApi, cronJobsApi, skillsApi } from '../services';
 import { t } from '../lib/i18n';
 import { logger } from '../lib/logger';
+import { getErrorMessage } from '../lib/errorUtils';
 import { useThemeStore } from './themeStore';
 
 interface DashboardState {
@@ -64,7 +65,7 @@ export const useDashboardStore = create<DashboardState>((set) => ({
       logger.error('[Dashboard] Failed to fetch system status:', err);
       const lang = useThemeStore.getState().language;
       set({
-        error: `${t('error.fetchSystemStatus', lang)}: ${(err as Error).message}`,
+        error: `${t('error.fetchSystemStatus', lang)}: ${getErrorMessage(err)}`,
         isLoadingStatus: false
       });
     }
@@ -88,7 +89,7 @@ export const useDashboardStore = create<DashboardState>((set) => ({
       logger.error('[Dashboard] Failed to fetch usage analytics:', err);
       const lang = useThemeStore.getState().language;
       set({
-        error: `${t('error.fetchUsageAnalytics', lang)}: ${(err as Error).message}`,
+        error: `${t('error.fetchUsageAnalytics', lang)}: ${getErrorMessage(err)}`,
         isLoadingAnalytics: false
       });
     }
@@ -106,7 +107,7 @@ export const useDashboardStore = create<DashboardState>((set) => ({
       logger.error('[Dashboard] Failed to fetch skills:', err);
       const lang = useThemeStore.getState().language;
       set({
-        error: `${t('error.fetchSkills', lang)}: ${(err as Error).message}`,
+        error: `${t('error.fetchSkills', lang)}: ${getErrorMessage(err)}`,
         isLoadingSkills: false
       });
     }
@@ -137,7 +138,7 @@ export const useDashboardStore = create<DashboardState>((set) => ({
       logger.error('[Dashboard] Failed to fetch today tasks:', err);
       const lang = useThemeStore.getState().language;
       set({
-        error: `${t('error.fetchTodayTasks', lang)}: ${(err as Error).message}`,
+        error: `${t('error.fetchTodayTasks', lang)}: ${getErrorMessage(err)}`,
         isLoadingTasks: false
       });
     }

@@ -2,9 +2,10 @@
 //!
 //! Commands for loading and saving Hermes Agent configuration.
 
+use super::utils::{create_command, get_hermes_data_dir};
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use super::utils::{get_hermes_data_dir, create_command};
 
 /// Model configuration
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -71,10 +72,7 @@ pub struct HermesConfig {
 fn read_file_content(path_in_hermes: &str) -> Option<String> {
     // Try WSL command first
     let wsl_path = format!("~/.hermes/{}", path_in_hermes);
-    if let Ok(output) = create_command("wsl")
-        .args(["cat", &wsl_path])
-        .output()
-    {
+    if let Ok(output) = create_command("wsl").args(["cat", &wsl_path]).output() {
         if output.status.success() && !output.stdout.is_empty() {
             return Some(String::from_utf8_lossy(&output.stdout).to_string());
         }
@@ -112,31 +110,32 @@ fn parse_config(yaml_content: &str) -> HermesConfig {
 
     /// Helper: get a string field from a mapping at a given key
     fn get_str(map: &serde_yaml::Mapping, key: &str) -> Option<String> {
-        map.get(&serde_yaml::Value::String(key.to_string()))
+        map.get(serde_yaml::Value::String(key.to_string()))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
     }
 
     /// Helper: get an integer field from a mapping at a given key
     fn get_i64(map: &serde_yaml::Mapping, key: &str) -> Option<i64> {
-        map.get(&serde_yaml::Value::String(key.to_string()))
+        map.get(serde_yaml::Value::String(key.to_string()))
             .and_then(|v| v.as_i64())
     }
 
     /// Helper: get a boolean field from a mapping at a given key
     fn get_bool(map: &serde_yaml::Mapping, key: &str) -> Option<bool> {
-        map.get(&serde_yaml::Value::String(key.to_string()))
+        map.get(serde_yaml::Value::String(key.to_string()))
             .and_then(|v| v.as_bool())
     }
 
     /// Helper: get a float field from a mapping at a given key
     fn get_f64(map: &serde_yaml::Mapping, key: &str) -> Option<f64> {
-        map.get(&serde_yaml::Value::String(key.to_string()))
+        map.get(serde_yaml::Value::String(key.to_string()))
             .and_then(|v| v.as_f64())
     }
 
     // Extract model section
-    if let Some(model_map) = root.get(&serde_yaml::Value::String("model".to_string()))
+    if let Some(model_map) = root
+        .get(serde_yaml::Value::String("model".to_string()))
         .and_then(|v| v.as_mapping())
     {
         config.model = Some(ModelConfig {
@@ -148,7 +147,8 @@ fn parse_config(yaml_content: &str) -> HermesConfig {
     }
 
     // Extract agent section
-    if let Some(agent_map) = root.get(&serde_yaml::Value::String("agent".to_string()))
+    if let Some(agent_map) = root
+        .get(serde_yaml::Value::String("agent".to_string()))
         .and_then(|v| v.as_mapping())
     {
         config.agent = Some(AgentConfig {
@@ -159,7 +159,8 @@ fn parse_config(yaml_content: &str) -> HermesConfig {
     }
 
     // Extract terminal section
-    if let Some(terminal_map) = root.get(&serde_yaml::Value::String("terminal".to_string()))
+    if let Some(terminal_map) = root
+        .get(serde_yaml::Value::String("terminal".to_string()))
         .and_then(|v| v.as_mapping())
     {
         config.terminal = Some(TerminalConfig {
@@ -170,7 +171,8 @@ fn parse_config(yaml_content: &str) -> HermesConfig {
     }
 
     // Extract compression section
-    if let Some(compression_map) = root.get(&serde_yaml::Value::String("compression".to_string()))
+    if let Some(compression_map) = root
+        .get(serde_yaml::Value::String("compression".to_string()))
         .and_then(|v| v.as_mapping())
     {
         config.compression = Some(CompressionConfig {
@@ -181,7 +183,8 @@ fn parse_config(yaml_content: &str) -> HermesConfig {
     }
 
     // Extract checkpoints section
-    if let Some(checkpoint_map) = root.get(&serde_yaml::Value::String("checkpoints".to_string()))
+    if let Some(checkpoint_map) = root
+        .get(serde_yaml::Value::String("checkpoints".to_string()))
         .and_then(|v| v.as_mapping())
     {
         config.checkpoint = Some(CheckpointConfig {
@@ -198,7 +201,7 @@ fn mask_api_key(key: &str) -> String {
     if key.len() <= 8 {
         return "••••••••".to_string();
     }
-    let visible = &key[key.len()-4..];
+    let visible = &key[key.len() - 4..];
     format!("••••••••{}", visible)
 }
 
@@ -214,7 +217,8 @@ pub fn load_config() -> Result<HermesConfig, String> {
     {
         if output.status.success() && !output.stdout.is_empty() {
             let raw = String::from_utf8_lossy(&output.stdout).to_string();
-            println!("[Config] Raw YAML:\n{}", raw);
+            // SECURITY: Do NOT log raw YAML as it may contain API keys
+            println!("[Config] Loaded config from WSL ({} bytes)", raw.len());
             let mut config = parse_config(&raw);
             // Mask API key before sending to frontend
             if let Some(ref mut model) = config.model {
@@ -222,20 +226,19 @@ pub fn load_config() -> Result<HermesConfig, String> {
                     model.api_key = Some(mask_api_key(api_key));
                 }
             }
-            println!("[Config] Parsed config - model: {:?}, provider: {:?}",
+            println!(
+                "[Config] Parsed config - model: {:?}, provider: {:?}",
                 config.model.as_ref().and_then(|m| m.default.as_ref()),
-                config.model.as_ref().and_then(|m| m.provider.as_ref()));
-            // Log the serialized JSON for debugging
-            match serde_json::to_string_pretty(&config) {
-                Ok(json) => println!("[Config] Serialized JSON:\n{}", json),
-                Err(e) => println!("[Config] Failed to serialize JSON: {}", e),
-            }
+                config.model.as_ref().and_then(|m| m.provider.as_ref())
+            );
             return Ok(config);
         }
     }
 
     // Fallback to Windows path
     if let Some(raw) = read_file_content("config.yaml") {
+        // SECURITY: Do NOT log raw YAML as it may contain API keys
+        println!("[Config] Loaded config from Windows ({} bytes)", raw.len());
         let mut config = parse_config(&raw);
         // Mask API key before sending to frontend
         if let Some(ref mut model) = config.model {
@@ -243,9 +246,11 @@ pub fn load_config() -> Result<HermesConfig, String> {
                 model.api_key = Some(mask_api_key(api_key));
             }
         }
-        println!("[Config] Loaded from Windows - model: {:?}, provider: {:?}",
+        println!(
+            "[Config] Loaded from Windows - model: {:?}, provider: {:?}",
             config.model.as_ref().and_then(|m| m.default.as_ref()),
-            config.model.as_ref().and_then(|m| m.provider.as_ref()));
+            config.model.as_ref().and_then(|m| m.provider.as_ref())
+        );
         return Ok(config);
     }
 
@@ -254,13 +259,39 @@ pub fn load_config() -> Result<HermesConfig, String> {
 }
 
 /// Helper function to set a config value using Hermes CLI
+/// Uses base64 encoding to safely pass key and value through shell
 fn hermes_config_set(key: &str, value: &str) -> Result<(), String> {
-    println!("[Config] Setting {} = {}", key, value);
+    // SECURITY: Do NOT log config values as they may contain API keys
+    println!("[Config] Setting {}", key);
+
+    // Encode both key and value in base64 to avoid shell injection
+    let key_b64 = STANDARD.encode(key);
+    let value_b64 = STANDARD.encode(value);
+
+    let script = format!(
+        r#"
+import os
+import base64
+import subprocess
+
+key = base64.b64decode("{}").decode('utf-8')
+value = base64.b64decode("{}").decode('utf-8')
+
+# Run hermes config set with decoded values
+result = subprocess.run(
+    [os.path.expanduser("~/.hermes/hermes-agent/venv/bin/python"), '-m', 'hermes_cli.main', 'config', 'set', key, value],
+    capture_output=True,
+    text=True
+)
+if result.returncode != 0:
+    raise Exception(result.stderr)
+print("success")
+"#,
+        key_b64, value_b64
+    );
 
     let output = create_command("wsl")
-        .args(["-e", "bash", "-c",
-            &format!("~/.hermes/hermes-agent/venv/bin/python -m hermes_cli.main config set {} '{}'",
-                key, value.replace("'", "'\\''"))])
+        .args(["python3", "-c", &script])
         .output()
         .map_err(|e| format!("Failed to run hermes config set: {}", e))?;
 
@@ -272,17 +303,34 @@ fn hermes_config_set(key: &str, value: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Save Hermes configuration - uses Hermes CLI for proper YAML handling
+/// Save Hermes configuration - uses base64 encoding for safe shell transport
 #[tauri::command]
 pub fn save_config(config: HermesConfig) -> Result<(), String> {
     println!("[Config] Saving configuration...");
-    println!("[Config] Received config: {:?}", config);
+    // SECURITY: Do NOT log config details as they may contain API keys
 
-    // If raw content is provided, write directly
+    // If raw content is provided, write directly using base64 encoding
     if let Some(raw) = &config.raw {
-        let script = format!("cat > ~/.hermes/config.yaml << 'HERMES_CONFIG_EOF'\n{}\nHERMES_CONFIG_EOF", raw);
+        let encoded = STANDARD.encode(raw);
+
+        let script = format!(
+            r#"
+import os
+import base64
+
+filepath = os.path.expanduser("~/.hermes/config.yaml")
+os.makedirs(os.path.dirname(filepath), exist_ok=True)
+
+content = base64.b64decode("{}").decode('utf-8')
+with open(filepath, 'w', encoding='utf-8') as f:
+    f.write(content)
+print("success")
+"#,
+            encoded
+        );
+
         let wsl_result = create_command("wsl")
-            .args(["bash", "-c", &script])
+            .args(["python3", "-c", &script])
             .output();
 
         if wsl_result.is_ok() && wsl_result.unwrap().status.success() {
@@ -296,7 +344,6 @@ pub fn save_config(config: HermesConfig) -> Result<(), String> {
 
     // Model config
     if let Some(model) = &config.model {
-        println!("[Config] Model config: {:?}", model);
         if let Some(default) = &model.default {
             if !default.is_empty() {
                 hermes_config_set("model.default", default)?;
@@ -323,7 +370,6 @@ pub fn save_config(config: HermesConfig) -> Result<(), String> {
 
     // Agent config
     if let Some(agent) = &config.agent {
-        println!("[Config] Agent config: {:?}", agent);
         if let Some(max_turns) = agent.max_turns {
             hermes_config_set("agent.max_turns", &max_turns.to_string())?;
         }
@@ -411,7 +457,9 @@ pub async fn check_data_dir_exists() -> bool {
         let exists = get_hermes_data_dir().exists();
         println!("[Config] Windows path check: {}", exists);
         exists
-    }).await.unwrap_or(false);
+    })
+    .await
+    .unwrap_or(false);
 
     println!("[Config] check_data_dir_exists returning: {}", result);
     result

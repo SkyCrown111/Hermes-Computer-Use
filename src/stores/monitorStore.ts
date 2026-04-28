@@ -4,6 +4,7 @@ import { create } from 'zustand';
 import type { LogLine, LogFile, LogLevel, LogsResponse, GatewayDetailedStatus, PerformanceMetrics, LogStats } from '../types/monitor';
 import { monitorApi } from '../services/monitorApi';
 import { logger } from '../lib/logger';
+import { getErrorMessage } from '../lib/errorUtils';
 
 // 解析日志行
 const parseLogLine = (raw: string): LogLine => {
@@ -118,7 +119,7 @@ export const useMonitorStore = create<MonitorState>((set, get) => ({
         isLoadingLogs: false 
       });
     } catch (err) {
-      set({ error: (err as Error).message, isLoadingLogs: false });
+      set({ error: getErrorMessage(err), isLoadingLogs: false });
     }
   },
 
@@ -168,7 +169,7 @@ export const useMonitorStore = create<MonitorState>((set, get) => ({
       set({ logStats: stats });
     } catch (err) {
       logger.error('Failed to fetch log stats:', err);
-      set({ error: (err as Error).message });
+      set({ error: getErrorMessage(err) });
     }
   },
 
@@ -179,7 +180,7 @@ export const useMonitorStore = create<MonitorState>((set, get) => ({
       const status = await monitorApi.getGatewayStatus();
       set({ gatewayStatus: status, isLoadingGateway: false });
     } catch (err) {
-      set({ error: (err as Error).message, isLoadingGateway: false });
+      set({ error: getErrorMessage(err), isLoadingGateway: false });
     }
   },
 
@@ -190,7 +191,7 @@ export const useMonitorStore = create<MonitorState>((set, get) => ({
       const metrics = await monitorApi.getPerformanceMetrics(minutes);
       set({ performanceMetrics: metrics, isLoadingMetrics: false });
     } catch (err) {
-      set({ error: (err as Error).message, isLoadingMetrics: false });
+      set({ error: getErrorMessage(err), isLoadingMetrics: false });
     }
   },
 
@@ -201,7 +202,7 @@ export const useMonitorStore = create<MonitorState>((set, get) => ({
       set({ availableComponents: components });
     } catch (err) {
       logger.error('Failed to fetch components:', err);
-      set({ error: (err as Error).message });
+      set({ error: getErrorMessage(err) });
     }
   },
 

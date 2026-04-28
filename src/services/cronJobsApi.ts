@@ -59,7 +59,7 @@ export interface CronJobOutput {
 }
 
 export async function getCronOutputs(jobId: string, limit?: number): Promise<CronJobOutput[]> {
-  return safeInvoke<CronJobOutput[]>('get_cron_outputs', { jobId, limit });
+  return safeInvoke<CronJobOutput[]>('get_cron_outputs', { job_id: jobId, limit });
 }
 
 // Export all functions

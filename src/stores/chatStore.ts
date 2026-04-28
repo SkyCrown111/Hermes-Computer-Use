@@ -22,6 +22,18 @@ export interface PerSessionState {
     description: string;
     allow_permanent: boolean;
   } | null;
+  pendingClarify: {
+    id: string;
+    question: string;
+    choices: string[];
+    is_open_ended: boolean;
+  } | null;
+  pendingSecret: {
+    id: string;
+    var_name: string;
+    prompt: string;
+    metadata: Record<string, unknown>;
+  } | null;
   tokenUsage: {
     input_tokens: number;
     output_tokens: number;
@@ -64,6 +76,8 @@ const DEFAULT_SESSION_STATE: PerSessionState = {
   reasoningText: '',
   streamingTools: [],
   pendingPermission: null,
+  pendingClarify: null,
+  pendingSecret: null,
   tokenUsage: { input_tokens: 0, output_tokens: 0 },
   error: null,
 };
@@ -117,6 +131,14 @@ interface ChatStore {
   // 设置权限请求
   setPendingPermission: (sessionId: string, permission: PerSessionState['pendingPermission']) => void;
   clearPendingPermission: (sessionId: string) => void;
+
+  // 设置澄清问题
+  setPendingClarify: (sessionId: string, clarify: PerSessionState['pendingClarify']) => void;
+  clearPendingClarify: (sessionId: string) => void;
+
+  // 设置密钥输入请求
+  setPendingSecret: (sessionId: string, secret: PerSessionState['pendingSecret']) => void;
+  clearPendingSecret: (sessionId: string) => void;
 
   // 设置 token 使用量
   setTokenUsage: (sessionId: string, usage: { input_tokens: number; output_tokens: number }) => void;
@@ -339,6 +361,38 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }));
   },
 
+  setPendingClarify: (sessionId, clarify) => {
+    set((s) => ({
+      sessions: updateSessionIn(s.sessions, sessionId, () => ({
+        pendingClarify: clarify,
+      })),
+    }));
+  },
+
+  clearPendingClarify: (sessionId) => {
+    set((s) => ({
+      sessions: updateSessionIn(s.sessions, sessionId, () => ({
+        pendingClarify: null,
+      })),
+    }));
+  },
+
+  setPendingSecret: (sessionId, secret) => {
+    set((s) => ({
+      sessions: updateSessionIn(s.sessions, sessionId, () => ({
+        pendingSecret: secret,
+      })),
+    }));
+  },
+
+  clearPendingSecret: (sessionId) => {
+    set((s) => ({
+      sessions: updateSessionIn(s.sessions, sessionId, () => ({
+        pendingSecret: null,
+      })),
+    }));
+  },
+
   setTokenUsage: (sessionId, usage) => {
     set((s) => ({
       sessions: updateSessionIn(s.sessions, sessionId, () => ({
@@ -476,59 +530,109 @@ function estimateByteSize(str: string): number {
 }
 
 // Persist messages to localStorage with capacity management
+// Uses debounced async writes to avoid blocking main thread
+let isPersisting = false;
+let persistRetryCount = 0;
+let persistTimeoutId: ReturnType<typeof setTimeout> | null = null;
+const MAX_PERSIST_RETRIES = 1;
+const PERSIST_DEBOUNCE_MS = 500; // Debounce to batch rapid updates
+
 function persistMessages(sessions: Record<string, PerSessionState>) {
-  try {
-    // Only persist messages, not streaming state
-    const messagesToSave: Record<string, ChatMessage[]> = {};
-    for (const [sessionId, state] of Object.entries(sessions)) {
-      if (state.messages.length > 0) {
-        // Cap per-session message count to prevent unbounded growth
-        if (state.messages.length > MAX_MESSAGES_PER_SESSION) {
-          logger.warn(`[ChatStore] Session ${sessionId} has ${state.messages.length} messages, capping to ${MAX_MESSAGES_PER_SESSION}`);
-          messagesToSave[sessionId] = state.messages.slice(-MAX_MESSAGES_PER_SESSION);
-        } else {
-          messagesToSave[sessionId] = state.messages;
-        }
-      }
-    }
-
-    const serialized = JSON.stringify(messagesToSave);
-    const byteSize = estimateByteSize(serialized);
-
-    // Warn if approaching the limit
-    if (byteSize > LS_LIMIT_BYTES * LS_WARN_THRESHOLD) {
-      logger.warn(
-        `[ChatStore] localStorage usage: ${(byteSize / 1024 / 1024).toFixed(1)}MB / ${(LS_LIMIT_BYTES / 1024 / 1024).toFixed(0)}MB ` +
-        `(${(byteSize / LS_LIMIT_BYTES * 100).toFixed(0)}%)`
-      );
-    }
-
-    localStorage.setItem(CHAT_MESSAGES_KEY, serialized);
-    logger.debug('[ChatStore] Persisted messages for', Object.keys(messagesToSave).length, 'sessions');
-  } catch (err) {
-    // If quota exceeded, drop oldest session's messages and retry once
-    if (err instanceof DOMException && err.name === 'QuotaExceededError') {
-      logger.warn('[ChatStore] localStorage quota exceeded, dropping oldest session messages');
-      const sessionIds = Object.keys(sessions);
-      if (sessionIds.length > 0) {
-        // Remove the session with the fewest messages
-        const sorted = sessionIds.sort(
-          (a, b) => (sessions[a]?.messages.length ?? 0) - (sessions[b]?.messages.length ?? 0)
-        );
-        const toRemove = sorted[0];
-        if (toRemove) {
-          logger.warn(`[ChatStore] Dropping messages for session: ${toRemove}`);
-          // Update the in-memory store
-          const { [toRemove]: _removed, ...remaining } = sessions;
-          useChatStore.setState({ sessions: remaining });
-          // Retry persist without the dropped session
-          persistMessages(remaining);
-        }
-      }
-    } else {
-      logger.error('[ChatStore] Failed to persist messages:', err);
-    }
+  // Debounce: cancel pending write and schedule new one
+  if (persistTimeoutId) {
+    clearTimeout(persistTimeoutId);
   }
+
+  persistTimeoutId = setTimeout(() => {
+    doPersist(sessions);
+  }, PERSIST_DEBOUNCE_MS);
+}
+
+// Actual persistence logic (runs asynchronously via requestIdleCallback)
+function doPersist(sessions: Record<string, PerSessionState>) {
+  // Guard against recursive calls
+  if (isPersisting) {
+    logger.debug('[ChatStore] Skipping persist - already in progress');
+    return;
+  }
+
+  isPersisting = true;
+
+  // Use requestIdleCallback or setTimeout to avoid blocking main thread
+  const scheduleWrite = (typeof window !== 'undefined' && 'requestIdleCallback' in window)
+    ? (cb: () => void) => (window as Window & { requestIdleCallback: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback(cb, { timeout: 1000 })
+    : (cb: () => void) => setTimeout(cb, 0);
+
+  scheduleWrite(() => {
+    try {
+      // Only persist messages, not streaming state
+      const messagesToSave: Record<string, ChatMessage[]> = {};
+      for (const [sessionId, state] of Object.entries(sessions)) {
+        if (state.messages.length > 0) {
+          // Cap per-session message count to prevent unbounded growth
+          if (state.messages.length > MAX_MESSAGES_PER_SESSION) {
+            logger.warn(`[ChatStore] Session ${sessionId} has ${state.messages.length} messages, capping to ${MAX_MESSAGES_PER_SESSION}`);
+            messagesToSave[sessionId] = state.messages.slice(-MAX_MESSAGES_PER_SESSION);
+          } else {
+            messagesToSave[sessionId] = state.messages;
+          }
+        }
+      }
+
+      const serialized = JSON.stringify(messagesToSave);
+      const byteSize = estimateByteSize(serialized);
+
+      // Warn if approaching the limit
+      if (byteSize > LS_LIMIT_BYTES * LS_WARN_THRESHOLD) {
+        logger.warn(
+          `[ChatStore] localStorage usage: ${(byteSize / 1024 / 1024).toFixed(1)}MB / ${(LS_LIMIT_BYTES / 1024 / 1024).toFixed(0)}MB ` +
+          `(${(byteSize / LS_LIMIT_BYTES * 100).toFixed(0)}%)`
+        );
+      }
+
+      localStorage.setItem(CHAT_MESSAGES_KEY, serialized);
+      logger.debug('[ChatStore] Persisted messages for', Object.keys(messagesToSave).length, 'sessions');
+      // Reset retry count on success
+      persistRetryCount = 0;
+    } catch (err) {
+      // If quota exceeded, drop oldest session's messages and retry once
+      if (err instanceof DOMException && err.name === 'QuotaExceededError') {
+        logger.warn('[ChatStore] localStorage quota exceeded, dropping oldest session messages');
+
+        // Check recursion limit
+        if (persistRetryCount >= MAX_PERSIST_RETRIES) {
+          logger.error('[ChatStore] Max persist retries reached, stopping to prevent infinite loop');
+          persistRetryCount = 0;
+          return;
+        }
+
+        persistRetryCount++;
+        const sessionIds = Object.keys(sessions);
+        if (sessionIds.length > 0) {
+          // Remove the session with the fewest messages
+          const sorted = sessionIds.sort(
+            (a, b) => (sessions[a]?.messages.length ?? 0) - (sessions[b]?.messages.length ?? 0)
+          );
+          const toRemove = sorted[0];
+          if (toRemove) {
+            logger.warn(`[ChatStore] Dropping messages for session: ${toRemove}`);
+            // Update the in-memory store
+            const { [toRemove]: _removed, ...remaining } = sessions;
+            useChatStore.setState({ sessions: remaining });
+            // Reset flag before retry to allow the recursive call
+            isPersisting = false;
+            // Retry persist without the dropped session
+            doPersist(remaining);
+            return; // Don't reset flag again
+          }
+        }
+      } else {
+        logger.error('[ChatStore] Failed to persist messages:', err);
+      }
+    } finally {
+      isPersisting = false;
+    }
+  });
 }
 
 // Restore messages from localStorage

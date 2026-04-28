@@ -26,4 +26,3 @@ pub fn create_command(program: &str) -> Command {
 pub fn create_command(program: &str) -> Command {
     Command::new(program)
 }
-

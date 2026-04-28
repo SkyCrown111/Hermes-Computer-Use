@@ -42,6 +42,8 @@ export interface StreamCallbacks {
   onComplete?: (content: string, sessionId: string, usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number }, reasoning?: string) => void;
   onError?: (error: Error) => void;
   onApproval?: (approval: { id: string; command: string; description: string; allow_permanent: boolean; choices: string[] }) => void;
+  onClarify?: (clarify: { id: string; question: string; choices: string[]; is_open_ended: boolean }) => void;
+  onSecret?: (secret: { id: string; var_name: string; prompt: string; metadata: Record<string, unknown> }) => void;
   onSessionCreated?: (sessionId: string) => void; // Called when session is created
 }
 
@@ -78,7 +80,7 @@ export async function sendChatMessage(
   try {
     const response = await invoke<string>('stream_chat_message', {
       messages,
-      sessionId: sessionId || null,
+      session_id: sessionId || null,
     });
 
     logger.debug('[HermesChat] Raw response:', response);
@@ -108,7 +110,38 @@ export async function sendChatMessage(
  */
 export async function respondApproval(approvalId: string, choice: 'once' | 'session' | 'always' | 'deny'): Promise<void> {
   logger.debug('[HermesChat] Responding to approval:', approvalId, choice);
-  await invoke('respond_approval', { approvalId, choice });
+  try {
+    await invoke('respond_approval', { approval_id: approvalId, choice });
+  } catch (error) {
+    logger.error('[HermesChat] Failed to respond to approval:', error);
+    throw error;
+  }
+}
+
+/**
+ * Respond to a clarify question
+ */
+export async function respondClarify(clarifyId: string, answer: string): Promise<void> {
+  logger.debug('[HermesChat] Responding to clarify:', clarifyId, answer);
+  try {
+    await invoke('respond_clarify', { clarify_id: clarifyId, answer });
+  } catch (error) {
+    logger.error('[HermesChat] Failed to respond to clarify:', error);
+    throw error;
+  }
+}
+
+/**
+ * Respond to a secret capture request
+ */
+export async function respondSecret(secretId: string, value: string): Promise<void> {
+  logger.debug('[HermesChat] Responding to secret:', secretId, value ? '***' : '(skipped)');
+  try {
+    await invoke('respond_secret', { secret_id: secretId, value });
+  } catch (error) {
+    logger.error('[HermesChat] Failed to respond to secret:', error);
+    throw error;
+  }
 }
 
 /**
@@ -116,7 +149,12 @@ export async function respondApproval(approvalId: string, choice: 'once' | 'sess
  */
 export async function abortChat(): Promise<void> {
   logger.debug('[HermesChat] Aborting chat...');
-  await invoke('abort_chat');
+  try {
+    await invoke('abort_chat');
+  } catch (error) {
+    logger.error('[HermesChat] Failed to abort chat:', error);
+    throw error;
+  }
 }
 
 /**
@@ -141,6 +179,9 @@ export async function streamChatRealtime(
   const unlisteners: UnlistenFn[] = [];
   let fullContent = '';
 
+  // Maximum content size to prevent memory issues (10MB)
+  const MAX_CONTENT_SIZE = 10 * 1024 * 1024;
+
   // Create a promise that resolves when chat:complete is received
   let completeResolve: () => void;
   const completePromise = new Promise<void>((resolve) => {
@@ -160,8 +201,15 @@ export async function streamChatRealtime(
     unlisteners.push(
       await listen<{ content: string; accumulated: string }>('chat:chunk', (event) => {
         logger.debug('[HermesChat] Chunk event:', event.payload);
-        fullContent = event.payload.accumulated;
-        callbacks.onChunk?.(event.payload.content, fullContent);
+        // Limit accumulated content size to prevent memory issues
+        if (event.payload.accumulated.length <= MAX_CONTENT_SIZE) {
+          fullContent = event.payload.accumulated;
+          callbacks.onChunk?.(event.payload.content, fullContent);
+        } else {
+          logger.warn('[HermesChat] Content size exceeded limit, truncating');
+          fullContent = event.payload.accumulated.slice(0, MAX_CONTENT_SIZE);
+          callbacks.onChunk?.(event.payload.content, fullContent);
+        }
       })
     );
 
@@ -169,7 +217,13 @@ export async function streamChatRealtime(
     unlisteners.push(
       await listen<{ text: string; accumulated: string }>('chat:reasoning', (event) => {
         logger.debug('[HermesChat] Reasoning event:', event.payload);
-        callbacks.onReasoning?.(event.payload.text, event.payload.accumulated);
+        // Limit reasoning size to prevent memory issues
+        if (event.payload.accumulated.length <= MAX_CONTENT_SIZE) {
+          callbacks.onReasoning?.(event.payload.text, event.payload.accumulated);
+        } else {
+          logger.warn('[HermesChat] Reasoning size exceeded limit');
+          callbacks.onReasoning?.(event.payload.text, event.payload.accumulated.slice(0, MAX_CONTENT_SIZE));
+        }
       })
     );
 
@@ -221,6 +275,22 @@ export async function streamChatRealtime(
       })
     );
 
+    // Listen for clarify questions
+    unlisteners.push(
+      await listen<{ id: string; question: string; choices: string[]; is_open_ended: boolean }>('chat:clarify', (event) => {
+        logger.debug('[HermesChat] Clarify event:', event.payload);
+        callbacks.onClarify?.(event.payload);
+      })
+    );
+
+    // Listen for secret capture requests
+    unlisteners.push(
+      await listen<{ id: string; var_name: string; prompt: string; metadata: Record<string, unknown> }>('chat:secret', (event) => {
+        logger.debug('[HermesChat] Secret event:', event.payload.var_name);
+        callbacks.onSecret?.(event.payload);
+      })
+    );
+
     // Listen for session creation (emitted immediately when session is created)
     unlisteners.push(
       await listen<{ session_id: string; created_at: number }>('chat:session', (event) => {
@@ -233,7 +303,7 @@ export async function streamChatRealtime(
     // Call the streaming command
     const result = await invoke<string>('stream_chat_realtime', {
       messages,
-      sessionId: sessionId || null,
+      session_id: sessionId || null,
     });
     logger.debug('[HermesChat] Command returned:', result);
 

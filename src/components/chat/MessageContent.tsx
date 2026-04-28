@@ -1,4 +1,4 @@
-import React, { memo } from 'react';
+import React, { memo, useMemo } from 'react';
 import { ThinkingBlock } from './ThinkingBlock';
 import { ToolsBlock } from './ToolsBlock';
 import { PermissionCard } from './PermissionCard';
@@ -18,6 +18,7 @@ interface PermissionApproval {
   command: string;
   description: string;
   allow_permanent: boolean;
+  choices?: ('once' | 'session' | 'always' | 'deny')[];
 }
 
 export interface MessageContentProps {
@@ -73,7 +74,13 @@ const MessageContentComponent: React.FC<MessageContentProps> = ({
 }) => {
   const msg = message;
   const role = msg.role;
-  const { cleanContent, errors, sessionSearchResults } = parseToolJson(msg.content);
+  // Memoize parseToolJson result to avoid re-parsing on every render
+  // parseToolJson has internal caching, but useMemo ensures we don't even call it
+  // if the message content hasn't changed
+  const { cleanContent, errors, sessionSearchResults } = useMemo(
+    () => parseToolJson(msg.content),
+    [msg.content]
+  );
 
   return (
     <div

@@ -1,5 +1,23 @@
-import React, { useState, useEffect } from 'react';
-import { Card, SettingsIcon, GlobeIcon, CrownIcon, SkeletonText } from '../../components';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Card, SkeletonText } from '../../components';
+import {
+  SettingsIcon,
+  GlobeIcon,
+  CrownIcon,
+  SunIcon,
+  MoonIcon,
+  MonitorThemeIcon,
+  LayoutIcon,
+  BellIcon,
+  BellOffIcon,
+  VolumeIcon,
+  VolumeOffIcon,
+  KeyboardIcon,
+  InfoIcon,
+  SidebarLeftIcon,
+  SidebarRightIcon,
+  XIcon,
+} from '../../components/ui/Icons';
 import { useThemeStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
 import { getCurrentVersion } from '../../services/updateApi';
@@ -13,16 +31,90 @@ const aboutInfo = {
     zh: 'Hermes Console - AI Agent 管理控制台',
     en: 'Hermes Console - AI Agent Management Console',
   },
+  credits: [
+    { name: 'Tauri', url: 'https://tauri.app', desc: 'Desktop application framework' },
+    { name: 'React', url: 'https://react.dev', desc: 'UI library' },
+    { name: 'Zustand', url: 'https://zustand-demo.pmnd.rs', desc: 'State management' },
+    { name: 'Lucide Icons', url: 'https://lucide.dev', desc: 'Icon library' },
+  ],
 };
 
+// Keyboard shortcuts data
+const getShortcutGroups = (t: (key: string) => string) => [
+  {
+    title: t('shortcuts.global') || 'Global',
+    shortcuts: [
+      { keys: ['Ctrl', 'N'], description: t('shortcuts.newChat') || 'New chat' },
+      { keys: ['Ctrl', 'W'], description: t('shortcuts.closeTab') || 'Close tab' },
+      { keys: ['Ctrl', 'Tab'], description: t('shortcuts.nextTab') || 'Next tab' },
+      { keys: ['Ctrl', 'Shift', 'Tab'], description: t('shortcuts.prevTab') || 'Previous tab' },
+      { keys: ['Ctrl', 'K'], description: t('shortcuts.commandPalette') || 'Command palette' },
+      { keys: ['Ctrl', 'Shift', 'F'], description: t('shortcuts.globalSearch') || 'Global search' },
+      { keys: ['Ctrl', '/'], description: t('shortcuts.showHelp') || 'Show keyboard shortcuts' },
+    ],
+  },
+  {
+    title: t('shortcuts.chat') || 'Chat',
+    shortcuts: [
+      { keys: ['Ctrl', 'F'], description: t('shortcuts.searchMessages') || 'Search messages' },
+      { keys: ['Enter'], description: t('shortcuts.sendMessage') || 'Send message' },
+      { keys: ['Shift', 'Enter'], description: t('shortcuts.newLine') || 'New line' },
+      { keys: ['Esc'], description: t('shortcuts.close') || 'Close / Cancel' },
+    ],
+  },
+  {
+    title: t('shortcuts.slashCommands') || 'Slash Commands',
+    shortcuts: [
+      { keys: ['/'], description: t('shortcuts.startCommand') || 'Start slash command' },
+      { keys: ['Up', 'Down'], description: t('shortcuts.navigateCommands') || 'Navigate commands' },
+      { keys: ['Tab'], description: t('shortcuts.selectCommand') || 'Select command' },
+    ],
+  },
+];
+
 export const Preferences: React.FC = () => {
-  const { mode, language, setLanguage } = useThemeStore();
+  const {
+    mode,
+    language,
+    setLanguage,
+    setTheme,
+    displayPreferences,
+    setCompactMode,
+    setSidebarPosition,
+    setNotificationsEnabled,
+    setNotificationSound,
+    setNotificationDesktop,
+  } = useThemeStore();
   const { t } = useTranslation();
   const [version, setVersion] = useState('0.1.0');
+  const [showShortcuts, setShowShortcuts] = useState(false);
 
   useEffect(() => {
     getCurrentVersion().then(setVersion).catch(() => setVersion('0.1.0'));
   }, []);
+
+  // Listen for keyboard shortcuts
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (e.ctrlKey && e.key === '/') {
+      e.preventDefault();
+      setShowShortcuts(prev => !prev);
+    }
+    if (e.key === 'Escape' && showShortcuts) {
+      setShowShortcuts(false);
+    }
+  }, [showShortcuts]);
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleKeyDown]);
+
+  // Theme options
+  const themeOptions = [
+    { value: 'light', icon: SunIcon, label: t('prefs.light') || 'Light' },
+    { value: 'dark', icon: MoonIcon, label: t('prefs.dark') || 'Dark' },
+    { value: 'system', icon: MonitorThemeIcon, label: t('prefs.system') || 'System' },
+  ] as const;
 
   return (
     <div className="preferences-page">
@@ -42,29 +134,28 @@ export const Preferences: React.FC = () => {
             </div>
           </div>
 
+          {/* Theme Selection */}
           <div className="preference-item">
             <div className="preference-info">
               <span className="preference-label">{t('prefs.theme')}</span>
               <span className="preference-description">{t('prefs.themeDesc')}</span>
             </div>
             <div className="theme-toggle">
-              <button
-                className={`theme-btn ${mode === 'light' ? 'active' : ''}`}
-                onClick={() => useThemeStore.getState().setTheme('light')}
-              >
-                <span className="theme-icon">L</span>
-                <span>{t('prefs.light')}</span>
-              </button>
-              <button
-                className={`theme-btn ${mode === 'dark' ? 'active' : ''}`}
-                onClick={() => useThemeStore.getState().setTheme('dark')}
-              >
-                <span className="theme-icon">D</span>
-                <span>{t('prefs.dark')}</span>
-              </button>
+              {themeOptions.map(({ value, icon: Icon, label }) => (
+                <button
+                  key={value}
+                  className={`theme-btn ${mode === value ? 'active' : ''}`}
+                  onClick={() => setTheme(value)}
+                  title={label}
+                >
+                  <Icon size={16} />
+                  <span>{label}</span>
+                </button>
+              ))}
             </div>
           </div>
 
+          {/* Language Selection */}
           <div className="preference-item">
             <div className="preference-info">
               <span className="preference-label">{t('prefs.language')}</span>
@@ -88,11 +179,174 @@ export const Preferences: React.FC = () => {
         </div>
       </Card>
 
+      {/* Display Preferences Section */}
+      <Card className="preferences-card">
+        <div className="preferences-section">
+          <div className="section-header">
+            <span className="section-icon"><LayoutIcon size={18} /></span>
+            <div>
+              <h2>{t('prefs.display')}</h2>
+              <p>{t('prefs.displayDesc')}</p>
+            </div>
+          </div>
+
+          {/* Compact Mode */}
+          <div className="preference-item">
+            <div className="preference-info">
+              <span className="preference-label">{t('prefs.compactMode')}</span>
+              <span className="preference-description">{t('prefs.compactModeDesc')}</span>
+            </div>
+            <label className="toggle-switch">
+              <input
+                type="checkbox"
+                checked={displayPreferences.compactMode}
+                onChange={(e) => setCompactMode(e.target.checked)}
+              />
+              <span className="toggle-slider"></span>
+            </label>
+          </div>
+
+          {/* Sidebar Position */}
+          <div className="preference-item">
+            <div className="preference-info">
+              <span className="preference-label">{t('prefs.sidebarPosition')}</span>
+              <span className="preference-description">{t('prefs.sidebarPositionDesc')}</span>
+            </div>
+            <div className="position-toggle">
+              <button
+                className={`position-btn ${displayPreferences.sidebarPosition === 'left' ? 'active' : ''}`}
+                onClick={() => setSidebarPosition('left')}
+                title={t('prefs.sidebarLeft') || 'Left'}
+              >
+                <SidebarLeftIcon size={16} />
+              </button>
+              <button
+                className={`position-btn ${displayPreferences.sidebarPosition === 'right' ? 'active' : ''}`}
+                onClick={() => setSidebarPosition('right')}
+                title={t('prefs.sidebarRight') || 'Right'}
+              >
+                <SidebarRightIcon size={16} />
+              </button>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* Notification Settings Section */}
+      <Card className="preferences-card">
+        <div className="preferences-section">
+          <div className="section-header">
+            <span className="section-icon">
+              {displayPreferences.notifications.enabled ? <BellIcon size={18} /> : <BellOffIcon size={18} />}
+            </span>
+            <div>
+              <h2>{t('prefs.notifications')}</h2>
+              <p>{t('prefs.notificationsDesc')}</p>
+            </div>
+          </div>
+
+          {/* Enable Notifications */}
+          <div className="preference-item">
+            <div className="preference-info">
+              <span className="preference-label">{t('prefs.enableNotifications')}</span>
+              <span className="preference-description">{t('prefs.enableNotificationsDesc')}</span>
+            </div>
+            <label className="toggle-switch">
+              <input
+                type="checkbox"
+                checked={displayPreferences.notifications.enabled}
+                onChange={(e) => setNotificationsEnabled(e.target.checked)}
+              />
+              <span className="toggle-slider"></span>
+            </label>
+          </div>
+
+          {/* Sound Notifications */}
+          <div className="preference-item">
+            <div className="preference-info">
+              <span className="preference-label">
+                {displayPreferences.notifications.sound ? <VolumeIcon size={14} /> : <VolumeOffIcon size={14} />}
+                {' '}{t('prefs.notificationSound')}
+              </span>
+              <span className="preference-description">{t('prefs.notificationSoundDesc')}</span>
+            </div>
+            <label className="toggle-switch">
+              <input
+                type="checkbox"
+                checked={displayPreferences.notifications.sound}
+                onChange={(e) => setNotificationSound(e.target.checked)}
+                disabled={!displayPreferences.notifications.enabled}
+              />
+              <span className="toggle-slider"></span>
+            </label>
+          </div>
+
+          {/* Desktop Notifications */}
+          <div className="preference-item">
+            <div className="preference-info">
+              <span className="preference-label">{t('prefs.desktopNotifications')}</span>
+              <span className="preference-description">{t('prefs.desktopNotificationsDesc')}</span>
+            </div>
+            <label className="toggle-switch">
+              <input
+                type="checkbox"
+                checked={displayPreferences.notifications.desktop}
+                onChange={(e) => setNotificationDesktop(e.target.checked)}
+                disabled={!displayPreferences.notifications.enabled}
+              />
+              <span className="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+      </Card>
+
+      {/* Keyboard Shortcuts Section */}
+      <Card className="preferences-card">
+        <div className="preferences-section">
+          <div className="section-header">
+            <span className="section-icon"><KeyboardIcon size={18} /></span>
+            <div>
+              <h2>{t('shortcuts.title')}</h2>
+              <p>{t('prefs.shortcutsDesc')}</p>
+            </div>
+          </div>
+
+          <button
+            className="view-shortcuts-btn"
+            onClick={() => setShowShortcuts(true)}
+          >
+            <KeyboardIcon size={16} />
+            <span>{t('prefs.viewShortcuts')}</span>
+          </button>
+
+          {/* Shortcuts Preview */}
+          <div className="shortcuts-preview">
+            {getShortcutGroups(t).slice(0, 1).map(group => (
+              <div key={group.title} className="shortcuts-preview-group">
+                {group.shortcuts.slice(0, 3).map((shortcut, idx) => (
+                  <div key={idx} className="shortcut-preview-item">
+                    <span className="shortcut-description">{shortcut.description}</span>
+                    <span className="shortcut-keys">
+                      {shortcut.keys.map((key, keyIdx) => (
+                        <React.Fragment key={key}>
+                          <kbd className="shortcut-key">{key}</kbd>
+                          {keyIdx < shortcut.keys.length - 1 && <span className="shortcut-plus">+</span>}
+                        </React.Fragment>
+                      ))}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      </Card>
+
       {/* About Section */}
       <Card className="preferences-card">
         <div className="preferences-section">
           <div className="section-header">
-            <span className="section-icon"><SettingsIcon size={18} /></span>
+            <span className="section-icon"><InfoIcon size={18} /></span>
             <div>
               <h2>{t('prefs.about')}</h2>
               <p>{t('prefs.aboutDesc')}</p>
@@ -134,9 +388,71 @@ export const Preferences: React.FC = () => {
                 <span>GitHub</span>
               </a>
             </div>
+
+            {/* Credits */}
+            <div className="credits-section">
+              <h4>{t('prefs.credits')}</h4>
+              <div className="credits-list">
+                {aboutInfo.credits.map((credit, idx) => (
+                  <a
+                    key={idx}
+                    href={credit.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="credit-item"
+                  >
+                    <span className="credit-name">{credit.name}</span>
+                    <span className="credit-desc">{credit.desc}</span>
+                  </a>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </Card>
+
+      {/* Keyboard Shortcuts Modal */}
+      {showShortcuts && (
+        <div className="shortcuts-modal-overlay" onClick={() => setShowShortcuts(false)}>
+          <div className="shortcuts-modal" onClick={e => e.stopPropagation()}>
+            <div className="shortcuts-modal-header">
+              <h2>{t('shortcuts.title')}</h2>
+              <button className="shortcuts-modal-close" onClick={() => setShowShortcuts(false)}>
+                <XIcon size={14} />
+              </button>
+            </div>
+            <div className="shortcuts-modal-content">
+              {getShortcutGroups(t).map(group => (
+                <div key={group.title} className="shortcuts-group">
+                  <h3 className="shortcuts-group-title">{group.title}</h3>
+                  <div className="shortcuts-list">
+                    {group.shortcuts.map((shortcut, idx) => (
+                      <div key={idx} className="shortcut-item">
+                        <span className="shortcut-description">{shortcut.description}</span>
+                        <span className="shortcut-keys">
+                          {shortcut.keys.map((key, keyIdx) => (
+                            <React.Fragment key={key}>
+                              <kbd className="shortcut-key">{key}</kbd>
+                              {keyIdx < shortcut.keys.length - 1 && (
+                                <span className="shortcut-plus">+</span>
+                              )}
+                            </React.Fragment>
+                          ))}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="shortcuts-modal-footer">
+              <span className="shortcuts-hint">
+                <kbd>Esc</kbd> {t('shortcuts.toClose')}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

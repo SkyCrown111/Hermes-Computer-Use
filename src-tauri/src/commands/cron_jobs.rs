@@ -3,12 +3,13 @@
 //! Commands for managing Hermes Agent cron jobs.
 //! Reads from ~/.hermes/cron/jobs.json in WSL.
 
-use base64::{Engine as _, engine::general_purpose::STANDARD};
-use serde::{Deserialize, Serialize};
 use super::utils::create_command;
+use base64::{engine::general_purpose::STANDARD, Engine as _};
+use serde::{Deserialize, Serialize};
 
 /// Schedule type - matches frontend Schedule interface
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Schedule {
     pub kind: String,
     pub minutes: Option<u64>,
@@ -17,13 +18,31 @@ pub struct Schedule {
 
 /// Repeat config - matches frontend RepeatConfig
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RepeatConfig {
     pub times: Option<u64>,
     pub completed: u64,
 }
 
+/// Model override - matches frontend model_override
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelOverride {
+    pub provider: String,
+    pub model: String,
+}
+
+/// Origin - matches frontend origin
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Origin {
+    pub platform: String,
+    pub chat_id: String,
+}
+
 /// Cron job metadata - matches frontend CronJob type exactly
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CronJob {
     pub id: String,
     pub name: String,
@@ -33,6 +52,8 @@ pub struct CronJob {
     #[serde(rename = "deliver")]
     pub deliver: Option<String>,
     pub skills: Vec<String>,
+    pub model_override: Option<ModelOverride>,
+    pub origin: Option<Origin>,
     pub created_at: String,
     pub last_run_at: Option<String>,
     pub next_run_at: Option<String>,
@@ -50,8 +71,7 @@ fn read_jobs_json() -> Result<serde_json::Value, String> {
         .map_err(|e| format!("Failed to read jobs.json: {}", e))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    serde_json::from_str(&stdout)
-        .map_err(|e| format!("Failed to parse jobs.json: {}", e))
+    serde_json::from_str(&stdout).map_err(|e| format!("Failed to parse jobs.json: {}", e))
 }
 
 /// Write jobs.json to WSL using base64 encoding for safe shell transport
@@ -60,7 +80,10 @@ fn write_jobs_json(data: &serde_json::Value) -> Result<(), String> {
         .map_err(|e| format!("Failed to serialize jobs data: {}", e))?;
     let encoded = STANDARD.encode(json_str);
 
-    let cmd = format!("mkdir -p ~/.hermes/cron && echo '{}' | base64 -d > ~/.hermes/cron/jobs.json", encoded);
+    let cmd = format!(
+        "mkdir -p ~/.hermes/cron && echo '{}' | base64 -d > ~/.hermes/cron/jobs.json",
+        encoded
+    );
 
     let output = create_command("wsl")
         .args(["-e", "bash", "-c", &cmd])
@@ -79,66 +102,133 @@ pub fn list_cron_jobs() -> Result<Vec<CronJob>, String> {
 
     let data = read_jobs_json()?;
 
-    let jobs_array = data.get("jobs")
+    let jobs_array = data
+        .get("jobs")
         .and_then(|v| v.as_array())
         .cloned()
         .unwrap_or_default();
 
-    let cron_jobs: Vec<CronJob> = jobs_array.iter().filter_map(|job| {
-        let id = job.get("id").and_then(|v| v.as_str())?.to_string();
+    let cron_jobs: Vec<CronJob> = jobs_array
+        .iter()
+        .filter_map(|job| {
+            let id = job.get("id").and_then(|v| v.as_str())?.to_string();
 
-        let name = job.get("name").and_then(|v| v.as_str()).unwrap_or("Unnamed").to_string();
+            let name = job
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Unnamed")
+                .to_string();
 
-        let prompt = job.get("prompt").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let prompt = job
+                .get("prompt")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
 
-        let enabled = job.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true);
+            let enabled = job.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true);
 
-        // Parse schedule
-        let schedule_obj = job.get("schedule");
-        let schedule = if let Some(s) = schedule_obj {
-            let kind = s.get("kind").and_then(|v| v.as_str()).unwrap_or("cron").to_string();
-            let display = s.get("display").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let minutes = if kind == "interval" {
-                s.get("minutes").and_then(|v| v.as_u64())
-                    .or_else(|| s.get("expr").and_then(|e| e.as_str()).and_then(|e| e.parse().ok()))
+            // Parse schedule
+            let schedule_obj = job.get("schedule");
+            let schedule = if let Some(s) = schedule_obj {
+                let kind = s
+                    .get("kind")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("cron")
+                    .to_string();
+                let display = s
+                    .get("display")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let minutes = if kind == "interval" {
+                    s.get("minutes").and_then(|v| v.as_u64()).or_else(|| {
+                        s.get("expr")
+                            .and_then(|e| e.as_str())
+                            .and_then(|e| e.parse().ok())
+                    })
+                } else {
+                    None
+                };
+                Schedule {
+                    kind,
+                    minutes,
+                    display,
+                }
             } else {
-                None
+                Schedule {
+                    kind: "cron".to_string(),
+                    minutes: None,
+                    display: "".to_string(),
+                }
             };
-            Schedule { kind, minutes, display }
-        } else {
-            Schedule { kind: "cron".to_string(), minutes: None, display: "".to_string() }
-        };
 
-        // Parse repeat config
-        let repeat = job.get("repeat").map(|r| RepeatConfig {
-            times: r.get("times").and_then(|v| v.as_u64()),
-            completed: r.get("completed").and_then(|v| v.as_u64()).unwrap_or(0),
-        });
+            // Parse repeat config
+            let repeat = job.get("repeat").map(|r| RepeatConfig {
+                times: r.get("times").and_then(|v| v.as_u64()),
+                completed: r.get("completed").and_then(|v| v.as_u64()).unwrap_or(0),
+            });
 
-        // Parse skills array
-        let skills = job.get("skills")
-            .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|s| s.as_str().map(|s| s.to_string())).collect())
-            .unwrap_or_default();
+            // Parse skills array
+            let skills = job
+                .get("skills")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|s| s.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default();
 
-        // Run count from repeat.completed or default to 0
-        let run_count = repeat.as_ref().map(|r| r.completed).unwrap_or(0);
+            // Parse model_override
+            let model_override = job.get("model_override").and_then(|mo| {
+                Some(ModelOverride {
+                    provider: mo.get("provider")?.as_str()?.to_string(),
+                    model: mo.get("model")?.as_str()?.to_string(),
+                })
+            });
 
-        Some(CronJob {
-            id,
-            name,
-            prompt,
-            schedule,
-            enabled,
-            deliver: job.get("deliver").and_then(|v| v.as_str()).map(|s| s.to_string()),
-            skills,
-            created_at: job.get("created_at").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            last_run_at: job.get("last_run_at").and_then(|v| v.as_str()).map(|s| s.to_string()),
-            next_run_at: job.get("next_run_at").and_then(|v| v.as_str()).map(|s| s.to_string()),
-            run_count,
-            repeat,
+            // Parse origin
+            let origin = job.get("origin").and_then(|o| {
+                Some(Origin {
+                    platform: o.get("platform")?.as_str()?.to_string(),
+                    chat_id: o.get("chat_id")?.as_str()?.to_string(),
+                })
+            });
+
+            // Run count from repeat.completed or default to 0
+            let run_count = repeat.as_ref().map(|r| r.completed).unwrap_or(0);
+
+            Some(CronJob {
+                id,
+                name,
+                prompt,
+                schedule,
+                enabled,
+                deliver: job
+                    .get("deliver")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                skills,
+                model_override,
+                origin,
+                created_at: job
+                    .get("created_at")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                last_run_at: job
+                    .get("last_run_at")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                next_run_at: job
+                    .get("next_run_at")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                run_count,
+                repeat,
+            })
         })
-    }).collect();
+        .collect();
 
     println!("[Cron] Found {} jobs from WSL", cron_jobs.len());
     Ok(cron_jobs)
@@ -149,29 +239,54 @@ pub fn list_cron_jobs() -> Result<Vec<CronJob>, String> {
 pub fn get_cron_job(id: String) -> Result<CronJob, String> {
     let data = read_jobs_json()?;
 
-    let jobs = data.get("jobs")
+    let jobs = data
+        .get("jobs")
         .and_then(|v| v.as_array())
         .cloned()
         .unwrap_or_default();
 
     for job in jobs {
         if job.get("id").and_then(|v| v.as_str()) == Some(&id) {
-            let name = job.get("name").and_then(|v| v.as_str()).unwrap_or("Unnamed").to_string();
-            let prompt = job.get("prompt").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let name = job
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Unnamed")
+                .to_string();
+            let prompt = job
+                .get("prompt")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             let enabled = job.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true);
 
             let schedule_obj = job.get("schedule");
             let schedule = if let Some(s) = schedule_obj {
-                let kind = s.get("kind").and_then(|v| v.as_str()).unwrap_or("cron").to_string();
-                let display = s.get("display").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let kind = s
+                    .get("kind")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("cron")
+                    .to_string();
+                let display = s
+                    .get("display")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 let minutes = if kind == "interval" {
                     s.get("minutes").and_then(|v| v.as_u64())
                 } else {
                     None
                 };
-                Schedule { kind, minutes, display }
+                Schedule {
+                    kind,
+                    minutes,
+                    display,
+                }
             } else {
-                Schedule { kind: "cron".to_string(), minutes: None, display: "".to_string() }
+                Schedule {
+                    kind: "cron".to_string(),
+                    minutes: None,
+                    display: "".to_string(),
+                }
             };
 
             let repeat = job.get("repeat").map(|r| RepeatConfig {
@@ -179,10 +294,31 @@ pub fn get_cron_job(id: String) -> Result<CronJob, String> {
                 completed: r.get("completed").and_then(|v| v.as_u64()).unwrap_or(0),
             });
 
-            let skills = job.get("skills")
+            let skills = job
+                .get("skills")
                 .and_then(|v| v.as_array())
-                .map(|arr| arr.iter().filter_map(|s| s.as_str().map(|s| s.to_string())).collect())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|s| s.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
                 .unwrap_or_default();
+
+            // Parse model_override for get_cron_job
+            let model_override = job.get("model_override").and_then(|mo| {
+                Some(ModelOverride {
+                    provider: mo.get("provider")?.as_str()?.to_string(),
+                    model: mo.get("model")?.as_str()?.to_string(),
+                })
+            });
+
+            // Parse origin for get_cron_job
+            let origin = job.get("origin").and_then(|o| {
+                Some(Origin {
+                    platform: o.get("platform")?.as_str()?.to_string(),
+                    chat_id: o.get("chat_id")?.as_str()?.to_string(),
+                })
+            });
 
             let run_count = repeat.as_ref().map(|r| r.completed).unwrap_or(0);
 
@@ -192,11 +328,26 @@ pub fn get_cron_job(id: String) -> Result<CronJob, String> {
                 prompt,
                 schedule,
                 enabled,
-                deliver: job.get("deliver").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                deliver: job
+                    .get("deliver")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
                 skills,
-                created_at: job.get("created_at").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                last_run_at: job.get("last_run_at").and_then(|v| v.as_str()).map(|s| s.to_string()),
-                next_run_at: job.get("next_run_at").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                model_override,
+                origin,
+                created_at: job
+                    .get("created_at")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                last_run_at: job
+                    .get("last_run_at")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                next_run_at: job
+                    .get("next_run_at")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
                 run_count,
                 repeat,
             });
@@ -281,33 +432,72 @@ pub fn get_cron_path() -> Result<String, String> {
 }
 
 /// Trigger a cron job manually
+/// Uses base64 encoding to safely pass job ID through shell
 #[tauri::command]
 pub fn trigger_cron_job(id: String) -> Result<(), String> {
     println!("[Cron] Triggering job: {}", id);
 
     // Validate job_id
-    if id.is_empty() || id.chars().any(|c| !c.is_alphanumeric() && c != '-' && c != '_') {
+    if id.is_empty()
+        || id
+            .chars()
+            .any(|c| !c.is_alphanumeric() && c != '-' && c != '_')
+    {
         return Err(format!("Invalid id: {}", id));
     }
 
-    // Use Hermes CLI to trigger the job
+    // Verify job exists
+    let jobs = list_cron_jobs()?;
+    if !jobs.iter().any(|j| j.id == id) {
+        return Err(format!("Job not found: {}", id));
+    }
+
+    // Use base64 encoding to safely pass job ID
+    let id_b64 = STANDARD.encode(&id);
+
+    let script = format!(
+        r#"
+import os
+import subprocess
+import base64
+
+job_id = base64.b64decode("{}").decode('utf-8')
+
+# Run hermes cron trigger
+result = subprocess.run(
+    [os.path.expanduser("~/.hermes/hermes-agent/venv/bin/python"), '-m', 'hermes_cli.main', 'cron', 'run', job_id],
+    capture_output=True,
+    text=True
+)
+
+if result.returncode != 0:
+    print(f"ERROR: {{result.stderr}}")
+    exit(1)
+else:
+    print(f"Triggered job: {{job_id}}")
+"#,
+        id_b64
+    );
+
     let output = create_command("wsl")
-        .args(["-e", "bash", "-c",
-            &format!("~/.hermes/hermes-agent/venv/bin/python -m hermes_cli.main cron run {}", id)])
+        .args(["python3", "-c", &script])
         .output()
         .map_err(|e| format!("Failed to trigger job: {}", e))?;
-    
+
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        // If CLI doesn't support trigger, return success anyway (job will run on schedule)
-        println!("[Cron] Trigger command output: {}", stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        println!("[Cron] Trigger failed: stdout={}, stderr={}", stdout, stderr);
+        return Err(format!("Failed to trigger job {}: {}", id, stderr));
     }
-    
+
+    println!("[Cron] Successfully triggered job: {}", id);
     Ok(())
 }
 
 /// Cron job output entry
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CronJobOutput {
     pub id: String,
     pub job_id: String,
@@ -320,15 +510,23 @@ pub struct CronJobOutput {
 
 /// Get cron job execution outputs
 #[tauri::command]
-pub fn get_cron_outputs(job_id: String, limit: Option<usize>) -> Result<Vec<CronJobOutput>, String> {
-    println!("[Cron] Getting outputs for job: {} (limit: {:?})", job_id, limit);
+pub fn get_cron_outputs(
+    job_id: String,
+    limit: Option<usize>,
+) -> Result<Vec<CronJobOutput>, String> {
+    println!(
+        "[Cron] Getting outputs for job: {} (limit: {:?})",
+        job_id, limit
+    );
 
     // Validate job_id to prevent path traversal and shell injection
     if job_id.is_empty()
         || job_id.contains('/')
         || job_id.contains('\\')
         || job_id.contains('.')
-        || job_id.chars().any(|c| !c.is_alphanumeric() && c != '-' && c != '_')
+        || job_id
+            .chars()
+            .any(|c| !c.is_alphanumeric() && c != '-' && c != '_')
     {
         return Err(format!("Invalid job_id: {}", job_id));
     }
@@ -339,33 +537,56 @@ pub fn get_cron_outputs(job_id: String, limit: Option<usize>) -> Result<Vec<Cron
         job_id,
         limit.unwrap_or(10)
     );
-    
+
     let output = create_command("wsl")
         .args(["bash", "-c", &script])
         .output()
         .map_err(|e| format!("Failed to read outputs: {}", e))?;
-    
+
     let stdout = String::from_utf8_lossy(&output.stdout);
-    
+
     // Parse each JSON line
     let outputs: Vec<CronJobOutput> = stdout
         .lines()
         .filter(|line| !line.is_empty())
         .filter_map(|line| {
-            serde_json::from_str::<serde_json::Value>(line).ok().and_then(|v| {
-                Some(CronJobOutput {
-                    id: v.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                    job_id: v.get("job_id").and_then(|v| v.as_str()).unwrap_or(&job_id).to_string(),
-                    status: v.get("status").and_then(|v| v.as_str()).unwrap_or("unknown").to_string(),
-                    output: v.get("output").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                    started_at: v.get("started_at").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                    finished_at: v.get("finished_at").and_then(|v| v.as_str()).map(|s| s.to_string()),
+            serde_json::from_str::<serde_json::Value>(line)
+                .ok()
+                .map(|v| CronJobOutput {
+                    id: v
+                        .get("id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    job_id: v
+                        .get("job_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(&job_id)
+                        .to_string(),
+                    status: v
+                        .get("status")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown")
+                        .to_string(),
+                    output: v
+                        .get("output")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    started_at: v
+                        .get("started_at")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    finished_at: v
+                        .get("finished_at")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
                     duration_ms: v.get("duration_ms").and_then(|v| v.as_u64()),
                 })
-            })
         })
         .collect();
-    
+
     println!("[Cron] Found {} outputs", outputs.len());
     Ok(outputs)
 }

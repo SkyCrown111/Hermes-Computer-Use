@@ -3,8 +3,8 @@
 //! Commands for system status and configuration.
 //! Queries Hermes Agent state from WSL.
 
-use serde::{Deserialize, Serialize};
 use super::utils::create_command;
+use serde::{Deserialize, Serialize};
 
 /// Connected platform
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,21 +44,23 @@ pub struct SystemStatus {
 
 /// Query SQLite database via WSL Python
 fn query_db_single(sql: &str) -> Result<serde_json::Value, String> {
+    let escaped_sql = sql.replace('\n', " ").replace('\'', "'\\''");
+    // Use single quotes to wrap the Python script
     let script = format!(
-        r#"python3 -c "
+        r#"python3 -c '
 import sqlite3
 import json
 import os
 
-conn = sqlite3.connect(os.path.expanduser('~/.hermes/state.db'))
+conn = sqlite3.connect(os.path.expanduser("~/.hermes/state.db"))
 cursor = conn.cursor()
-cursor.execute('''{}''')
+cursor.execute("{}")
 row = cursor.fetchone()
 if row:
     print(json.dumps(row))
 conn.close()
-""#,
-        sql.replace('\n', " ").replace('"', r#"\"#)
+'"#,
+        escaped_sql
     );
 
     let output = create_command("wsl")
@@ -75,8 +77,7 @@ conn.close()
         return Ok(serde_json::json!([]));
     }
 
-    serde_json::from_str(&stdout)
-        .map_err(|e| format!("Failed to parse JSON: {}", e))
+    serde_json::from_str(&stdout).map_err(|e| format!("Failed to parse JSON: {}", e))
 }
 
 /// Get system status - reads real data from Hermes database and gateway state
@@ -125,13 +126,52 @@ pub async fn get_system_status() -> Result<SystemStatus, String> {
         };
 
         // Check if Hermes CLI/venv actually exists (this is what chat functionality needs)
-        let hermes_cli_available = if let Ok(output) = create_command("wsl")
-            .args(["bash", "-c", "test -f ~/.hermes/hermes-agent/venv/bin/python && echo 'available' || echo 'not_found'"])
-            .output()
-        {
-            String::from_utf8_lossy(&output.stdout).trim() == "available"
-        } else {
-            false
+        // Use multiple detection methods to match chat.rs logic
+        let hermes_cli_available = {
+            // Method 1: Check venv (try both .venv and venv paths)
+            let venv_paths = [
+                "~/.hermes/hermes-agent/.venv/bin/python",  // uv default
+                "~/.hermes/hermes-agent/venv/bin/python",   // legacy
+            ];
+            let venv_available = venv_paths.iter().any(|venv_path| {
+                let check_cmd = format!("test -f {} && echo 'available' || echo 'not_found'", venv_path);
+                if let Ok(output) = create_command("wsl")
+                    .args(["bash", "-c", &check_cmd])
+                    .output()
+                {
+                    String::from_utf8_lossy(&output.stdout).trim() == "available"
+                } else {
+                    false
+                }
+            });
+
+            if venv_available {
+                true
+            } else {
+                // Method 2: Check for hermes CLI in PATH
+                let cli_available = if let Ok(output) = create_command("wsl")
+                    .args(["bash", "-c", "command -v hermes && echo 'found' || echo 'not_found'"])
+                    .output()
+                {
+                    String::from_utf8_lossy(&output.stdout).trim() == "found"
+                } else {
+                    false
+                };
+
+                if cli_available {
+                    true
+                } else {
+                    // Method 3: Check for hermes_agent module
+                    if let Ok(output) = create_command("wsl")
+                        .args(["bash", "-c", "python3 -c 'import hermes_agent' 2>/dev/null && echo 'available' || echo 'not_found'"])
+                        .output()
+                    {
+                        String::from_utf8_lossy(&output.stdout).trim() == "available"
+                    } else {
+                        false
+                    }
+                }
+            }
         };
 
         // Check if gateway process is running
@@ -152,22 +192,27 @@ pub async fn get_system_status() -> Result<SystemStatus, String> {
 
     // Determine gateway status - use multiple sources
     // Priority: 1. gateway_state.json, 2. process check, 3. CLI availability
-    let file_status = result.2.get("gateway_state")
+    let file_status = result
+        .2
+        .get("gateway_state")
         .and_then(|v| v.as_str())
         .unwrap_or("unknown");
 
     // Determine final status (mapped to frontend expected values: online|offline|degraded)
     let gateway_status = if file_status == "running" || result.8 {
         "online".to_string()
-    } else if result.7 {
-        "offline".to_string()
     } else {
         "offline".to_string()
     };
 
-    println!("[System] Gateway status: file={}, process={}, cli={}, final={}", file_status, result.8, result.7, gateway_status);
+    println!(
+        "[System] Gateway status: file={}, process={}, cli={}, final={}",
+        file_status, result.8, result.7, gateway_status
+    );
 
-    let start_time = result.2.get("start_time")
+    let start_time = result
+        .2
+        .get("start_time")
         .and_then(|v| v.as_u64())
         .unwrap_or(0);
 
@@ -175,8 +220,14 @@ pub async fn get_system_status() -> Result<SystemStatus, String> {
     let mut connected_platforms = Vec::new();
     if let Some(platforms) = result.2.get("platforms").and_then(|v| v.as_object()) {
         for (name, info) in platforms {
-            let status = info.get("state").and_then(|v| v.as_str()).unwrap_or("unknown");
-            let last_activity = info.get("updated_at").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let status = info
+                .get("state")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
+            let last_activity = info
+                .get("updated_at")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
             connected_platforms.push(ConnectedPlatform {
                 name: name.clone(),
                 status: status.to_string(),
@@ -185,8 +236,14 @@ pub async fn get_system_status() -> Result<SystemStatus, String> {
         }
     }
 
-    println!("[System] Sessions: {}, Tasks: {}, Gateway: {}", result.0, result.1, gateway_status);
-    println!("[System] CPU: {}%, Memory: {}% ({} / {} MB)", result.3, result.4, result.5, result.6);
+    println!(
+        "[System] Sessions: {}, Tasks: {}, Gateway: {}",
+        result.0, result.1, gateway_status
+    );
+    println!(
+        "[System] CPU: {}%, Memory: {}% ({} / {} MB)",
+        result.3, result.4, result.5, result.6
+    );
 
     Ok(SystemStatus {
         gateway: GatewayStatus {
@@ -210,9 +267,10 @@ pub async fn get_system_status() -> Result<SystemStatus, String> {
 /// Get system metrics (CPU, memory) via WSL
 fn get_system_metrics() -> (f32, f32, u64, u64) {
     // Get memory info from /proc/meminfo - simpler and more reliable
-    let (memory_percent, memory_used_mb, memory_total_mb) = if let Ok(output) = create_command("wsl")
-        .args(["cat", "/proc/meminfo"])
-        .output()
+    let (memory_percent, memory_used_mb, memory_total_mb) = if let Ok(output) =
+        create_command("wsl")
+            .args(["cat", "/proc/meminfo"])
+            .output()
     {
         if output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout);
@@ -221,12 +279,14 @@ fn get_system_metrics() -> (f32, f32, u64, u64) {
 
             for line in stdout.lines() {
                 if line.starts_with("MemTotal:") {
-                    total_kb = line.split_whitespace()
+                    total_kb = line
+                        .split_whitespace()
                         .nth(1)
                         .and_then(|v| v.parse().ok())
                         .unwrap_or(0);
                 } else if line.starts_with("MemAvailable:") {
-                    available_kb = line.split_whitespace()
+                    available_kb = line
+                        .split_whitespace()
                         .nth(1)
                         .and_then(|v| v.parse().ok())
                         .unwrap_or(0);
@@ -238,7 +298,10 @@ fn get_system_metrics() -> (f32, f32, u64, u64) {
                 let percent = (used_kb as f64 / total_kb as f64 * 100.0) as f32;
                 let used_mb = used_kb / 1024;
                 let total_mb = total_kb / 1024;
-                println!("[System] Memory parsed: total={}KB, available={}KB, used={}KB", total_kb, available_kb, used_kb);
+                println!(
+                    "[System] Memory parsed: total={}KB, available={}KB, used={}KB",
+                    total_kb, available_kb, used_kb
+                );
                 (percent, used_mb, total_mb)
             } else {
                 (0.0, 0, 0)
@@ -256,7 +319,7 @@ fn get_system_metrics() -> (f32, f32, u64, u64) {
         {
             std::thread::sleep(std::time::Duration::from_millis(500));
             create_command("wsl").args(["cat", "/proc/stat"]).output()
-        }
+        },
     ) {
         fn parse_cpu_line(output: &std::process::Output) -> Option<(u64, u64)> {
             if !output.status.success() {
@@ -265,7 +328,8 @@ fn get_system_metrics() -> (f32, f32, u64, u64) {
             let stdout = String::from_utf8_lossy(&output.stdout);
             for line in stdout.lines() {
                 if line.starts_with("cpu ") {
-                    let parts: Vec<u64> = line.split_whitespace()
+                    let parts: Vec<u64> = line
+                        .split_whitespace()
                         .skip(1)
                         .filter_map(|v| v.parse().ok())
                         .collect();
@@ -279,13 +343,18 @@ fn get_system_metrics() -> (f32, f32, u64, u64) {
             None
         }
 
-        if let (Some((idle1, total1)), Some((idle2, total2))) = (parse_cpu_line(&stat1), parse_cpu_line(&stat2)) {
+        if let (Some((idle1, total1)), Some((idle2, total2))) =
+            (parse_cpu_line(&stat1), parse_cpu_line(&stat2))
+        {
             let idle_diff = idle2.saturating_sub(idle1);
             let total_diff = total2.saturating_sub(total1);
             if total_diff > 0 {
                 let used = total_diff.saturating_sub(idle_diff);
                 let percent = (used as f64 / total_diff as f64 * 100.0) as f32;
-                println!("[System] CPU parsed: idle_diff={}, total_diff={}, percent={}%", idle_diff, total_diff, percent);
+                println!(
+                    "[System] CPU parsed: idle_diff={}, total_diff={}, percent={}%",
+                    idle_diff, total_diff, percent
+                );
                 percent
             } else {
                 0.0
@@ -347,7 +416,10 @@ pub struct UsageAnalytics {
 /// Get usage analytics - reads real data from database
 #[tauri::command]
 pub async fn get_usage_analytics(days: Option<u32>) -> Result<UsageAnalytics, String> {
-    println!("[Analytics] Getting usage analytics for {} days...", days.unwrap_or(30));
+    println!(
+        "[Analytics] Getting usage analytics for {} days...",
+        days.unwrap_or(30)
+    );
     let days = days.unwrap_or(30);
 
     let result = tokio::task::spawn_blocking(move || {
@@ -453,55 +525,120 @@ print(json.dumps({
             println!("[Analytics] Failed to execute WSL command");
         }
         None
-    }).await.unwrap_or(None);
+    })
+    .await
+    .unwrap_or(None);
 
     if let Some(data) = result {
         let totals = data.get("totals").cloned().unwrap_or(serde_json::json!({}));
 
-        let daily: Vec<DailyUsage> = data.get("daily")
+        let daily: Vec<DailyUsage> = data
+            .get("daily")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|d| {
-                Some(DailyUsage {
-                    day: d.get("day").and_then(|v| v.as_str())?.to_string(),
-                    input_tokens: d.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-                    output_tokens: d.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-                    cache_read_tokens: d.get("cache_read_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-                    reasoning_tokens: d.get("reasoning_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-                    estimated_cost: d.get("estimated_cost").and_then(|v| v.as_f64()).unwrap_or(0.0),
-                    actual_cost: d.get("actual_cost").and_then(|v| v.as_f64()).unwrap_or(0.0),
-                    sessions: d.get("sessions").and_then(|v| v.as_u64()).unwrap_or(0),
-                })
-            }).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|d| {
+                        Some(DailyUsage {
+                            day: d.get("day").and_then(|v| v.as_str())?.to_string(),
+                            input_tokens: d
+                                .get("input_tokens")
+                                .and_then(|v| v.as_u64())
+                                .unwrap_or(0),
+                            output_tokens: d
+                                .get("output_tokens")
+                                .and_then(|v| v.as_u64())
+                                .unwrap_or(0),
+                            cache_read_tokens: d
+                                .get("cache_read_tokens")
+                                .and_then(|v| v.as_u64())
+                                .unwrap_or(0),
+                            reasoning_tokens: d
+                                .get("reasoning_tokens")
+                                .and_then(|v| v.as_u64())
+                                .unwrap_or(0),
+                            estimated_cost: d
+                                .get("estimated_cost")
+                                .and_then(|v| v.as_f64())
+                                .unwrap_or(0.0),
+                            actual_cost: d
+                                .get("actual_cost")
+                                .and_then(|v| v.as_f64())
+                                .unwrap_or(0.0),
+                            sessions: d.get("sessions").and_then(|v| v.as_u64()).unwrap_or(0),
+                        })
+                    })
+                    .collect()
+            })
             .unwrap_or_default();
 
-        let by_model: Vec<ModelUsage> = data.get("by_model")
+        let by_model: Vec<ModelUsage> = data
+            .get("by_model")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|m| {
-                Some(ModelUsage {
-                    model: m.get("model").and_then(|v| v.as_str())?.to_string(),
-                    input_tokens: m.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-                    output_tokens: m.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-                    estimated_cost: m.get("estimated_cost").and_then(|v| v.as_f64()).unwrap_or(0.0),
-                    sessions: m.get("sessions").and_then(|v| v.as_u64()).unwrap_or(0),
-                })
-            }).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|m| {
+                        Some(ModelUsage {
+                            model: m.get("model").and_then(|v| v.as_str())?.to_string(),
+                            input_tokens: m
+                                .get("input_tokens")
+                                .and_then(|v| v.as_u64())
+                                .unwrap_or(0),
+                            output_tokens: m
+                                .get("output_tokens")
+                                .and_then(|v| v.as_u64())
+                                .unwrap_or(0),
+                            estimated_cost: m
+                                .get("estimated_cost")
+                                .and_then(|v| v.as_f64())
+                                .unwrap_or(0.0),
+                            sessions: m.get("sessions").and_then(|v| v.as_u64()).unwrap_or(0),
+                        })
+                    })
+                    .collect()
+            })
             .unwrap_or_default();
 
-        println!("[Analytics] Returning: {} sessions, {} input tokens, {} output tokens",
+        println!(
+            "[Analytics] Returning: {} sessions, {} input tokens, {} output tokens",
             totals.get("sessions").and_then(|v| v.as_u64()).unwrap_or(0),
-            totals.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-            totals.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0));
+            totals
+                .get("input_tokens")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0),
+            totals
+                .get("output_tokens")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0)
+        );
 
         return Ok(UsageAnalytics {
             period_days: days,
             totals: UsageTotals {
                 total_sessions: totals.get("sessions").and_then(|v| v.as_u64()).unwrap_or(0),
-                total_input: totals.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-                total_output: totals.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-                total_cache_read: totals.get("cache_read_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-                total_reasoning: totals.get("reasoning_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-                total_estimated_cost: totals.get("estimated_cost").and_then(|v| v.as_f64()).unwrap_or(0.0),
-                total_actual_cost: totals.get("actual_cost").and_then(|v| v.as_f64()).unwrap_or(0.0),
+                total_input: totals
+                    .get("input_tokens")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0),
+                total_output: totals
+                    .get("output_tokens")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0),
+                total_cache_read: totals
+                    .get("cache_read_tokens")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0),
+                total_reasoning: totals
+                    .get("reasoning_tokens")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0),
+                total_estimated_cost: totals
+                    .get("estimated_cost")
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.0),
+                total_actual_cost: totals
+                    .get("actual_cost")
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.0),
             },
             daily,
             by_model,
@@ -524,11 +661,74 @@ print(json.dumps({
     })
 }
 
-/// Health check
+/// Health check - performs actual system health verification
 #[tauri::command]
 pub fn health_check() -> Result<serde_json::Value, String> {
+    println!("[System] Performing health check...");
+
+    // Check WSL availability
+    let wsl_available = create_command("wsl")
+        .args(["echo", "ok"])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    // Check if hermes directory exists
+    let hermes_dir_exists = create_command("wsl")
+        .args(["bash", "-c", "test -d ~/.hermes && echo 'exists' || echo 'not_found'"])
+        .output()
+        .map(|o| {
+            let stdout = String::from_utf8_lossy(&o.stdout);
+            stdout.trim() == "exists"
+        })
+        .unwrap_or(false);
+
+    // Check if state database exists and is accessible
+    let db_accessible = create_command("wsl")
+        .args(["bash", "-c", "test -f ~/.hermes/state.db && echo 'ok' || echo 'not_found'"])
+        .output()
+        .map(|o| {
+            let stdout = String::from_utf8_lossy(&o.stdout);
+            stdout.trim() == "ok"
+        })
+        .unwrap_or(false);
+
+    // Check if venv/hermes CLI exists
+    let cli_available = create_command("wsl")
+        .args(["bash", "-c", "test -f ~/.hermes/hermes-agent/venv/bin/python && echo 'ok' || test -f ~/.hermes/hermes-agent/.venv/bin/python && echo 'ok' || echo 'not_found'"])
+        .output()
+        .map(|o| {
+            let stdout = String::from_utf8_lossy(&o.stdout);
+            stdout.trim() == "ok"
+        })
+        .unwrap_or(false);
+
+    // Determine overall status
+    let status = if wsl_available && hermes_dir_exists {
+        if cli_available {
+            "healthy"
+        } else if db_accessible {
+            "degraded"
+        } else {
+            "partial"
+        }
+    } else {
+        "unhealthy"
+    };
+
+    println!(
+        "[System] Health check: wsl={}, hermes_dir={}, db={}, cli={}, status={}",
+        wsl_available, hermes_dir_exists, db_accessible, cli_available, status
+    );
+
     Ok(serde_json::json!({
-        "status": "ok",
-        "source": "wsl"
+        "status": status,
+        "source": "wsl",
+        "checks": {
+            "wsl": wsl_available,
+            "hermes_dir": hermes_dir_exists,
+            "database": db_accessible,
+            "cli": cli_available
+        }
     }))
 }

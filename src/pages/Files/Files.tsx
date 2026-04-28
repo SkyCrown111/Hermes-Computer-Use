@@ -8,6 +8,7 @@ import { logger } from '../../lib/logger';
 import type { FileInfo, CacheItem } from '../../types/files';
 import { formatBytes } from '../../utils/format';
 import { toast } from '../../stores/toastStore';
+import { getErrorMessage } from '../../lib/errorUtils';
 import './Files.css';
 
 // 工作区类型
@@ -16,6 +17,13 @@ interface Workspace {
   name: string;
   path: string;
   isActive: boolean;
+}
+
+// 工作区添加模态框状态
+interface WorkspaceModalState {
+  isOpen: boolean;
+  mode: 'add' | 'edit';
+  workspace?: Workspace;
 }
 
 // 获取文件图标
@@ -75,6 +83,9 @@ export const Files: React.FC = () => {
   const [deleteConfirm, setDeleteConfirm] = useState<{ path: string } | null>(null);
   const [newFileModal, setNewFileModal] = useState(false);
   const [newFolderModal, setNewFolderModal] = useState(false);
+  const [workspaceModal, setWorkspaceModal] = useState<WorkspaceModalState>({ isOpen: false, mode: 'add' });
+  const [newWorkspaceName, setNewWorkspaceName] = useState('');
+  const [newWorkspacePath, setNewWorkspacePath] = useState('');
 
   // Upload/Download states
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -98,7 +109,7 @@ export const Files: React.FC = () => {
     error,
     favoriteFiles,
     recentFiles,
-    
+
     // Actions
     navigateTo,
     refreshDirectory,
@@ -119,15 +130,31 @@ export const Files: React.FC = () => {
     loadFavorites,
     loadRecentFiles,
     addFavorite,
+    removeFavorite,
     clearError,
   } = useFilesStore();
 
   // 初始化加载
   useEffect(() => {
-    navigateTo(currentPath);
+    // Load workspaces from storage
+    filesApi.getWorkspaces().then(storedWorkspaces => {
+      if (storedWorkspaces.length > 0) {
+        const wsWithPath = storedWorkspaces.map((ws, idx) => ({
+          ...ws,
+          isActive: idx === 0,
+        }));
+        setWorkspaces(wsWithPath);
+        // Navigate to first workspace path
+        navigateTo(storedWorkspaces[0].path);
+      } else {
+        // Default to home directory
+        navigateTo(currentPath);
+      }
+    });
     loadFavorites();
     loadRecentFiles();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Note: Uses navigateTo, loadFavorites, loadRecentFiles from store - initialization only
 
   // 切换到缓存 tab 时加载缓存数据
   useEffect(() => {
@@ -236,6 +263,60 @@ export const Files: React.FC = () => {
     }
   };
 
+  // 添加工作区
+  const handleAddWorkspace = async () => {
+    if (!newWorkspaceName.trim() || !newWorkspacePath.trim()) {
+      toast.error(t('files.workspaceNameRequired') || 'Please enter workspace name and path');
+      return;
+    }
+    const result = await filesApi.addWorkspace(newWorkspaceName, newWorkspacePath);
+    if (result.success) {
+      const stored = await filesApi.getWorkspaces();
+      setWorkspaces(stored.map((ws, idx) => ({ ...ws, isActive: idx === stored.length - 1 })));
+      setNewWorkspaceName('');
+      setNewWorkspacePath('');
+      setWorkspaceModal({ isOpen: false, mode: 'add' });
+      toast.success(t('files.workspaceAdded') || 'Workspace added');
+    } else {
+      toast.error(result.message);
+    }
+  };
+
+  // 移除工作区
+  const handleRemoveWorkspace = async (id: string) => {
+    const result = await filesApi.removeWorkspace(id);
+    if (result.success) {
+      const stored = await filesApi.getWorkspaces();
+      if (stored.length > 0) {
+        setWorkspaces(stored.map((ws, idx) => ({ ...ws, isActive: idx === 0 })));
+        navigateTo(stored[0].path);
+      } else {
+        setWorkspaces([{ id: 'default', name: 'Home', path: '~', isActive: true }]);
+        navigateTo('~');
+      }
+      toast.success(t('files.workspaceRemoved') || 'Workspace removed');
+    }
+  };
+
+  // 切换收藏状态
+  const handleToggleFavorite = async (path: string) => {
+    const isFav = favoriteFiles.some(f => f.path === path);
+    if (isFav) {
+      await removeFavorite(path);
+      toast.success(t('files.favoriteRemoved') || 'Removed from favorites');
+    } else {
+      await addFavorite(path);
+      toast.success(t('files.favoriteAdded') || 'Added to favorites');
+    }
+  };
+
+  // 清除最近文件
+  const handleClearRecentFiles = async () => {
+    await filesApi.clearRecentFiles();
+    loadRecentFiles();
+    toast.success(t('files.recentCleared') || 'Recent files cleared');
+  };
+
   // 切换文件选择
   const handleToggleFileSelection = (path: string, multi: boolean = false) => {
     selectFile(path, multi);
@@ -288,6 +369,8 @@ export const Files: React.FC = () => {
   // 处理文件操作
   const handleViewFile = async (path: string) => {
     await openFile(path);
+    // Track in recent files
+    await filesApi.addRecentFile(path);
     // Track in cache
     filesApi.addCacheItem({
       key: `file://${path}`,
@@ -299,6 +382,8 @@ export const Files: React.FC = () => {
   const handleEditFile = async (path: string) => {
     await openFile(path);
     startEdit();
+    // Track in recent files
+    await filesApi.addRecentFile(path);
     // Track in cache
     filesApi.addCacheItem({
       key: `file://${path}`,
@@ -356,7 +441,7 @@ export const Files: React.FC = () => {
           refreshDirectory();
         } catch (err) {
           logger.error('[Files] Upload failed:', err);
-          toast.error(`上传失败: ${(err as Error).message}`);
+          toast.error(`上传失败: ${getErrorMessage(err)}`);
         } finally {
           setIsUploading(false);
         }
@@ -364,7 +449,7 @@ export const Files: React.FC = () => {
       reader.readAsDataURL(file);
     } catch (err) {
       logger.error('[Files] Upload failed:', err);
-      toast.error(`上传失败: ${(err as Error).message}`);
+      toast.error(`上传失败: ${getErrorMessage(err)}`);
       setIsUploading(false);
     }
 
@@ -399,7 +484,7 @@ export const Files: React.FC = () => {
       toast.success(`文件 ${result.filename} 下载成功`);
     } catch (err) {
       logger.error('[Files] Download failed:', err);
-      toast.error(`下载失败: ${(err as Error).message}`);
+      toast.error(`下载失败: ${getErrorMessage(err)}`);
     } finally {
       setIsDownloading(null);
     }
@@ -496,20 +581,43 @@ export const Files: React.FC = () => {
             <div className="files-sidebar">
               <div className="sidebar-header">
                 <span className="sidebar-title">{t('files.workspace')}</span>
-                <Button variant="ghost" size="sm">+ {t('files.add')}</Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setWorkspaceModal({ isOpen: true, mode: 'add' })}
+                >
+                  + {t('files.add')}
+                </Button>
               </div>
               <div className="workspace-list">
                 {workspaces.map(workspace => (
                   <div
                     key={workspace.id}
                     className={`workspace-item ${workspace.isActive ? 'workspace-active' : ''}`}
-                    onClick={() => handleWorkspaceChange(workspace.id)}
                   >
-                    <span className="workspace-icon"><FolderIcon size={16} /></span>
-                    <div className="workspace-info">
-                      <span className="workspace-name">{workspace.name}</span>
-                      <span className="workspace-path">{workspace.path}</span>
+                    <div
+                      className="workspace-info"
+                      onClick={() => handleWorkspaceChange(workspace.id)}
+                      style={{ flex: 1, cursor: 'pointer' }}
+                    >
+                      <span className="workspace-icon"><FolderIcon size={16} /></span>
+                      <div className="workspace-info">
+                        <span className="workspace-name">{workspace.name}</span>
+                        <span className="workspace-path">{workspace.path}</span>
+                      </div>
                     </div>
+                    {workspaces.length > 1 && (
+                      <button
+                        className="workspace-remove-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemoveWorkspace(workspace.id);
+                        }}
+                        title={t('files.removeWorkspace') || 'Remove workspace'}
+                      >
+                        <XIcon size={12} />
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -519,16 +627,35 @@ export const Files: React.FC = () => {
                 <div className="sidebar-section">
                   <div className="sidebar-header">
                     <span className="sidebar-title">{t('files.favorites')}</span>
+                    <span className="sidebar-count">{favoriteFiles.length}</span>
                   </div>
                   <div className="favorite-list">
-                    {favoriteFiles.slice(0, 5).map(file => (
+                    {favoriteFiles.slice(0, 10).map(file => (
                       <div
                         key={file.path}
                         className="favorite-item"
-                        onClick={() => openFile(file.path)}
                       >
-                        <span className="favorite-icon">{getFileIcon(file)}</span>
-                        <span className="favorite-name">{file.name}</span>
+                        <span
+                          className="favorite-icon"
+                          onClick={() => openFile(file.path)}
+                          style={{ cursor: 'pointer' }}
+                        >
+                          {getFileIcon(file)}
+                        </span>
+                        <span
+                          className="favorite-name"
+                          onClick={() => openFile(file.path)}
+                          style={{ cursor: 'pointer', flex: 1 }}
+                        >
+                          {file.name}
+                        </span>
+                        <button
+                          className="favorite-remove-btn"
+                          onClick={() => handleToggleFavorite(file.path)}
+                          title={t('files.removeFavorite') || 'Remove from favorites'}
+                        >
+                          <XIcon size={12} />
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -540,9 +667,16 @@ export const Files: React.FC = () => {
                 <div className="sidebar-section">
                   <div className="sidebar-header">
                     <span className="sidebar-title">{t('files.recentFiles')}</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleClearRecentFiles}
+                    >
+                      {t('files.clear') || 'Clear'}
+                    </Button>
                   </div>
                   <div className="recent-list">
-                    {recentFiles.slice(0, 5).map(file => (
+                    {recentFiles.slice(0, 10).map(file => (
                       <div
                         key={file.path}
                         className="recent-item"
@@ -733,14 +867,14 @@ export const Files: React.FC = () => {
                                 </>
                               )}
                               <button
-                                className="file-action-btn"
+                                className={`file-action-btn ${favoriteFiles.some(f => f.path === file.path) ? 'is-favorite' : ''}`}
                                 title={t('files.favorite')}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  addFavorite(file.path);
+                                  handleToggleFavorite(file.path);
                                 }}
                               >
-                                ★
+                                {favoriteFiles.some(f => f.path === file.path) ? '★' : '☆'}
                               </button>
                               <button
                                 className="file-action-btn"
@@ -822,14 +956,14 @@ export const Files: React.FC = () => {
                             </>
                           )}
                           <button
-                            className="file-action-btn"
+                            className={`file-action-btn ${favoriteFiles.some(f => f.path === file.path) ? 'is-favorite' : ''}`}
                             title={t('files.favorite')}
                             onClick={(e) => {
                               e.stopPropagation();
-                              addFavorite(file.path);
+                              handleToggleFavorite(file.path);
                             }}
                           >
-                            ★
+                            {favoriteFiles.some(f => f.path === file.path) ? '★' : '☆'}
                           </button>
                           <button
                             className="file-action-btn"
@@ -1067,6 +1201,54 @@ export const Files: React.FC = () => {
         onConfirm={handleCreateFolder}
         onCancel={() => setNewFolderModal(false)}
       />
+
+      {/* Add Workspace Modal */}
+      {workspaceModal.isOpen && (
+        <div className="workspace-modal-overlay">
+          <div className="workspace-modal">
+            <div className="workspace-modal-header">
+              <h3>{t('files.addWorkspace') || 'Add Workspace'}</h3>
+              <button
+                className="workspace-modal-close"
+                onClick={() => setWorkspaceModal({ isOpen: false, mode: 'add' })}
+              >
+                <XIcon size={16} />
+              </button>
+            </div>
+            <div className="workspace-modal-body">
+              <div className="workspace-modal-field">
+                <label>{t('files.workspaceName') || 'Name'}</label>
+                <input
+                  type="text"
+                  value={newWorkspaceName}
+                  onChange={(e) => setNewWorkspaceName(e.target.value)}
+                  placeholder={t('files.workspaceNamePlaceholder') || 'My Project'}
+                />
+              </div>
+              <div className="workspace-modal-field">
+                <label>{t('files.workspacePath') || 'Path'}</label>
+                <input
+                  type="text"
+                  value={newWorkspacePath}
+                  onChange={(e) => setNewWorkspacePath(e.target.value)}
+                  placeholder={t('files.workspacePathPlaceholder') || '/path/to/project'}
+                />
+              </div>
+            </div>
+            <div className="workspace-modal-footer">
+              <Button
+                variant="secondary"
+                onClick={() => setWorkspaceModal({ isOpen: false, mode: 'add' })}
+              >
+                {t('common.cancel')}
+              </Button>
+              <Button variant="primary" onClick={handleAddWorkspace}>
+                {t('files.add')}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

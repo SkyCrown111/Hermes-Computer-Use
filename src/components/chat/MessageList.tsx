@@ -1,11 +1,11 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useMemo, memo } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { MessageContent } from './MessageContent';
 import { parseToolJson } from './parseToolJson';
 import type { SessionSearchResult } from './constants';
 import type { ChatMessage } from '../../stores/chatStore';
 import { ZapIcon, BotIcon, AlertIcon, ThinkingIcon, MarkdownRenderer } from '../../components';
-import { ThinkingBlock, ToolsBlock, PermissionCard } from './index';
+import { ThinkingBlock, ToolsBlock, PermissionCard, ClarifyCard, SecretCard } from './index';
 
 // ---- Types ----
 
@@ -14,6 +14,21 @@ interface PermissionApproval {
   command: string;
   description: string;
   allow_permanent: boolean;
+  choices?: ('once' | 'session' | 'always' | 'deny')[];
+}
+
+interface ClarifyQuestion {
+  id: string;
+  question: string;
+  choices: string[];
+  is_open_ended: boolean;
+}
+
+interface SecretRequest {
+  id: string;
+  var_name: string;
+  prompt: string;
+  metadata: Record<string, unknown>;
 }
 
 interface ToolCallInfo {
@@ -36,6 +51,8 @@ export interface MessageListProps {
   streamingText: string;
   streamingTools: ToolCallInfo[];
   pendingPermission: PermissionApproval | null;
+  pendingClarify: ClarifyQuestion | null;
+  pendingSecret: SecretRequest | null;
   apiAvailable: boolean | null;
   showMessageSearch: boolean;
   messageSearchQuery: string;
@@ -59,12 +76,15 @@ export interface MessageListProps {
   onSaveEdit: (messageId: string) => void;
   onEditContentChange: (content: string) => void;
   onApprovalResponse: (choice: 'once' | 'session' | 'always' | 'deny') => void;
+  onClarifyResponse: (answer: string) => void;
+  onSecretResponse: (value: string) => void;
+  onSecretSkip: () => void;
   t: (key: string) => string;
 }
 
 // ---- Component ----
 
-export const MessageList: React.FC<MessageListProps> = ({
+const MessageListComponent: React.FC<MessageListProps> = ({
   messages,
   visibleMessages,
   shouldVirtualize,
@@ -75,6 +95,8 @@ export const MessageList: React.FC<MessageListProps> = ({
   streamingText,
   streamingTools,
   pendingPermission,
+  pendingClarify,
+  pendingSecret,
   apiAvailable,
   showMessageSearch,
   messageSearchQuery,
@@ -98,18 +120,52 @@ export const MessageList: React.FC<MessageListProps> = ({
   onSaveEdit,
   onEditContentChange,
   onApprovalResponse,
+  onClarifyResponse,
+  onSecretResponse,
+  onSecretSkip,
   t,
 }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Track if we're in the middle of a window focus event to prevent layout shifts
+  const isWindowFocusingRef = useRef(false);
+
   // Virtual scrolling: only activate for large lists when NOT streaming
-  const virtualizer = useVirtualizer({
+  // Use stable configuration to prevent recalculation on window focus
+  const virtualizerOptions = useMemo(() => ({
     count: shouldVirtualize ? visibleMessages.length : 0,
     getScrollElement: () => scrollContainerRef.current,
     estimateSize: () => 120,
     overscan: 5,
-  });
+    // Enable smooth scrolling and prevent jank on focus
+    scrollPaddingStart: 0,
+    scrollPaddingEnd: 0,
+  }), [shouldVirtualize, visibleMessages.length]);
+
+  const virtualizer = useVirtualizer(virtualizerOptions);
+
+  // Handle window focus/blur to prevent layout shifts
+  useEffect(() => {
+    const handleFocus = () => {
+      isWindowFocusingRef.current = true;
+      // Delay to allow browser to complete focus handling
+      requestAnimationFrame(() => {
+        isWindowFocusingRef.current = false;
+      });
+    };
+
+    const handleBlur = () => {
+      isWindowFocusingRef.current = true;
+    };
+
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('blur', handleBlur);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, []);
 
   // Scroll to active match for in-message search
   useEffect(() => {
@@ -320,6 +376,21 @@ export const MessageList: React.FC<MessageListProps> = ({
                   onRespond={onApprovalResponse}
                 />
               )}
+              {/* Pending clarify question */}
+              {pendingClarify && (
+                <ClarifyCard
+                  clarify={pendingClarify}
+                  onRespond={onClarifyResponse}
+                />
+              )}
+              {/* Pending secret request */}
+              {pendingSecret && (
+                <SecretCard
+                  secret={pendingSecret}
+                  onRespond={onSecretResponse}
+                  onSkip={onSecretSkip}
+                />
+              )}
             </div>
           </div>
         )}
@@ -329,3 +400,7 @@ export const MessageList: React.FC<MessageListProps> = ({
     </>
   );
 };
+
+// Memoize the component to prevent re-renders when parent updates but props haven't changed
+// This is critical for performance in chat apps where messages update frequently
+export const MessageList = memo(MessageListComponent);

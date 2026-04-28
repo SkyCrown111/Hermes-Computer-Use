@@ -32,6 +32,84 @@ export interface CheckpointConfig {
   max_snapshots?: number;
 }
 
+export interface MemoryConfig {
+  enabled?: boolean;
+  max_chars?: number;
+  auto_cleanup?: boolean;
+  cleanup_threshold?: number;
+  retention_days?: number;
+}
+
+export interface AuxiliaryTaskConfig {
+  provider?: string;
+  model?: string;
+  base_url?: string;
+  api_key?: string;
+  timeout?: number;
+}
+
+export interface AuxiliaryConfig {
+  vision?: AuxiliaryTaskConfig;
+  web_extract?: AuxiliaryTaskConfig;
+  compression?: AuxiliaryTaskConfig;
+  session_search?: AuxiliaryTaskConfig;
+  title_generation?: AuxiliaryTaskConfig;
+  mcp?: AuxiliaryTaskConfig;
+  approval?: AuxiliaryTaskConfig;
+  flush_memories?: AuxiliaryTaskConfig;
+  skills_hub?: AuxiliaryTaskConfig;
+}
+
+export interface CustomProvider {
+  name: string;
+  base_url: string;
+  api_key?: string;
+  model?: string;
+  api_mode?: 'chat_completions' | 'anthropic_messages' | 'codex_responses';
+  key_env?: string;
+}
+
+export interface FallbackProvider {
+  name: string;
+  model?: string;
+  priority?: number;
+}
+
+export type CredentialPoolStrategy = 'fill_first' | 'round_robin' | 'least_used' | 'random';
+
+export interface ProvidersConfig {
+  custom_providers?: CustomProvider[];
+  fallback_providers?: FallbackProvider[];
+  credential_pool_strategies?: Record<string, CredentialPoolStrategy>;
+}
+
+export interface DisplayConfig {
+  compact?: boolean;
+  skin?: string;
+  streaming?: boolean;
+  show_reasoning?: boolean;
+  tool_preview?: boolean;
+  personality?: string;
+  resume_display?: 'full' | 'summary' | 'none';
+  busy_input_mode?: 'interrupt' | 'queue' | 'block';
+  bell_on_complete?: boolean;
+  final_response_markdown?: 'render' | 'strip' | 'raw';
+  inline_diffs?: boolean;
+  show_cost?: boolean;
+  tool_progress?: 'all' | 'minimal' | 'none';
+}
+
+export type ApprovalMode = 'ask' | 'auto_approve_safe' | 'auto_approve_all' | 'auto_deny';
+
+export interface ApprovalConfig {
+  mode?: ApprovalMode;
+  safe_commands?: string[];
+  dangerous_commands?: string[];
+  remember_session?: boolean;
+  show_command_preview?: boolean;
+  timeout_seconds?: number;
+}
+
 export interface HermesConfig {
   raw?: string;
   global_state?: Record<string, unknown>;
@@ -44,6 +122,11 @@ export interface HermesConfig {
   terminal?: TerminalConfig;
   compression?: CompressionConfig;
   checkpoint?: CheckpointConfig;
+  auxiliary?: AuxiliaryConfig;
+  providers?: ProvidersConfig;
+  display?: DisplayConfig;
+  memory?: MemoryConfig;
+  approval?: ApprovalConfig;
 }
 
 // Load configuration

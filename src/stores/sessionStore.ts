@@ -3,6 +3,7 @@
 
 import { create } from 'zustand';
 import type { Session, SessionMessage } from '../types';
+import type { Checkpoint } from '../types/checkpoint';
 import { sessionApi } from '../services';
 import { useNavigationStore } from './navigationStore';
 import { logger } from '../lib/logger';
@@ -24,6 +25,11 @@ interface SessionState {
 
   // 消息缓存 - 按会话ID缓存消息
   messageCache: Record<string, SessionMessage[]>;
+
+  // 检查点状态
+  checkpoints: Checkpoint[];
+  isLoadingCheckpoints: boolean;
+  checkpointsBySession: Record<string, Checkpoint[]>;
 
   // 筛选条件
   platform: string | null;
@@ -55,6 +61,13 @@ interface SessionState {
   cacheMessages: (sessionId: string, messages: SessionMessage[]) => void;
   clearCache: (sessionId?: string) => void;
 
+  // Actions - 检查点
+  fetchCheckpoints: (sessionId: string) => Promise<Checkpoint[]>;
+  createCheckpoint: (sessionId: string, name?: string, description?: string) => Promise<Checkpoint>;
+  restoreCheckpoint: (sessionId: string, checkpointId: string) => Promise<void>;
+  deleteCheckpoint: (checkpointId: string, sessionId: string) => Promise<void>;
+  clearCheckpoints: () => void;
+
   // Actions - 筛选
   setPlatform: (platform: string | null) => void;
   setSearchQuery: (query: string) => void;
@@ -84,6 +97,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   // 初始状态 - 缓存
   messageCache: {},
+
+  // 初始状态 - 检查点
+  checkpoints: [],
+  isLoadingCheckpoints: false,
+  checkpointsBySession: {},
 
   // 初始状态 - 筛选
   platform: null,
@@ -180,9 +198,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
             logger.debug('[SessionStore] Fetched missing session:', tab.id, 'title:', sessionWithTitle.chat_name);
           }
         } catch (err) {
-          // Session might not exist on server anymore
-          logger.debug('[SessionStore] Could not fetch session:', tab.id, err);
+          // Session does not exist on server - close the stale tab
+          logger.warn('[SessionStore] Session not found, closing tab:', tab.id);
           newOptimisticIds.delete(tab.id);
+          // Close the stale tab in navigation store
+          useNavigationStore.getState().closeTab(tab.id);
         }
       }
 
@@ -463,6 +483,133 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     }
   },
 
+  // ============================================
+  // Checkpoint Actions
+  // ============================================
+
+  // 获取会话的检查点列表
+  fetchCheckpoints: async (sessionId: string): Promise<Checkpoint[]> => {
+    set({ isLoadingCheckpoints: true, error: null });
+
+    try {
+      const response = await sessionApi.listCheckpoints(sessionId);
+      const { checkpointsBySession } = get();
+
+      set({
+        checkpoints: response.checkpoints,
+        checkpointsBySession: {
+          ...checkpointsBySession,
+          [sessionId]: response.checkpoints,
+        },
+        isLoadingCheckpoints: false,
+      });
+
+      logger.debug('[SessionStore] Fetched checkpoints:', response.checkpoints.length, 'for session:', sessionId);
+      return response.checkpoints;
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      set({ error: errorMsg || 'Unknown error', isLoadingCheckpoints: false });
+      return [];
+    }
+  },
+
+  // 创建检查点
+  createCheckpoint: async (sessionId: string, name?: string, description?: string): Promise<Checkpoint> => {
+    set({ isLoadingCheckpoints: true, error: null });
+
+    try {
+      const checkpoint = await sessionApi.createCheckpoint({
+        session_id: sessionId,
+        name,
+        description,
+      });
+
+      const { checkpointsBySession } = get();
+      const sessionCheckpoints = checkpointsBySession[sessionId] || [];
+
+      set({
+        checkpoints: [checkpoint, ...get().checkpoints],
+        checkpointsBySession: {
+          ...checkpointsBySession,
+          [sessionId]: [checkpoint, ...sessionCheckpoints],
+        },
+        isLoadingCheckpoints: false,
+      });
+
+      logger.debug('[SessionStore] Created checkpoint:', checkpoint.id, 'for session:', sessionId);
+      return checkpoint;
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      set({ error: errorMsg || 'Unknown error', isLoadingCheckpoints: false });
+      throw err;
+    }
+  },
+
+  // 恢复检查点
+  restoreCheckpoint: async (sessionId: string, checkpointId: string): Promise<void> => {
+    set({ isLoading: true, error: null });
+
+    try {
+      const result = await sessionApi.restoreCheckpoint(sessionId, checkpointId);
+
+      // Clear the message cache for this session
+      const { messageCache } = get();
+      const newCache = { ...messageCache };
+      delete newCache[sessionId];
+
+      // Refresh messages if this is the current session
+      const { currentSession } = get();
+      if (currentSession?.id === sessionId) {
+        await get().fetchMessages(sessionId);
+      }
+
+      set({
+        messageCache: newCache,
+        isLoading: false,
+      });
+
+      logger.debug('[SessionStore] Restored checkpoint:', checkpointId, 'for session:', sessionId, 'messages:', result.message_count);
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      set({ error: errorMsg || 'Unknown error', isLoading: false });
+      throw err;
+    }
+  },
+
+  // 删除检查点
+  deleteCheckpoint: async (checkpointId: string, sessionId: string): Promise<void> => {
+    try {
+      await sessionApi.deleteCheckpoint(checkpointId);
+
+      const { checkpointsBySession } = get();
+      const sessionCheckpoints = checkpointsBySession[sessionId] || [];
+      const updatedSessionCheckpoints = sessionCheckpoints.filter(c => c.id !== checkpointId);
+
+      set({
+        checkpoints: get().checkpoints.filter(c => c.id !== checkpointId),
+        checkpointsBySession: {
+          ...checkpointsBySession,
+          [sessionId]: updatedSessionCheckpoints,
+        },
+      });
+
+      logger.debug('[SessionStore] Deleted checkpoint:', checkpointId);
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      set({ error: errorMsg || 'Unknown error' });
+      throw err;
+    }
+  },
+
+  // 清除检查点状态
+  clearCheckpoints: () => {
+    set({
+      checkpoints: [],
+      checkpointsBySession: {},
+      isLoadingCheckpoints: false,
+    });
+  },
+
   // 设置平台筛选
   setPlatform: (platform: string | null) => {
     set({ platform, offset: 0 }); // 重置分页
@@ -514,8 +661,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
 }));
 
-// Debug: log state changes
-if (typeof window !== 'undefined') {
+// Debug: log state changes only in development mode with explicit debug flag
+// This prevents performance issues from excessive logging in production
+if (typeof window !== 'undefined' && import.meta.env?.DEV && localStorage.getItem('hermes-debug') === 'true') {
   useSessionStore.subscribe((state) => {
     logger.debug('[SessionStore] State changed:', {
       sessions: state.sessions.length,

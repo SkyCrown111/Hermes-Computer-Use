@@ -43,7 +43,7 @@ export const memoryApi = {
   // 保存记忆
   saveMemory: async (data: MemorySaveRequest): Promise<MemorySaveResponse> => {
     try {
-      return await safeInvoke<MemorySaveResponse>('save_memory', { fileType: data.type, content: data.content });
+      return await safeInvoke<MemorySaveResponse>('save_memory', { file_type: data.type, content: data.content });
     } catch (error) {
       logger.error('[Memory] Failed to save memory:', error);
       return { ok: false, char_count: 0, char_limit: 100000 };
@@ -117,7 +117,7 @@ export const memoryApi = {
       const data = await safeInvoke<MemoryData>('get_memories');
       const file = type === 'user_profile' ? data.user_profile : data.memory;
       const newContent = file.content + '\n\n' + content;
-      return await safeInvoke<MemorySaveResponse>('save_memory', { fileType: type, content: newContent });
+      return await safeInvoke<MemorySaveResponse>('save_memory', { file_type: type, content: newContent });
     } catch {
       return { ok: false, char_count: 0, char_limit: 100000 };
     }
@@ -126,7 +126,7 @@ export const memoryApi = {
   // 清除记忆
   clearMemory: async (type: MemoryFileType): Promise<{ ok: boolean }> => {
     try {
-      await safeInvoke<MemorySaveResponse>('save_memory', { fileType: type, content: '' });
+      await safeInvoke<MemorySaveResponse>('save_memory', { file_type: type, content: '' });
       return { ok: true };
     } catch {
       return { ok: false };

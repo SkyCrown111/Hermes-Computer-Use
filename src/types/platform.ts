@@ -69,3 +69,24 @@ export interface WebhookConfig {
   secret?: string;
   events: string[];
 }
+
+// Hermes Agent 特定的平台配置接口
+export interface DiscordAgentConfig {
+  require_mention: boolean;
+  free_response_channels: string;
+  allowed_channels: string;
+  auto_thread: boolean;
+  reactions: boolean;
+}
+
+export interface TelegramAgentConfig {
+  channel_prompts: Record<string, string>;
+}
+
+export interface SlackAgentConfig {
+  channel_prompts: Record<string, string>;
+}
+
+export interface WeixinAgentConfig {
+  allowed_users: string[];
+}

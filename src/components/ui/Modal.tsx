@@ -1,5 +1,6 @@
 import React from 'react';
-import { Button, AlertIcon, ZapIcon } from '../index';
+import { Button } from './Button';
+import { AlertIcon, ZapIcon } from './Icons';
 import './Modal.css';
 
 interface ConfirmModalProps {

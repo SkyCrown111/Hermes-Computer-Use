@@ -925,3 +925,295 @@
     width: 100%;
   }
 }
+
+/* ============================================
+   Enhanced Token & Cost Stats
+   ============================================ */
+
+.model-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background: rgba(143, 72, 47, 0.15);
+  color: var(--accent-primary);
+  font-size: var(--text-xs);
+  font-weight: var(--font-medium);
+}
+
+.detail-section-title {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--text-secondary);
+  margin-bottom: var(--space-3);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Token Stats Grid */
+.token-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-3);
+  padding: 0 var(--space-6) var(--space-4);
+}
+
+.token-stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.token-stat-label {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.token-stat-value {
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+}
+
+.token-stat-cache {
+  background: rgba(52, 199, 89, 0.1);
+  border-color: rgba(52, 199, 89, 0.2);
+}
+
+.token-stat-cache .token-stat-value {
+  color: #34c759;
+}
+
+.token-stat-reasoning {
+  background: rgba(175, 130, 255, 0.1);
+  border-color: rgba(175, 130, 255, 0.2);
+}
+
+.token-stat-reasoning .token-stat-value {
+  color: #af82ff;
+}
+
+.token-stat-total {
+  grid-column: span 2;
+  background: rgba(143, 72, 47, 0.1);
+  border-color: rgba(143, 72, 47, 0.2);
+}
+
+.token-stat-total .token-stat-value {
+  color: var(--accent-primary);
+  font-size: var(--text-xl);
+}
+
+/* Cost Info */
+.cost-info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: 0 var(--space-6) var(--space-4);
+}
+
+.cost-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.cost-label {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.cost-value {
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+}
+
+.cost-estimated {
+  background: rgba(255, 159, 10, 0.1);
+  border-color: rgba(255, 159, 10, 0.2);
+}
+
+.cost-estimated .cost-value {
+  color: #ff9f0a;
+}
+
+.cost-actual {
+  background: rgba(52, 199, 89, 0.1);
+  border-color: rgba(52, 199, 89, 0.2);
+}
+
+.cost-actual .cost-value {
+  color: #34c759;
+}
+
+/* Mobile adjustments for token stats */
+@media (max-width: 767px) {
+  .token-stats-grid {
+    grid-template-columns: 1fr;
+    padding: 0 var(--space-4) var(--space-4);
+  }
+
+  .token-stat-total {
+    grid-column: span 1;
+  }
+
+  .cost-info {
+    padding: 0 var(--space-4) var(--space-4);
+  }
+}
+
+/* ============================================
+   Checkpoint Styles
+   ============================================ */
+
+.checkpoint-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+
+.checkpoint-header .detail-section-title {
+  margin-bottom: 0;
+}
+
+.checkpoint-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: 0 var(--space-6) var(--space-4);
+}
+
+.checkpoint-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.checkpoint-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.checkpoint-info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  flex: 1;
+  min-width: 0;
+}
+
+.checkpoint-name {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--text-primary);
+}
+
+.checkpoint-meta {
+  display: flex;
+  gap: var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.checkpoint-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.checkpoint-loading {
+  padding: var(--space-4);
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+}
+
+.checkpoint-empty {
+  padding: var(--space-4);
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+}
+
+/* Checkpoint Modal */
+.checkpoint-modal {
+  max-width: 450px;
+}
+
+.checkpoint-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.checkpoint-form .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.checkpoint-form .form-group label {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.edit-modal-textarea {
+  width: 100%;
+  padding: var(--space-3);
+  background: var(--color-surface-container);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-family: inherit;
+  resize: vertical;
+  outline: none;
+  transition: border-color var(--duration-fast) var(--ease-out);
+}
+
+.edit-modal-textarea:focus {
+  border-color: var(--color-border-focus);
+  box-shadow: 0 0 0 2px rgba(143, 72, 47, 0.1);
+}
+
+.edit-modal-textarea::placeholder {
+  color: var(--text-tertiary);
+}
+
+/* Mobile adjustments for checkpoints */
+@media (max-width: 767px) {
+  .checkpoint-list {
+    padding: 0 var(--space-4) var(--space-4);
+  }
+
+  .checkpoint-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+  }
+
+  .checkpoint-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .checkpoint-meta {
+    flex-wrap: wrap;
+  }
+}

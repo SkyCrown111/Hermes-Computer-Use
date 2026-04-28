@@ -13,6 +13,7 @@ import type {
 } from '../types/files';
 import { filesApi } from '../services/filesApi';
 import { logger } from '../lib/logger';
+import { getErrorMessage } from '../lib/errorUtils';
 
 interface FilesState {
   // 当前目录
@@ -159,7 +160,7 @@ export const useFilesStore = create<FilesState>((set, get) => ({
       const content = await filesApi.getDirectory({ path });
       set({ directoryContent: content, isLoadingDirectory: false });
     } catch (err) {
-      set({ error: (err as Error).message, isLoadingDirectory: false });
+      set({ error: getErrorMessage(err), isLoadingDirectory: false });
     }
   },
 
@@ -188,7 +189,7 @@ export const useFilesStore = create<FilesState>((set, get) => ({
         editState: null,
       });
     } catch (err) {
-      set({ error: (err as Error).message, isLoadingFile: false });
+      set({ error: getErrorMessage(err), isLoadingFile: false });
     }
   },
 
@@ -258,7 +259,7 @@ export const useFilesStore = create<FilesState>((set, get) => ({
       set({ error: result.message, editState: { ...editState, isSaving: false } });
       return false;
     } catch (err) {
-      set({ error: (err as Error).message, editState: { ...editState, isSaving: false } });
+      set({ error: getErrorMessage(err), editState: { ...editState, isSaving: false } });
       return false;
     }
   },
@@ -280,7 +281,7 @@ export const useFilesStore = create<FilesState>((set, get) => ({
       set({ error: result.message });
       return false;
     } catch (err) {
-      set({ error: (err as Error).message });
+      set({ error: getErrorMessage(err) });
       return false;
     }
   },
@@ -296,7 +297,7 @@ export const useFilesStore = create<FilesState>((set, get) => ({
       set({ error: result.message });
       return false;
     } catch (err) {
-      set({ error: (err as Error).message });
+      set({ error: getErrorMessage(err) });
       return false;
     }
   },
@@ -312,7 +313,7 @@ export const useFilesStore = create<FilesState>((set, get) => ({
       set({ error: result.message });
       return false;
     } catch (err) {
-      set({ error: (err as Error).message });
+      set({ error: getErrorMessage(err) });
       return false;
     }
   },
@@ -328,7 +329,7 @@ export const useFilesStore = create<FilesState>((set, get) => ({
       set({ error: result.message });
       return false;
     } catch (err) {
-      set({ error: (err as Error).message });
+      set({ error: getErrorMessage(err) });
       return false;
     }
   },
@@ -344,7 +345,7 @@ export const useFilesStore = create<FilesState>((set, get) => ({
       set({ error: result.message });
       return false;
     } catch (err) {
-      set({ error: (err as Error).message });
+      set({ error: getErrorMessage(err) });
       return false;
     }
   },
@@ -420,7 +421,7 @@ export const useFilesStore = create<FilesState>((set, get) => ({
       set({ error: 'Some operations failed' });
       return false;
     } catch (err) {
-      set({ error: (err as Error).message });
+      set({ error: getErrorMessage(err) });
       return false;
     }
   },
@@ -441,7 +442,7 @@ export const useFilesStore = create<FilesState>((set, get) => ({
       set({ error: 'Some deletions failed' });
       return false;
     } catch (err) {
-      set({ error: (err as Error).message });
+      set({ error: getErrorMessage(err) });
       return false;
     }
   },

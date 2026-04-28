@@ -3,6 +3,7 @@
 import { create } from 'zustand';
 import type { CronJob, CronJobOutput } from '../types/cron';
 import { cronJobsApi } from '../services/cronJobsApi';
+import { getErrorMessage } from '../lib/errorUtils';
 
 export interface CreateCronJobParams {
   name: string;
@@ -78,7 +79,7 @@ interface CronJobsState {
       const { jobs } = await cronJobsApi.listCronJobs();
       set({ jobs, isLoadingJobs: false });
     } catch (err) {
-      set({ error: (err as Error).message, isLoadingJobs: false });
+      set({ error: getErrorMessage(err), isLoadingJobs: false });
     }
   },
 
@@ -89,7 +90,7 @@ interface CronJobsState {
       const job = await cronJobsApi.getCronJob(jobId);
       set({ selectedJob: job, isLoadingDetail: false });
     } catch (err) {
-      set({ error: (err as Error).message, isLoadingDetail: false });
+      set({ error: getErrorMessage(err), isLoadingDetail: false });
     }
   },
 
@@ -100,7 +101,7 @@ interface CronJobsState {
       const outputs = await cronJobsApi.getCronOutputs(jobId, limit);
       set({ jobOutputs: outputs || [], isLoadingOutputs: false });
     } catch (err) {
-      set({ error: (err as Error).message, isLoadingOutputs: false });
+      set({ error: getErrorMessage(err), isLoadingOutputs: false });
     }
   },
 
@@ -122,7 +123,7 @@ interface CronJobsState {
       set({ jobs });
       return newJob;
     } catch (err) {
-      set({ error: (err as Error).message });
+      set({ error: getErrorMessage(err) });
       return null;
     }
   },
@@ -150,7 +151,7 @@ interface CronJobsState {
       set({ jobs, editingJob: null, isEditing: false });
       return updatedJob;
     } catch (err) {
-      set({ error: (err as Error).message });
+      set({ error: getErrorMessage(err) });
       return null;
     }
   },
@@ -164,7 +165,7 @@ interface CronJobsState {
       set({ jobs });
       return true;
     } catch (err) {
-      set({ error: (err as Error).message });
+      set({ error: getErrorMessage(err) });
       return false;
     }
   },
@@ -178,7 +179,7 @@ interface CronJobsState {
       );
       set({ jobs });
     } catch (err) {
-      set({ error: (err as Error).message });
+      set({ error: getErrorMessage(err) });
     }
   },
 
@@ -191,7 +192,7 @@ interface CronJobsState {
       );
       set({ jobs });
     } catch (err) {
-      set({ error: (err as Error).message });
+      set({ error: getErrorMessage(err) });
     }
   },
 
@@ -201,7 +202,7 @@ interface CronJobsState {
       await cronJobsApi.triggerCronJob(jobId);
       return true;
     } catch (err) {
-      set({ error: (err as Error).message });
+      set({ error: getErrorMessage(err) });
       return false;
     }
   },
