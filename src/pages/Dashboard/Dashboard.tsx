@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Card, Button, RocketIcon, ChatIcon, TargetIcon, ClockIcon, ChartIcon, ZapIcon, MonitorIcon, TrendingUpIcon, AlertIcon, LightbulbIcon } from '../../components';
 import { useDashboardStore, useNavigationStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
-import { safeInvoke } from '../../lib/tauri';
+import { checkDataDirExists } from '../../services/settingsApi';
 import { checkForUpdates } from '../../services/updateApi';
 import { restartGateway } from '../../services/settingsApi';
 import { formatNumber, formatCurrency, formatTime } from '../../utils/format';
@@ -99,7 +99,7 @@ export const Dashboard: React.FC = () => {
     try {
       // 检查数据目录是否存在
       logger.component('Dashboard', 'Checking if data dir exists...');
-      const exists = await safeInvoke<boolean>('check_data_dir_exists');
+      const exists = await checkDataDirExists();
       logger.component('Dashboard', 'Data dir exists:', exists);
       if (!exists) {
         logger.component('Dashboard', 'Showing onboarding...');

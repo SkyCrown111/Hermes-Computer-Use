@@ -130,7 +130,7 @@ export const SessionSidebar: React.FC = () => {
   };
 
   // Handle right-click on session item
-  const handleContextMenu = useCallback((e: React.MouseEvent, session: { id: string; chat_name: string }) => {
+  const handleContextMenu = useCallback((e: React.MouseEvent, session: { id: string; chat_name?: string }) => {
     e.preventDefault();
     e.stopPropagation();
 

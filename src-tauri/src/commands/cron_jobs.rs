@@ -590,3 +590,64 @@ pub fn get_cron_outputs(
     println!("[Cron] Found {} outputs", outputs.len());
     Ok(outputs)
 }
+
+/// Pause a cron job (sets enabled = false and records paused_at)
+#[tauri::command]
+pub fn pause_cron_job(id: String) -> Result<serde_json::Value, String> {
+    println!("[Cron] Pausing job: {}", id);
+
+    let mut data = read_jobs_json()?;
+    if let Some(jobs) = data.get_mut("jobs").and_then(|v| v.as_array_mut()) {
+        let mut found = false;
+        for job in jobs.iter_mut() {
+            if job.get("id").and_then(|v| v.as_str()) == Some(&id) {
+                job["enabled"] = serde_json::Value::Bool(false);
+                job["paused_at"] = serde_json::Value::String(chrono::Utc::now().to_rfc3339());
+                found = true;
+                break;
+            }
+        }
+        if !found {
+            return Err(format!("Job not found: {}", id));
+        }
+    }
+    write_jobs_json(&data)?;
+
+    Ok(serde_json::json!({
+        "id": id,
+        "enabled": false,
+        "paused_at": chrono::Utc::now().to_rfc3339()
+    }))
+}
+
+/// Resume a paused cron job (sets enabled = true and records resumed_at)
+#[tauri::command]
+pub fn resume_cron_job(id: String) -> Result<serde_json::Value, String> {
+    println!("[Cron] Resuming job: {}", id);
+
+    let mut data = read_jobs_json()?;
+    let mut next_run_at = String::new();
+    if let Some(jobs) = data.get_mut("jobs").and_then(|v| v.as_array_mut()) {
+        let mut found = false;
+        for job in jobs.iter_mut() {
+            if job.get("id").and_then(|v| v.as_str()) == Some(&id) {
+                job["enabled"] = serde_json::Value::Bool(true);
+                job["resumed_at"] = serde_json::Value::String(chrono::Utc::now().to_rfc3339());
+                next_run_at = job.get("next_run_at").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                found = true;
+                break;
+            }
+        }
+        if !found {
+            return Err(format!("Job not found: {}", id));
+        }
+    }
+    write_jobs_json(&data)?;
+
+    Ok(serde_json::json!({
+        "id": id,
+        "enabled": true,
+        "resumed_at": chrono::Utc::now().to_rfc3339(),
+        "next_run_at": next_run_at
+    }))
+}

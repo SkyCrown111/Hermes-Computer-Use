@@ -464,3 +464,144 @@ pub async fn check_data_dir_exists() -> bool {
     println!("[Config] check_data_dir_exists returning: {}", result);
     result
 }
+
+/// Get raw config.yaml content
+#[tauri::command]
+pub fn get_config_raw() -> Result<serde_json::Value, String> {
+    println!("[Config] Getting raw config...");
+
+    if let Ok(output) = create_command("wsl")
+        .args(["cat", "~/.hermes/config.yaml"])
+        .output()
+    {
+        if output.status.success() {
+            let yaml = String::from_utf8_lossy(&output.stdout).to_string();
+            return Ok(serde_json::json!({ "yaml": yaml }));
+        }
+    }
+
+    if let Some(yaml) = read_file_content("config.yaml") {
+        return Ok(serde_json::json!({ "yaml": yaml }));
+    }
+
+    Ok(serde_json::json!({ "yaml": "" }))
+}
+
+/// Update raw config.yaml content using base64 encoding
+#[tauri::command]
+pub fn update_config_raw(yaml_text: String) -> Result<(), String> {
+    println!("[Config] Updating raw config...");
+
+    let encoded = STANDARD.encode(&yaml_text);
+
+    let script = format!(
+        r#"
+import os
+import base64
+
+filepath = os.path.expanduser("~/.hermes/config.yaml")
+os.makedirs(os.path.dirname(filepath), exist_ok=True)
+
+content = base64.b64decode("{}").decode('utf-8')
+with open(filepath, 'w', encoding='utf-8') as f:
+    f.write(content)
+print("success")
+"#,
+        encoded
+    );
+
+    let output = create_command("wsl")
+        .args(["python3", "-c", &script])
+        .output()
+        .map_err(|e| format!("Failed to update config: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to update config: {}", stderr));
+    }
+
+    println!("[Config] Raw config updated successfully");
+    Ok(())
+}
+
+/// Get a specific config section
+#[tauri::command]
+pub fn get_config_section(section: String) -> Result<serde_json::Value, String> {
+    println!("[Config] Getting config section: {}", section);
+
+    let config = load_config()?;
+    let config_value = serde_json::to_value(&config)
+        .map_err(|e| format!("Failed to serialize config: {}", e))?;
+
+    let data = config_value.get(&section).cloned().unwrap_or(serde_json::Value::Null);
+
+    Ok(serde_json::json!({
+        "section": section,
+        "data": data
+    }))
+}
+
+/// Update a specific config section
+#[tauri::command]
+pub fn update_config_section(section: String, data: serde_json::Value) -> Result<serde_json::Value, String> {
+    println!("[Config] Updating config section: {}", section);
+
+    let _data_str = serde_json::to_string(&data)
+        .map_err(|e| format!("Failed to serialize data: {}", e))?;
+
+    let keys: Vec<&str> = match section.as_str() {
+        "model" => vec!["default", "provider", "api_key", "base_url"],
+        "agent" => vec!["max_turns", "timeout", "reasoning_effort"],
+        "terminal" => vec!["backend", "timeout", "cwd"],
+        "compression" => vec!["enabled", "threshold", "target_ratio"],
+        "checkpoint" => vec!["enabled", "max_snapshots"],
+        _ => {
+            let data_map = data.as_object();
+            if let Some(map) = data_map {
+                map.keys().map(|k| k.as_str()).collect()
+            } else {
+                vec![]
+            }
+        }
+    };
+
+    for key in keys {
+        if let Some(value) = data.get(key) {
+            let config_key = format!("{}.{}", section, key);
+            let value_str = match value {
+                serde_json::Value::String(s) => s.clone(),
+                serde_json::Value::Number(n) => n.to_string(),
+                serde_json::Value::Bool(b) => b.to_string(),
+                _ => continue,
+            };
+            if !value_str.is_empty() {
+                hermes_config_set(&config_key, &value_str)?;
+            }
+        }
+    }
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "section": section,
+        "data": data
+    }))
+}
+
+/// Export configuration
+#[tauri::command]
+pub fn export_config() -> Result<serde_json::Value, String> {
+    println!("[Config] Exporting configuration...");
+
+    let config = load_config()?;
+    let now = chrono::Utc::now().to_rfc3339();
+
+    Ok(serde_json::json!({
+        "model": config.model.unwrap_or_default(),
+        "agent": config.agent.unwrap_or_default(),
+        "terminal": config.terminal.unwrap_or_default(),
+        "compression": config.compression.unwrap_or_default(),
+        "checkpoint": config.checkpoint.unwrap_or_default(),
+        "exported_at": now,
+        "version": "0.1.0"
+    }))
+}

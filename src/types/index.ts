@@ -1,5 +1,3 @@
-// Types 统一导出
-
 export * from './common';
 export * from './navigation';
 export * from './session';
@@ -12,4 +10,5 @@ export * from './monitor';
 export * from './memory';
 export * from './platform';
 export * from './files';
+export * from './mcp';
 export * from './checkpoint';

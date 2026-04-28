@@ -1,75 +1,86 @@
-// Cron Jobs API Service - Tauri Commands
+import { apiClient, getErrorDetail } from './apiClient';
+import type {
+  CronJob,
+  CreateCronJobParams,
+  UpdateCronJobParams,
+  CronJobPauseResponse,
+  CronJobResumeResponse,
+  CronJobTriggerResponse,
+  CronJobOutputResponse,
+} from '../types/cron';
+import type { ApiOkResponse } from '../types/common';
+import { logger } from '../lib/logger';
 
-import { safeInvoke } from '../lib/tauri';
-import type { CronJob } from '../types/cron';
-
-export interface CronJobListResponse {
-  jobs: CronJob[];
-  total: number;
+export async function listCronJobs(): Promise<CronJob[]> {
+  try {
+    return await apiClient.invoke<CronJob[]>('list_cron_jobs');
+  } catch (error) {
+    logger.error(`[CronApi] listCronJobs failed: ${getErrorDetail(error)}`);
+    return [];
+  }
 }
 
-// List all cron jobs
-export async function listCronJobs(): Promise<CronJobListResponse> {
-  const jobs = await safeInvoke<CronJob[]>('list_cron_jobs');
-  return {
-    jobs: jobs || [],
-    total: jobs?.length || 0,
-  };
+export async function getCronJob(jobId: string): Promise<CronJob | null> {
+  try {
+    return await apiClient.invoke<CronJob>('get_cron_job', { job_id: jobId });
+  } catch (error) {
+    logger.error(`[CronApi] getCronJob failed: ${getErrorDetail(error)}`);
+    return null;
+  }
 }
 
-// Get a single cron job by ID
-export async function getCronJob(id: string): Promise<CronJob> {
-  return safeInvoke<CronJob>('get_cron_job', { id });
+export async function createCronJob(params: CreateCronJobParams): Promise<ApiOkResponse> {
+  return apiClient.invoke<ApiOkResponse>('save_cron_job', {
+    name: params.name,
+    prompt: params.prompt,
+    schedule: params.schedule,
+    deliver: params.deliver,
+    skills: params.skills,
+    repeat: params.repeat,
+    model_override: params.model_override,
+  });
 }
 
-// Save a cron job
-export async function saveCronJob(job: CronJob): Promise<void> {
-  await safeInvoke('save_cron_job', { job });
+export async function updateCronJob(jobId: string, params: UpdateCronJobParams): Promise<ApiOkResponse> {
+  return apiClient.invoke<ApiOkResponse>('save_cron_job', {
+    job_id: jobId,
+    ...params.updates,
+  });
 }
 
-// Delete a cron job
-export async function deleteCronJob(id: string): Promise<void> {
-  await safeInvoke('delete_cron_job', { id });
+export async function deleteCronJob(jobId: string): Promise<ApiOkResponse> {
+  return apiClient.invoke<ApiOkResponse>('delete_cron_job', { job_id: jobId });
 }
 
-// Toggle a cron job (enable/disable)
-export async function toggleCronJob(id: string, enabled: boolean): Promise<void> {
-  await safeInvoke('toggle_cron_job', { id, enabled });
+export async function toggleCronJob(jobId: string, enabled: boolean): Promise<ApiOkResponse> {
+  return apiClient.invoke<ApiOkResponse>('toggle_cron_job', { job_id: jobId, enabled });
 }
 
-// Get cron directory path
+export async function pauseCronJob(jobId: string): Promise<CronJobPauseResponse> {
+  return apiClient.invoke<CronJobPauseResponse>('pause_cron_job', { job_id: jobId });
+}
+
+export async function resumeCronJob(jobId: string): Promise<CronJobResumeResponse> {
+  return apiClient.invoke<CronJobResumeResponse>('resume_cron_job', { job_id: jobId });
+}
+
+export async function triggerCronJob(jobId: string): Promise<CronJobTriggerResponse> {
+  return apiClient.invoke<CronJobTriggerResponse>('trigger_cron_job', { job_id: jobId });
+}
+
+export async function getCronJobOutputs(jobId: string): Promise<CronJobOutputResponse> {
+  try {
+    return await apiClient.invoke<CronJobOutputResponse>('get_cron_outputs', { job_id: jobId });
+  } catch (error) {
+    logger.error(`[CronApi] getCronJobOutputs failed: ${getErrorDetail(error)}`);
+    return { job_id: jobId, outputs: [] };
+  }
+}
+
 export async function getCronPath(): Promise<string> {
-  return safeInvoke<string>('get_cron_path');
+  try {
+    return await apiClient.invoke<string>('get_cron_path');
+  } catch {
+    return '~/.hermes/cron';
+  }
 }
-
-// Trigger a cron job manually
-export async function triggerCronJob(id: string): Promise<void> {
-  await safeInvoke('trigger_cron_job', { id });
-}
-
-// Get cron job execution outputs
-export interface CronJobOutput {
-  id: string;
-  job_id: string;
-  status: string;
-  output: string;
-  started_at: string;
-  finished_at: string | null;
-  duration_ms: number | null;
-}
-
-export async function getCronOutputs(jobId: string, limit?: number): Promise<CronJobOutput[]> {
-  return safeInvoke<CronJobOutput[]>('get_cron_outputs', { job_id: jobId, limit });
-}
-
-// Export all functions
-export const cronJobsApi = {
-  listCronJobs,
-  getCronJob,
-  saveCronJob,
-  deleteCronJob,
-  toggleCronJob,
-  getCronPath,
-  triggerCronJob,
-  getCronOutputs,
-};

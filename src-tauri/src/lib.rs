@@ -16,7 +16,6 @@ use commands::{
     abort_chat,
     add_mcp_server,
     check_data_dir_exists,
-    // Chat commands
     check_hermes_health,
     check_wechat_qrcode_status,
     clear_logs,
@@ -31,9 +30,12 @@ use commands::{
     delete_skill,
     disable_platform,
     enable_platform,
+    export_config,
     export_session,
     file_exists,
     get_checkpoint_info,
+    get_config_raw,
+    get_config_section,
     get_cron_job,
     get_cron_outputs,
     get_cron_path,
@@ -42,20 +44,16 @@ use commands::{
     get_gateway_status,
     get_log_components,
     get_log_stats,
-    // Monitor commands
     get_logs,
-    // MCP commands
     get_mcp_logs,
     get_mcp_resources,
     get_mcp_server,
     get_mcp_stats,
     get_mcp_tools,
-    // Memory commands
     get_memories,
     get_memories_path,
     get_performance_metrics,
     get_platform_status,
-    // Platform commands
     get_platforms,
     get_session,
     get_sessions_path,
@@ -63,25 +61,19 @@ use commands::{
     get_skill_categories,
     get_skill_detail,
     get_skills_path,
-    // System commands
     get_system_status,
     get_usage_analytics,
     get_wechat_qrcode,
     health_check,
-    // Cron job commands
     list_checkpoints,
     list_cron_jobs,
-    // Files commands
     list_directory,
-    // MCP commands
     list_mcp_servers,
-    // Session commands
     list_sessions,
-    // Skill commands
     list_skills,
-    // Config commands
     load_config,
     move_file,
+    pause_cron_job,
     read_file,
     read_file_binary,
     reconnect_platform,
@@ -92,6 +84,7 @@ use commands::{
     respond_secret,
     restart_hermes_gateway,
     restore_checkpoint,
+    resume_cron_job,
     save_config,
     save_cron_job,
     save_memory,
@@ -109,6 +102,8 @@ use commands::{
     toggle_cron_job,
     toggle_skill,
     trigger_cron_job,
+    update_config_raw,
+    update_config_section,
     update_mcp_server,
     update_platform_config,
     update_session_title,
@@ -199,12 +194,15 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            // Config commands
             load_config,
             save_config,
             get_data_dir,
             check_data_dir_exists,
-            // Session commands
+            get_config_raw,
+            update_config_raw,
+            get_config_section,
+            update_config_section,
+            export_config,
             list_sessions,
             get_session,
             delete_session,
@@ -212,13 +210,11 @@ pub fn run() {
             update_session_title,
             search_sessions,
             export_session,
-            // Checkpoint commands
             list_checkpoints,
             create_checkpoint,
             get_checkpoint_info,
             restore_checkpoint,
             delete_checkpoint,
-            // Skill commands
             list_skills,
             get_skill,
             get_skill_detail,
@@ -228,20 +224,19 @@ pub fn run() {
             delete_skill,
             toggle_skill,
             get_skills_path,
-            // Cron job commands
             list_cron_jobs,
             get_cron_job,
             save_cron_job,
             delete_cron_job,
             toggle_cron_job,
+            pause_cron_job,
+            resume_cron_job,
             get_cron_path,
             trigger_cron_job,
             get_cron_outputs,
-            // System commands
             get_system_status,
             get_usage_analytics,
             health_check,
-            // Platform commands
             get_platforms,
             get_platform_status,
             enable_platform,
@@ -251,11 +246,9 @@ pub fn run() {
             update_platform_config,
             get_wechat_qrcode,
             check_wechat_qrcode_status,
-            // Memory commands
             get_memories,
             save_memory,
             get_memories_path,
-            // Chat commands
             check_hermes_health,
             send_chat_message,
             stream_chat_message,
@@ -267,7 +260,6 @@ pub fn run() {
             respond_clarify,
             respond_secret,
             abort_chat,
-            // Monitor commands
             get_logs,
             get_log_stats,
             get_gateway_status,
@@ -275,7 +267,6 @@ pub fn run() {
             get_log_components,
             clear_logs,
             reload_gateway_config,
-            // Files commands
             list_directory,
             read_file,
             write_file,
@@ -287,7 +278,6 @@ pub fn run() {
             get_file_tree,
             read_file_binary,
             write_file_binary,
-            // MCP commands
             list_mcp_servers,
             get_mcp_server,
             add_mcp_server,

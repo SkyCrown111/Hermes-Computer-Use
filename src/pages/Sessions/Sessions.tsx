@@ -39,7 +39,7 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, isSelected, isBatchM
       <div className="session-info">
         <div className="session-header-row">
           <span className="session-name">{session.chat_name || t('sessions.untitled').replace('{id}', session.id.slice(0, 12))}</span>
-          <span className="session-model">{session.model.split('/').pop()}</span>
+          <span className="session-model">{(session.model || 'unknown').split('/').pop()}</span>
         </div>
         <div className="session-meta">
           <span className="session-meta-item">
@@ -309,8 +309,8 @@ export const Sessions: React.FC = () => {
       // Fetch all sessions and add to ZIP
       const results = await Promise.allSettled(
         ids.map(async (id, index) => {
-          const blob = await sessionApi.export('json', id);
-          const text = await blob.text();
+          const blob = await sessionApi.exportSessions({ format: 'json', session_id: id });
+          const text = typeof blob === 'string' ? blob : JSON.stringify(blob);
           return { id, text, index };
         })
       );
@@ -457,7 +457,8 @@ export const Sessions: React.FC = () => {
     if (!selectedSessionForExport) return;
 
     try {
-      const blob = await sessionApi.export(format, selectedSessionForExport.id);
+      const exportData = await sessionApi.exportSessions({ format: format as 'jsonl' | 'json' | 'markdown', session_id: selectedSessionForExport.id });
+      const blob = new Blob([typeof exportData === 'string' ? exportData : JSON.stringify(exportData)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;

@@ -1,6 +1,5 @@
-// MCP API Service - Tauri Commands
-
-import { safeInvoke } from '../lib/tauri';
+import { apiClient, getErrorDetail } from './apiClient';
+import { logger } from '../lib/logger';
 import type {
   McpServer,
   McpServerConfig,
@@ -13,63 +12,76 @@ import type {
 } from '../types/mcp';
 
 export const mcpApi = {
-  // List all MCP servers
-  async listServers(): Promise<McpServer[]> {
-    return safeInvoke<McpServer[]>('list_mcp_servers');
+  listServers: async (): Promise<McpServer[]> => {
+    try {
+      return await apiClient.invoke<McpServer[]>('list_mcp_servers');
+    } catch (error) {
+      logger.error('[McpApi] listServers failed:', getErrorDetail(error));
+      return [];
+    }
   },
 
-  // Get a single MCP server by name
-  async getServer(name: string): Promise<McpServer> {
-    return safeInvoke<McpServer>('get_mcp_server', { name });
+  getServer: async (name: string): Promise<McpServer> => {
+    return apiClient.invoke<McpServer>('get_mcp_server', { name });
   },
 
-  // Add a new MCP server
-  async addServer(request: AddMcpServerRequest): Promise<void> {
-    await safeInvoke('add_mcp_server', { request });
+  addServer: async (request: AddMcpServerRequest): Promise<void> => {
+    await apiClient.invoke('add_mcp_server', { request });
   },
 
-  // Remove an MCP server
-  async removeServer(name: string): Promise<void> {
-    await safeInvoke('remove_mcp_server', { name });
+  removeServer: async (name: string): Promise<void> => {
+    await apiClient.invoke('remove_mcp_server', { name });
   },
 
-  // Update MCP server configuration
-  async updateServer(name: string, config: McpServerConfig): Promise<void> {
-    await safeInvoke('update_mcp_server', { name, config });
+  updateServer: async (name: string, config: McpServerConfig): Promise<void> => {
+    await apiClient.invoke('update_mcp_server', { name, config });
   },
 
-  // Start an MCP server
-  async startServer(name: string): Promise<void> {
-    await safeInvoke('start_mcp_server', { name });
+  startServer: async (name: string): Promise<void> => {
+    await apiClient.invoke('start_mcp_server', { name });
   },
 
-  // Stop an MCP server
-  async stopServer(name: string): Promise<void> {
-    await safeInvoke('stop_mcp_server', { name });
+  stopServer: async (name: string): Promise<void> => {
+    await apiClient.invoke('stop_mcp_server', { name });
   },
 
-  // Test MCP connection
-  async testConnection(config: McpServerConfig): Promise<McpConnectionTestResult> {
-    return safeInvoke<McpConnectionTestResult>('test_mcp_connection', { config });
+  testConnection: async (config: McpServerConfig): Promise<McpConnectionTestResult> => {
+    return apiClient.invoke<McpConnectionTestResult>('test_mcp_connection', { config });
   },
 
-  // Get tools for an MCP server
-  async getTools(name: string): Promise<McpTool[]> {
-    return safeInvoke<McpTool[]>('get_mcp_tools', { name });
+  getTools: async (name: string): Promise<McpTool[]> => {
+    try {
+      return await apiClient.invoke<McpTool[]>('get_mcp_tools', { name });
+    } catch (error) {
+      logger.error('[McpApi] getTools failed:', getErrorDetail(error));
+      return [];
+    }
   },
 
-  // Get resources for an MCP server
-  async getResources(name: string): Promise<McpResource[]> {
-    return safeInvoke<McpResource[]>('get_mcp_resources', { name });
+  getResources: async (name: string): Promise<McpResource[]> => {
+    try {
+      return await apiClient.invoke<McpResource[]>('get_mcp_resources', { name });
+    } catch (error) {
+      logger.error('[McpApi] getResources failed:', getErrorDetail(error));
+      return [];
+    }
   },
 
-  // Get logs for an MCP server
-  async getLogs(name: string): Promise<McpLogEntry[]> {
-    return safeInvoke<McpLogEntry[]>('get_mcp_logs', { name });
+  getLogs: async (name: string): Promise<McpLogEntry[]> => {
+    try {
+      return await apiClient.invoke<McpLogEntry[]>('get_mcp_logs', { name });
+    } catch (error) {
+      logger.error('[McpApi] getLogs failed:', getErrorDetail(error));
+      return [];
+    }
   },
 
-  // Get MCP server statistics
-  async getStats(): Promise<McpServerStats> {
-    return safeInvoke<McpServerStats>('get_mcp_stats');
+  getStats: async (): Promise<McpServerStats> => {
+    try {
+      return await apiClient.invoke<McpServerStats>('get_mcp_stats');
+    } catch (error) {
+      logger.error('[McpApi] getStats failed:', getErrorDetail(error));
+      return { total_servers: 0, connected: 0, disconnected: 0, error: 0, total_tools: 0, total_resources: 0, total_requests: 0, total_errors: 0 };
+    }
   },
 };

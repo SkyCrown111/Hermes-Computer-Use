@@ -1,6 +1,5 @@
-// Platform API Service - Tauri Commands
-
-import { safeInvoke } from '../lib/tauri';
+import { apiClient, getErrorDetail } from './apiClient';
+import { logger } from '../lib/logger';
 import type { Platform, PlatformType } from '../types/platform';
 
 export interface PlatformStatusResponse {
@@ -11,48 +10,44 @@ export interface PlatformStatusResponse {
 }
 
 export const platformApi = {
-  // 获取所有平台状态
-  async getPlatforms(): Promise<Platform[]> {
-    return safeInvoke<Platform[]>('get_platforms');
+  getPlatforms: async (): Promise<Platform[]> => {
+    try {
+      return await apiClient.invoke<Platform[]>('get_platforms');
+    } catch (error) {
+      logger.error('[PlatformApi] getPlatforms failed:', getErrorDetail(error));
+      return [];
+    }
   },
 
-  // 获取单个平台状态
-  async getPlatformStatus(type: PlatformType): Promise<PlatformStatusResponse> {
-    return safeInvoke<PlatformStatusResponse>('get_platform_status', { platform_type: type });
+  getPlatformStatus: async (type: PlatformType): Promise<PlatformStatusResponse> => {
+    return apiClient.invoke<PlatformStatusResponse>('get_platform_status', { platform_type: type });
   },
 
-  // 更新平台配置
-  async updatePlatformConfig(type: PlatformType, config: Record<string, unknown>): Promise<void> {
-    await safeInvoke('update_platform_config', { platform_type: type, config });
+  updatePlatformConfig: async (type: PlatformType, config: Record<string, unknown>): Promise<void> => {
+    await apiClient.invoke('update_platform_config', { platform_type: type, config });
   },
 
-  // 启用平台
-  async enablePlatform(type: PlatformType): Promise<void> {
-    await safeInvoke('enable_platform', { platform_type: type });
+  enablePlatform: async (type: PlatformType): Promise<void> => {
+    await apiClient.invoke('enable_platform', { platform_type: type });
   },
 
-  // 禁用平台
-  async disablePlatform(type: PlatformType): Promise<void> {
-    await safeInvoke('disable_platform', { platform_type: type });
+  disablePlatform: async (type: PlatformType): Promise<void> => {
+    await apiClient.invoke('disable_platform', { platform_type: type });
   },
 
-  // 测试平台连接
-  async testConnection(type: PlatformType): Promise<{ ok: boolean; message?: string; details?: string }> {
-    return safeInvoke('test_platform_connection', { platform_type: type });
+  testConnection: async (type: PlatformType): Promise<{ ok: boolean; message?: string; details?: string }> => {
+    return apiClient.invoke('test_platform_connection', { platform_type: type });
   },
 
-  // 重连平台
-  async reconnect(type: PlatformType): Promise<void> {
-    await safeInvoke('reconnect_platform', { platform_type: type });
+  reconnect: async (type: PlatformType): Promise<void> => {
+    await apiClient.invoke('reconnect_platform', { platform_type: type });
   },
 
-  // 获取微信二维码
-  async getWechatQRCode(): Promise<{ qrcode_url: string; status: string; expires_at: string }> {
-    return safeInvoke('get_wechat_qrcode');
+  getWechatQRCode: async (): Promise<{ qrcode_url: string; status: string; expires_at: string }> => {
+    return apiClient.invoke('get_wechat_qrcode');
   },
 
-  // 检查微信二维码扫描状态
-  async checkWechatQRCodeStatus(): Promise<{ status: string }> {
-    return safeInvoke('check_wechat_qrcode_status');
+  checkWechatQRCodeStatus: async (): Promise<{ status: string }> => {
+    return apiClient.invoke('check_wechat_qrcode_status');
   },
 };

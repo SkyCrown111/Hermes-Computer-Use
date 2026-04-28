@@ -1,14 +1,14 @@
-// Skill 类型定义
-
 export interface Skill {
   name: string;
   description?: string;
   version?: string;
   author?: string;
-  category?: string;
-  path?: string;
+  license?: string;
+  category: string;
+  path: string;
   enabled: boolean;
   tags?: string[];
+  metadata?: Record<string, unknown>;
 }
 
 export interface SkillDetail {
@@ -37,6 +37,10 @@ export interface SkillCategory {
   skill_count: number;
 }
 
+export interface SkillCategoriesResponse {
+  categories: SkillCategory[];
+}
+
 export interface CreateSkillParams {
   name: string;
   category: string;
@@ -49,7 +53,27 @@ export interface CreateSkillParams {
   };
 }
 
-// Skill execution parameters
+export interface UpdateSkillParams {
+  description?: string;
+  content?: string;
+  metadata?: {
+    version?: string;
+    author?: string;
+    tags?: string[];
+  };
+}
+
+export interface ToggleSkillParams {
+  name: string;
+  enabled: boolean;
+}
+
+export interface ToggleSkillResponse {
+  ok: boolean;
+  name: string;
+  enabled: boolean;
+}
+
 export interface SkillExecutionParams {
   skill_name: string;
   skill_category: string;
@@ -58,7 +82,6 @@ export interface SkillExecutionParams {
   context?: string;
 }
 
-// Skill execution history record
 export interface SkillExecutionRecord {
   id: string;
   skill_name: string;
@@ -72,7 +95,16 @@ export interface SkillExecutionRecord {
   session_id?: string;
 }
 
-// Predefined skill categories
+export interface Toolset {
+  name: string;
+  label: string;
+  description: string;
+  enabled: boolean;
+  available: boolean;
+  configured: boolean;
+  tools: string[];
+}
+
 export const SKILL_CATEGORY_DEFINITIONS: Record<string, { label: string; labelEn: string; icon: string; description: string; descriptionEn: string }> = {
   'coding': {
     label: '编程开发',

@@ -1,24 +1,24 @@
-// Session 相关类型定义
+import type { ChatType, SessionStatus, PlatformName } from './common';
 
 export interface Session {
   id: string;
-  platform: string; // 'telegram' | 'discord' | 'slack' | 'cli' | 'cron' | 'weixin' | etc.
+  platform: PlatformName;
   chat_id: string;
-  chat_name: string;
-  chat_type?: 'private' | 'group';
+  chat_name?: string;
+  chat_type?: ChatType;
   user_id?: string;
   user_name?: string;
   started_at: string;
   last_activity_at: string;
   message_count: number;
-  model: string;
+  model?: string;
   input_tokens: number;
   output_tokens: number;
   cache_read_tokens?: number;
   reasoning_tokens?: number;
-  estimated_cost_usd: number;
+  estimated_cost_usd?: number;
   actual_cost_usd?: number | null;
-  status: string; // 'active' | 'completed' | 'error' | etc.
+  status?: SessionStatus;
 }
 
 export interface SessionListResponse {
@@ -57,8 +57,8 @@ export interface SessionSearchResult {
   session_id: string;
   platform: string;
   matched_at: string;
-  context: string;
-  relevance_score: number;
+  context?: string;
+  relevance_score?: number;
 }
 
 export interface SessionSearchResponse {
@@ -71,4 +71,10 @@ export interface SessionListParams {
   platform?: string;
   limit?: number;
   offset?: number;
+}
+
+export interface SessionExportParams {
+  format: 'jsonl' | 'json' | 'markdown';
+  session_id?: string;
+  platform?: string;
 }

@@ -1,10 +1,6 @@
-// Shared utility functions
 import React from 'react';
 import { TerminalIcon, ChatIcon, SmartphoneIcon, GlobeIcon, ClockIcon, PlugIcon, BotIcon, BriefcaseIcon } from '../components/ui/Icons';
 
-/**
- * Format large numbers with K/M suffix
- */
 export const formatNumber = (num: number | undefined | null): string => {
   if (num === undefined || num === null || Number.isNaN(num)) return '0';
   if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
@@ -12,9 +8,6 @@ export const formatNumber = (num: number | undefined | null): string => {
   return num.toString();
 };
 
-/**
- * Format currency with dollar sign
- */
 export const formatCurrency = (amount: number | undefined | null, decimals: number = 4): string => {
   if (amount === undefined || amount === null || Number.isNaN(amount)) {
     return `$${(0).toFixed(decimals)}`;
@@ -22,11 +15,10 @@ export const formatCurrency = (amount: number | undefined | null, decimals: numb
   return `$${amount.toFixed(decimals)}`;
 };
 
-/**
- * Format date and time
- */
-export const formatDateTime = (dateString: string): string => {
+export const formatDateTime = (dateString: string | undefined | null): string => {
+  if (!dateString) return '-';
   const date = new Date(dateString);
+  if (isNaN(date.getTime())) return '-';
   return date.toLocaleString('zh-CN', {
     month: 'short',
     day: 'numeric',
@@ -35,17 +27,29 @@ export const formatDateTime = (dateString: string): string => {
   });
 };
 
-/**
- * Format time only
- */
-export const formatTime = (dateString: string): string => {
+export const formatDate = (dateString: string | undefined | null): string => {
+  if (!dateString) return '-';
   const date = new Date(dateString);
+  if (isNaN(date.getTime())) return '-';
+  return date.toLocaleDateString('zh-CN', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+};
+
+export const formatTime = (dateString: string | undefined | null): string => {
+  if (!dateString) return '-';
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return '-';
   return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
 };
 
-/**
- * Format relative time with i18n support
- */
+export const formatTimestamp = (unixSeconds: number | undefined | null): string => {
+  if (unixSeconds === undefined || unixSeconds === null) return '-';
+  return formatDateTime(new Date(unixSeconds * 1000).toISOString());
+};
+
 export const formatRelativeTime = (
   dateString: string,
   t: (key: string) => string
@@ -64,9 +68,39 @@ export const formatRelativeTime = (
   return formatDateTime(dateString);
 };
 
-/**
- * Get platform icon
- */
+export const formatRelativeTimeCompact = (dateString: string | undefined | null): string => {
+  if (!dateString) return '-';
+  const diff = Date.now() - new Date(dateString).getTime();
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return 'now';
+  if (min < 60) return `${min}m`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h`;
+  const day = Math.floor(hr / 24);
+  if (day < 30) return `${day}d`;
+  return `${Math.floor(day / 30)}mo`;
+};
+
+export const formatFutureTime = (
+  dateString: string,
+  t: (key: string) => string
+): string => {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = date.getTime() - now.getTime();
+  if (diffMs <= 0) return t('time.soon') || 'Soon';
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffMins < 1) return t('time.soon') || 'Soon';
+  if (diffMins < 60) return `${diffMins} ${t('time.minutesLater') || 'min later'}`;
+  if (diffHours < 24) return `${diffHours} ${t('time.hoursLater') || 'hr later'}`;
+  return `${diffDays} ${t('time.daysLater') || 'days later'}`;
+};
+
+export const formatRelativeTimeShort = formatRelativeTimeCompact;
+
 export const getPlatformIcon = (platform: string): React.ReactNode => {
   const icons: Record<string, React.ReactNode> = {
     cli: <TerminalIcon size={14} />,
@@ -81,9 +115,6 @@ export const getPlatformIcon = (platform: string): React.ReactNode => {
   return icons[platform] || <BotIcon size={14} />;
 };
 
-/**
- * Get platform display name
- */
 export const getPlatformName = (platform: string): string => {
   const names: Record<string, string> = {
     cli: 'CLI',
@@ -98,47 +129,46 @@ export const getPlatformName = (platform: string): string => {
   return names[platform] || platform;
 };
 
-/**
- * Format bytes to human readable
- */
-export const formatBytes = (bytes: number): string => {
-  if (bytes === 0) return '0 B';
+export const formatBytes = (bytes: number | null | undefined): string => {
+  if (bytes === null || bytes === undefined || bytes === 0) return '0 B';
+  if (bytes < 0) return '0 B';
   const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 };
 
-/**
- * Format duration in seconds to human readable
- */
-export const formatDuration = (seconds: number): string => {
-  if (seconds < 60) return `${seconds}s`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+export const formatDuration = (seconds: number | null | undefined): string => {
+  if (seconds === null || seconds === undefined || seconds < 0) return '0s';
+  if (seconds < 1) return `${Math.round(seconds * 1000)}ms`;
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
   const hours = Math.floor(seconds / 3600);
   const mins = Math.floor((seconds % 3600) / 60);
   return `${hours}h ${mins}m`;
 };
 
-// ----- Relative time formatting (compact, no i18n, for constrained spaces) -----
-
-/**
- * Format relative time as a compact string (e.g. "3m", "2h", "5d").
- * i18n-free — suitable for sidebars, lists, and other tight layouts.
- */
-export const formatRelativeTimeShort = (dateStr: string): string => {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const min = Math.floor(diff / 60000);
-  if (min < 1) return 'now';
-  if (min < 60) return `${min}m`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h`;
-  const day = Math.floor(hr / 24);
-  if (day < 30) return `${day}d`;
-  return `${Math.floor(day / 30)}mo`;
+export const formatDurationMs = (ms: number | null | undefined): string => {
+  if (ms === null || ms === undefined || ms < 0) return '0ms';
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  return formatDuration(ms / 1000);
 };
 
-// ----- Session time grouping -----
+export const formatPercentage = (value: number | null | undefined, decimals: number = 1): string => {
+  if (value === null || value === undefined || Number.isNaN(value)) return '0%';
+  return `${value.toFixed(decimals)}%`;
+};
+
+export const formatCost = (cost: number | null | undefined): string => {
+  if (cost === null || cost === undefined) return '$0.0000';
+  if (cost < 0.0001) return '<$0.0001';
+  return `$${cost.toFixed(4)}`;
+};
+
+export const formatTokenCount = (tokens: number | null | undefined): string => {
+  if (tokens === null || tokens === undefined) return '0';
+  return formatNumber(tokens);
+};
 
 export type TimeGroup = 'today' | 'yesterday' | 'last7days' | 'older';
 
@@ -149,9 +179,6 @@ export interface TimeGroupItem {
   last_activity_at: string;
 }
 
-/**
- * Group sessions (or any items with last_activity_at) into time-based buckets.
- */
 export function groupByTime<T extends TimeGroupItem>(items: T[]): Map<TimeGroup, T[]> {
   const groups = new Map<TimeGroup, T[]>();
   const now = new Date();

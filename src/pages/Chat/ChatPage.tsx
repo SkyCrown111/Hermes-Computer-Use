@@ -379,7 +379,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({
     if (currentPendingPermission) {
       logger.debug('[ChatPage] Clearing pending permission to send new message');
       try {
-        await respondApproval(currentPendingPermission.id, 'deny');
+        await respondApproval(currentPendingPermission.id, false);
       } catch (err) {
         logger.error('[ChatPage] Failed to deny pending permission:', err);
       }
@@ -396,7 +396,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({
       clearStreamingTools(effectiveSessionId);
       // Abort the backend process
       try {
-        await abortChat();
+        await abortChat(effectiveSessionId);
       } catch (err) {
         logger.error('[ChatPage] Failed to abort chat:', err);
       }
@@ -477,14 +477,14 @@ export const ChatPage: React.FC<ChatPageProps> = ({
             if (isStoppedRef.current || !isMountedRef.current) return;
             logger.debug('[ChatPage] Tool call:', tool);
             const targetSessionId = getStreamSessionId();
-            addStreamingTool(targetSessionId, tool); // Only add to streaming display during streaming
+            addStreamingTool(targetSessionId, tool as any);
             setThinking(targetSessionId, false);
           },
           onUsage: (usage) => {
             if (isStoppedRef.current || !isMountedRef.current) return;
             setTokenUsage(getStreamSessionId(), {
-              input_tokens: usage.prompt_tokens,
-              output_tokens: usage.completion_tokens,
+              input_tokens: (usage as any).prompt_tokens ?? (usage as any).input_tokens ?? 0,
+              output_tokens: (usage as any).completion_tokens ?? (usage as any).output_tokens ?? 0,
             });
           },
           onComplete: (content, newSessionId, usage, eventReasoning) => {
@@ -528,9 +528,9 @@ export const ChatPage: React.FC<ChatPageProps> = ({
                 reasoning: finalReasoning,
                 tools: currentStreamingTools, // Save streaming tools to message
                 thinkingTime,
-                inputTokens: usage?.prompt_tokens,
-                outputTokens: usage?.completion_tokens,
-                totalTokens: usage?.total_tokens,
+                inputTokens: (usage as any)?.prompt_tokens ?? (usage as any)?.input_tokens,
+                outputTokens: (usage as any)?.completion_tokens ?? (usage as any)?.output_tokens,
+                totalTokens: (usage as any)?.total_tokens,
               });
               logger.debug('[ChatPage] onComplete - Updated message:', lastMessage.id, 'content length:', finalContent.length, 'reasoning length:', finalReasoning?.length || 0);
             } else {
@@ -570,8 +570,8 @@ export const ChatPage: React.FC<ChatPageProps> = ({
               errorMessage = error.message || 'Unknown error';
             } else if (typeof error === 'string') {
               errorMessage = error;
-            } else if (error && typeof error === 'object') {
-              errorMessage = JSON.stringify(error);
+            } else {
+              try { errorMessage = JSON.stringify(error); } catch { errorMessage = String(error); }
             }
 
             // Get the last message ID from the current store state (not closure)
@@ -586,17 +586,17 @@ export const ChatPage: React.FC<ChatPageProps> = ({
           onApproval: (approval) => {
             if (!isMountedRef.current) return;
             logger.debug('[ChatPage] Approval request:', approval);
-            setChatPendingPermission(getStreamSessionId(), approval);
+            setChatPendingPermission(getStreamSessionId(), approval as any);
           },
           onClarify: (clarify) => {
             if (!isMountedRef.current) return;
             logger.debug('[ChatPage] Clarify request:', clarify);
-            setChatPendingClarify(getStreamSessionId(), clarify);
+            setChatPendingClarify(getStreamSessionId(), clarify as any);
           },
           onSecret: (secret) => {
             if (!isMountedRef.current) return;
-            logger.debug('[ChatPage] Secret request:', secret.var_name);
-            setChatPendingSecret(getStreamSessionId(), secret);
+            logger.debug('[ChatPage] Secret request:', (secret as any).var_name || (secret as any).key_name);
+            setChatPendingSecret(getStreamSessionId(), secret as any);
           },
           onSessionCreated: (newSessionId) => {
             if (!isMountedRef.current) return;
@@ -659,7 +659,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({
 
     // Abort the backend process
     try {
-      await abortChat();
+      await abortChat(effectiveSessionId);
       logger.debug('[ChatPage] Backend process aborted');
     } catch (error) {
       logger.error('[ChatPage] Failed to abort chat:', error);
@@ -720,7 +720,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({
     });
 
     try {
-      await respondApproval(currentPendingPermission.id, choice);
+      await respondApproval(currentPendingPermission.id, choice !== 'deny');
       logger.info('[ChatPage] Approval response sent successfully');
     } catch (error) {
       logger.error('[ChatPage] Failed to send approval response:', error);

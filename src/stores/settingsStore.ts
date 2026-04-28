@@ -16,9 +16,11 @@ import type {
   CredentialPoolStrategy,
   ApprovalConfig,
   ApprovalMode,
+  HermesConfig,
 } from '../types/config';
-import { settingsApi } from '../services/settingsApi';
+import * as settingsApi from '../services/settingsApi';
 import { logger } from '../lib/logger';
+import { getErrorMessage } from '../lib/errorUtils';
 
 // API response type from backend
 interface ConfigResponse {
@@ -320,95 +322,95 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set({ isLoadingModel: true, error: null });
     try {
       const config = await settingsApi.loadConfig() as ConfigResponse;
-      logger.debug('[Settings] Raw API response:', config);
-      logger.debug('[Settings] Loaded config:', config);
-      logger.debug('[Settings] config.model:', config.model);
-      const modelConfig: ModelConfig = {
-        default: config.model?.default || '',
-        provider: config.model?.provider || 'auto',
-        api_key: config.model?.api_key || '',
-        base_url: config.model?.base_url || '',
-      };
-      logger.debug('[Settings] Computed modelConfig:', modelConfig);
-      logger.debug('[Settings] Model config:', modelConfig);
-      set({ modelConfig, isLoadingModel: false });
+      set({
+        modelConfig: {
+          default: config.model?.default || '',
+          provider: config.model?.provider || 'auto',
+          api_key: config.model?.api_key || '',
+          base_url: config.model?.base_url || '',
+        },
+        isLoadingModel: false,
+      });
     } catch (err) {
       logger.error('[Settings] Failed to load model config:', err);
-      set({ error: (err as Error).message, isLoadingModel: false });
+      set({ error: getErrorMessage(err), isLoadingModel: false });
     }
   },
 
-  // 获取 Agent 配置
   fetchAgentConfig: async () => {
     set({ isLoadingAgent: true, error: null });
     try {
       const config = await settingsApi.loadConfig() as ConfigResponse;
-      const agentConfig: AgentConfig = {
-        max_turns: config.agent?.max_turns || 100,
-        timeout: config.agent?.timeout || 300,
-        reasoning_effort: (config.agent?.reasoning_effort as 'low' | 'medium' | 'high') || 'medium',
-      };
-      set({ agentConfig, isLoadingAgent: false });
+      set({
+        agentConfig: {
+          max_turns: config.agent?.max_turns || 100,
+          timeout: config.agent?.timeout || 300,
+          reasoning_effort: (config.agent?.reasoning_effort as 'low' | 'medium' | 'high') || 'medium',
+        },
+        isLoadingAgent: false,
+      });
     } catch (err) {
-      set({ error: (err as Error).message, isLoadingAgent: false });
+      set({ error: getErrorMessage(err), isLoadingAgent: false });
     }
   },
 
-  // 获取终端配置
   fetchTerminalConfig: async () => {
     set({ isLoadingTerminal: true, error: null });
     try {
       const config = await settingsApi.loadConfig() as ConfigResponse;
-      const terminalConfig: TerminalConfig = {
-        backend: (config.terminal?.backend as 'local' | 'docker' | 'ssh') || 'local',
-        timeout: config.terminal?.timeout || 180,
-        cwd: config.terminal?.cwd || '',
-      };
-      set({ terminalConfig, isLoadingTerminal: false });
+      set({
+        terminalConfig: {
+          backend: (config.terminal?.backend as 'local' | 'docker' | 'ssh') || 'local',
+          timeout: config.terminal?.timeout || 180,
+          cwd: config.terminal?.cwd || '',
+        },
+        isLoadingTerminal: false,
+      });
     } catch (err) {
-      set({ error: (err as Error).message, isLoadingTerminal: false });
+      set({ error: getErrorMessage(err), isLoadingTerminal: false });
     }
   },
 
-  // 获取压缩配置
   fetchCompressionConfig: async () => {
     set({ isLoadingCompression: true, error: null });
     try {
       const config = await settingsApi.loadConfig() as ConfigResponse;
-      const compressionConfig: CompressionConfig = {
-        enabled: config.compression?.enabled ?? true,
-        threshold: config.compression?.threshold || 0.8,
-        target_ratio: config.compression?.target_ratio || 0.5,
-      };
-      set({ compressionConfig, isLoadingCompression: false });
+      set({
+        compressionConfig: {
+          enabled: config.compression?.enabled ?? true,
+          threshold: config.compression?.threshold || 0.8,
+          target_ratio: config.compression?.target_ratio || 0.5,
+        },
+        isLoadingCompression: false,
+      });
     } catch (err) {
-      set({ error: (err as Error).message, isLoadingCompression: false });
+      set({ error: getErrorMessage(err), isLoadingCompression: false });
     }
   },
 
-  // 获取检查点配置
   fetchCheckpointConfig: async () => {
     set({ isLoadingCheckpoint: true, error: null });
     try {
       const config = await settingsApi.loadConfig() as ConfigResponse;
-      const checkpointConfig: CheckpointConfig = {
-        enabled: config.checkpoint?.enabled ?? true,
-        max_snapshots: config.checkpoint?.max_snapshots || 10,
-      };
-      set({ checkpointConfig, isLoadingCheckpoint: false });
+      set({
+        checkpointConfig: {
+          enabled: config.checkpoint?.enabled ?? true,
+          max_snapshots: config.checkpoint?.max_snapshots || 10,
+        },
+        isLoadingCheckpoint: false,
+      });
     } catch (err) {
-      set({ error: (err as Error).message, isLoadingCheckpoint: false });
+      set({ error: getErrorMessage(err), isLoadingCheckpoint: false });
     }
   },
 
-  // 获取原始 YAML 配置
   fetchRawYaml: async () => {
     set({ isLoadingRaw: true, error: null });
     try {
       const config = await settingsApi.loadConfig() as ConfigResponse;
       set({ rawYaml: config.raw || '', isLoadingRaw: false });
     } catch (err) {
-      set({ error: (err as Error).message, isLoadingRaw: false });
+      set({ error: getErrorMessage(err), isLoadingRaw: false });
     }
   },
 
@@ -421,7 +423,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       logger.debug('[Settings] Current config:', currentConfig);
       // Remove 'raw' field to prevent it from overwriting structured config
       const { raw: _raw, ...configWithoutRaw } = currentConfig;
-      const configToSave = { ...configWithoutRaw, model: data };
+      const configToSave = { ...configWithoutRaw, model: data } as HermesConfig;
       logger.debug('[Settings] Saving config:', configToSave);
       await settingsApi.saveConfig(configToSave);
       // Restart Gateway to apply new config
@@ -440,7 +442,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     try {
       const currentConfig = await settingsApi.loadConfig();
       const { raw: _raw, ...configWithoutRaw } = currentConfig;
-      await settingsApi.saveConfig({ ...configWithoutRaw, agent: data });
+      await settingsApi.saveConfig({ ...configWithoutRaw, agent: data } as HermesConfig);
       await settingsApi.restartGateway();
       set({ agentConfig: data as AgentConfig, isSaving: false, successMessage: 'Agent 配置已保存，Gateway 已重启' });
       setTimeout(() => set({ successMessage: null }), 3000);
@@ -455,7 +457,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     try {
       const currentConfig = await settingsApi.loadConfig();
       const { raw: _raw, ...configWithoutRaw } = currentConfig;
-      await settingsApi.saveConfig({ ...configWithoutRaw, terminal: data });
+      await settingsApi.saveConfig({ ...configWithoutRaw, terminal: data } as HermesConfig);
       set({ terminalConfig: data as TerminalConfig, isSaving: false, successMessage: '终端配置已保存' });
       setTimeout(() => set({ successMessage: null }), 3000);
     } catch (err) {
@@ -469,7 +471,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     try {
       const currentConfig = await settingsApi.loadConfig();
       const { raw: _raw, ...configWithoutRaw } = currentConfig;
-      await settingsApi.saveConfig({ ...configWithoutRaw, compression: data });
+      await settingsApi.saveConfig({ ...configWithoutRaw, compression: data } as HermesConfig);
       set({ compressionConfig: data as CompressionConfig, isSaving: false, successMessage: '压缩配置已保存' });
       setTimeout(() => set({ successMessage: null }), 3000);
     } catch (err) {
@@ -483,7 +485,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     try {
       const currentConfig = await settingsApi.loadConfig();
       const { raw: _raw, ...configWithoutRaw } = currentConfig;
-      await settingsApi.saveConfig({ ...configWithoutRaw, checkpoint: data });
+      await settingsApi.saveConfig({ ...configWithoutRaw, checkpoint: data } as HermesConfig);
       set({ checkpointConfig: data as CheckpointConfig, isSaving: false, successMessage: '检查点配置已保存' });
       setTimeout(() => set({ successMessage: null }), 3000);
     } catch (err) {
@@ -495,7 +497,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   updateRawYaml: async (yaml: string) => {
     set({ isSaving: true, error: null });
     try {
-      await settingsApi.saveConfig({ raw: yaml });
+      await settingsApi.saveConfig({ raw: yaml } as HermesConfig);
       set({ rawYaml: yaml, isSaving: false, successMessage: '配置已保存' });
       // Refresh all configs
       await get().fetchAllConfigs();
@@ -511,7 +513,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     try {
       const currentConfig = await settingsApi.loadConfig();
       const { raw: _raw, ...configWithoutRaw } = currentConfig;
-      await settingsApi.saveConfig({ ...configWithoutRaw, memory: data });
+      await settingsApi.saveConfig({ ...configWithoutRaw, memory: data } as HermesConfig);
       set({ memoryConfig: data as MemoryConfig, isSaving: false, successMessage: 'Memory 配置已保存' });
       setTimeout(() => set({ successMessage: null }), 3000);
     } catch (err) {
@@ -526,7 +528,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       const currentConfig = await settingsApi.loadConfig();
       const { raw: _raw, ...configWithoutRaw } = currentConfig;
       const currentAuxiliary = configWithoutRaw.auxiliary || {};
-      await settingsApi.saveConfig({ ...configWithoutRaw, auxiliary: { ...currentAuxiliary, [taskType]: data } });
+      await settingsApi.saveConfig({ ...configWithoutRaw, auxiliary: { ...currentAuxiliary, [taskType]: data } } as HermesConfig);
       set({ auxiliaryConfig: { ...get().auxiliaryConfig, [taskType]: data } as AuxiliaryConfig, isSaving: false, successMessage: 'Auxiliary 任务配置已保存' });
       setTimeout(() => set({ successMessage: null }), 3000);
     } catch (err) {
@@ -543,7 +545,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       const currentAuxiliary = configWithoutRaw.auxiliary || {};
       const newAuxiliary = { ...currentAuxiliary };
       delete newAuxiliary[taskType];
-      await settingsApi.saveConfig({ ...configWithoutRaw, auxiliary: newAuxiliary });
+      await settingsApi.saveConfig({ ...configWithoutRaw, auxiliary: newAuxiliary } as HermesConfig);
       set({ auxiliaryConfig: newAuxiliary as AuxiliaryConfig, isSaving: false, successMessage: 'Auxiliary 任务配置已删除' });
       setTimeout(() => set({ successMessage: null }), 3000);
     } catch (err) {
@@ -557,7 +559,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     try {
       const currentConfig = await settingsApi.loadConfig();
       const { raw: _raw, ...configWithoutRaw } = currentConfig;
-      await settingsApi.saveConfig({ ...configWithoutRaw, providers: data });
+      await settingsApi.saveConfig({ ...configWithoutRaw, providers: data } as HermesConfig);
       set({ providersConfig: data as ProvidersConfig, isSaving: false, successMessage: 'Providers 配置已保存' });
       setTimeout(() => set({ successMessage: null }), 3000);
     } catch (err) {
@@ -573,7 +575,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       const { raw: _raw, ...configWithoutRaw } = currentConfig;
       const currentProviders = configWithoutRaw.providers || { custom_providers: [], fallback_providers: [], credential_pool_strategies: {} };
       const newCustomProviders = [...(currentProviders.custom_providers || []), provider];
-      await settingsApi.saveConfig({ ...configWithoutRaw, providers: { ...currentProviders, custom_providers: newCustomProviders } });
+      await settingsApi.saveConfig({ ...configWithoutRaw, providers: { ...currentProviders, custom_providers: newCustomProviders } } as HermesConfig);
       set({ providersConfig: { ...get().providersConfig, custom_providers: newCustomProviders } as ProvidersConfig, isSaving: false, successMessage: '自定义 Provider 已添加' });
       setTimeout(() => set({ successMessage: null }), 3000);
     } catch (err) {
@@ -590,7 +592,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       const currentProviders = configWithoutRaw.providers || { custom_providers: [], fallback_providers: [], credential_pool_strategies: {} };
       const newCustomProviders = [...(currentProviders.custom_providers || [])];
       newCustomProviders[index] = provider;
-      await settingsApi.saveConfig({ ...configWithoutRaw, providers: { ...currentProviders, custom_providers: newCustomProviders } });
+      await settingsApi.saveConfig({ ...configWithoutRaw, providers: { ...currentProviders, custom_providers: newCustomProviders } } as HermesConfig);
       set({ providersConfig: { ...get().providersConfig, custom_providers: newCustomProviders } as ProvidersConfig, isSaving: false, successMessage: '自定义 Provider 已更新' });
       setTimeout(() => set({ successMessage: null }), 3000);
     } catch (err) {
@@ -607,7 +609,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       const currentProviders = configWithoutRaw.providers || { custom_providers: [], fallback_providers: [], credential_pool_strategies: {} };
       const newCustomProviders = [...(currentProviders.custom_providers || [])];
       newCustomProviders.splice(index, 1);
-      await settingsApi.saveConfig({ ...configWithoutRaw, providers: { ...currentProviders, custom_providers: newCustomProviders } });
+      await settingsApi.saveConfig({ ...configWithoutRaw, providers: { ...currentProviders, custom_providers: newCustomProviders } } as HermesConfig);
       set({ providersConfig: { ...get().providersConfig, custom_providers: newCustomProviders } as ProvidersConfig, isSaving: false, successMessage: '自定义 Provider 已删除' });
       setTimeout(() => set({ successMessage: null }), 3000);
     } catch (err) {
@@ -623,7 +625,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       const { raw: _raw, ...configWithoutRaw } = currentConfig;
       const currentProviders = configWithoutRaw.providers || { custom_providers: [], fallback_providers: [], credential_pool_strategies: {} };
       const newFallbackProviders = [...(currentProviders.fallback_providers || []), provider];
-      await settingsApi.saveConfig({ ...configWithoutRaw, providers: { ...currentProviders, fallback_providers: newFallbackProviders } });
+      await settingsApi.saveConfig({ ...configWithoutRaw, providers: { ...currentProviders, fallback_providers: newFallbackProviders } } as HermesConfig);
       set({ providersConfig: { ...get().providersConfig, fallback_providers: newFallbackProviders } as ProvidersConfig, isSaving: false, successMessage: '备用 Provider 已添加' });
       setTimeout(() => set({ successMessage: null }), 3000);
     } catch (err) {
@@ -640,7 +642,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       const currentProviders = configWithoutRaw.providers || { custom_providers: [], fallback_providers: [], credential_pool_strategies: {} };
       const newFallbackProviders = [...(currentProviders.fallback_providers || [])];
       newFallbackProviders.splice(index, 1);
-      await settingsApi.saveConfig({ ...configWithoutRaw, providers: { ...currentProviders, fallback_providers: newFallbackProviders } });
+      await settingsApi.saveConfig({ ...configWithoutRaw, providers: { ...currentProviders, fallback_providers: newFallbackProviders } } as HermesConfig);
       set({ providersConfig: { ...get().providersConfig, fallback_providers: newFallbackProviders } as ProvidersConfig, isSaving: false, successMessage: '备用 Provider 已删除' });
       setTimeout(() => set({ successMessage: null }), 3000);
     } catch (err) {
@@ -656,7 +658,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       const { raw: _raw, ...configWithoutRaw } = currentConfig;
       const currentProviders = configWithoutRaw.providers || { custom_providers: [], fallback_providers: [], credential_pool_strategies: {} };
       const newStrategies = { ...(currentProviders.credential_pool_strategies || {}), [provider]: strategy };
-      await settingsApi.saveConfig({ ...configWithoutRaw, providers: { ...currentProviders, credential_pool_strategies: newStrategies } });
+      await settingsApi.saveConfig({ ...configWithoutRaw, providers: { ...currentProviders, credential_pool_strategies: newStrategies } } as HermesConfig);
       set({ providersConfig: { ...get().providersConfig, credential_pool_strategies: newStrategies } as ProvidersConfig, isSaving: false, successMessage: '凭据池策略已更新' });
       setTimeout(() => set({ successMessage: null }), 3000);
     } catch (err) {
@@ -670,7 +672,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     try {
       const currentConfig = await settingsApi.loadConfig();
       const { raw: _raw, ...configWithoutRaw } = currentConfig;
-      await settingsApi.saveConfig({ ...configWithoutRaw, display: data });
+      await settingsApi.saveConfig({ ...configWithoutRaw, display: data } as HermesConfig);
       set({ displayConfig: data as DisplayConfig, isSaving: false, successMessage: 'Display 配置已保存' });
       setTimeout(() => set({ successMessage: null }), 3000);
     } catch (err) {
@@ -684,7 +686,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     try {
       const currentConfig = await settingsApi.loadConfig();
       const { raw: _raw, ...configWithoutRaw } = currentConfig;
-      await settingsApi.saveConfig({ ...configWithoutRaw, approval: data });
+      await settingsApi.saveConfig({ ...configWithoutRaw, approval: data } as HermesConfig);
       set({ approvalConfig: data as ApprovalConfig, isSaving: false, successMessage: '审批配置已保存' });
       setTimeout(() => set({ successMessage: null }), 3000);
     } catch (err) {
@@ -735,7 +737,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set({ isSaving: true, error: null });
     try {
       const data = JSON.parse(jsonStr);
-      await settingsApi.saveConfig(data);
+      await settingsApi.saveConfig(data as HermesConfig);
 
       // 刷新配置
       await get().fetchAllConfigs();

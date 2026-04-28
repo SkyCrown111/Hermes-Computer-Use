@@ -1,22 +1,40 @@
-// Services 统一导出
+export { ApiClient, HermesApiError, apiClient, createApiError, isApiError, getErrorDetail } from './apiClient';
+export type { RequestOptions } from './apiClient';
 
-// API Client (interceptor layer)
-export { ApiClient, ApiError, apiClient } from './apiClient';
-export type { ApiErrorData, RetryConfig, InvokeOptions } from './apiClient';
-
-// Tauri Command Services
 export * from './sessionApi';
 export * from './skillsApi';
 export * from './cronJobsApi';
 export * from './settingsApi';
-
-// Update service
-export * from './updateApi';
-
-// Other services (all migrated to Tauri invoke)
+export * from './hermesChat';
 export * from './analyticsApi';
 export * from './statusApi';
 export * from './monitorApi';
 export * from './memoryApi';
 export * from './platformApi';
 export * from './filesApi';
+export * from './mcpApi';
+export * from './updateApi';
+
+import * as _sessionApi from './sessionApi';
+import * as _skillsApi from './skillsApi';
+import * as _cronJobsApi from './cronJobsApi';
+import * as _settingsApi from './settingsApi';
+import * as _statusApi from './statusApi';
+import * as _analyticsApi from './analyticsApi';
+import * as _monitorApi from './monitorApi';
+import * as _memoryApi from './memoryApi';
+import * as _platformApi from './platformApi';
+import * as _filesApi from './filesApi';
+import * as _mcpApi from './mcpApi';
+
+export const sessionApi = _sessionApi;
+export const skillsApi = _skillsApi;
+export const cronJobsApi = _cronJobsApi;
+export const settingsApi = _settingsApi;
+export const statusApi = _statusApi;
+export const analyticsApi = _analyticsApi;
+export const monitorApi = _monitorApi;
+export const memoryApi = _memoryApi;
+export const platformApi = _platformApi;
+export const filesApi = _filesApi;
+export const mcpApi = _mcpApi;

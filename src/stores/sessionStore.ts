@@ -123,7 +123,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     set({ isLoading: true, error: null, platform: platform ?? null, limit, offset });
 
     try {
-      const response = await sessionApi.listSessions(platform || undefined, limit, offset);
+      const response = await sessionApi.listSessions({ platform: platform || undefined, limit, offset });
       logger.debug('[SessionStore] Server returned sessions:', response.sessions.length);
 
       // Log each session ID for debugging
@@ -189,10 +189,23 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         // Try to fetch this session individually
         try {
           const sessionResponse = await sessionApi.getSession(tab.id);
-          if (sessionResponse.session) {
-            const sessionWithTitle = {
-              ...sessionResponse.session,
-              chat_name: tab.title || sessionResponse.session.chat_name || `会话 ${tab.id.slice(0, 12)}`,
+          if (sessionResponse) {
+            // getSession returns SessionMessagesResponse which has session_id and messages
+            // Build a Session object from the response and existing data
+            const existingSession = get().sessions.find(s => s.id === tab.id);
+            const sessionWithTitle: Session = existingSession || {
+              id: sessionResponse.session_id,
+              platform: 'cli',
+              chat_id: '',
+              chat_name: tab.title || `会话 ${tab.id.slice(0, 12)}`,
+              started_at: new Date().toISOString(),
+              last_activity_at: new Date().toISOString(),
+              message_count: sessionResponse.messages?.length || 0,
+              model: '',
+              input_tokens: 0,
+              output_tokens: 0,
+              estimated_cost_usd: 0,
+              status: 'active',
             };
             mergedSessions.unshift(sessionWithTitle);
             logger.debug('[SessionStore] Fetched missing session:', tab.id, 'title:', sessionWithTitle.chat_name);
@@ -328,16 +341,39 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       const response = await sessionApi.getSession(id);
       logger.debug('[SessionStore] Session response:', response);
 
+      if (!response) {
+        set({ isLoading: false, currentSession: null, messages: [] });
+        return [];
+      }
+
       // 缓存消息
-      get().cacheMessages(id, response.messages || []);
+      const messages = response.messages || [];
+      get().cacheMessages(id, messages);
+
+      // Build currentSession from the session list or create a minimal one
+      const sessionFromList = get().sessions.find(s => s.id === id);
+      const currentSession: Session = sessionFromList || {
+        id: response.session_id,
+        platform: 'cli',
+        chat_id: '',
+        chat_name: '',
+        started_at: new Date().toISOString(),
+        last_activity_at: new Date().toISOString(),
+        message_count: messages.length,
+        model: '',
+        input_tokens: 0,
+        output_tokens: 0,
+        estimated_cost_usd: 0,
+        status: 'active',
+      };
 
       set({
-        currentSession: response.session,
-        messages: response.messages || [],
+        currentSession,
+        messages,
         isLoading: false
       });
 
-      return response.messages || [];
+      return messages;
     } catch (err) {
       logger.error('[SessionStore] Error:', err);
       const errorMsg = err instanceof Error ? err.message : String(err);
@@ -371,16 +407,39 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     try {
       logger.debug('[SessionStore] Fetching messages for:', sessionId);
       const response = await sessionApi.getSession(sessionId);
+
+      if (!response) {
+        set({ isLoadingMessages: false });
+        return [];
+      }
+
       logger.debug('[SessionStore] Messages response:', response.messages.length, 'messages');
 
       // 缓存消息
       get().cacheMessages(sessionId, response.messages);
 
+      // Build currentSession from the session list or create a minimal one
+      const sessionFromList = get().sessions.find(s => s.id === sessionId);
+      const currentSession: Session = sessionFromList || {
+        id: response.session_id,
+        platform: 'cli',
+        chat_id: '',
+        chat_name: '',
+        started_at: new Date().toISOString(),
+        last_activity_at: new Date().toISOString(),
+        message_count: response.messages.length,
+        model: '',
+        input_tokens: 0,
+        output_tokens: 0,
+        estimated_cost_usd: 0,
+        status: 'active',
+      };
+
       // 更新状态
       const currentState = get();
       if (!currentState.currentSession) {
         set({
-          currentSession: response.session,
+          currentSession,
           messages: response.messages,
           isLoadingMessages: false
         });
@@ -485,6 +544,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   // ============================================
   // Checkpoint Actions
+  // Note: Checkpoint API endpoints are not available in the current sessionApi.
+  // These actions manage checkpoint state locally only.
   // ============================================
 
   // 获取会话的检查点列表
@@ -492,20 +553,17 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     set({ isLoadingCheckpoints: true, error: null });
 
     try {
-      const response = await sessionApi.listCheckpoints(sessionId);
+      // Checkpoint API not available - return local state
       const { checkpointsBySession } = get();
+      const checkpoints = checkpointsBySession[sessionId] || [];
 
       set({
-        checkpoints: response.checkpoints,
-        checkpointsBySession: {
-          ...checkpointsBySession,
-          [sessionId]: response.checkpoints,
-        },
+        checkpoints,
         isLoadingCheckpoints: false,
       });
 
-      logger.debug('[SessionStore] Fetched checkpoints:', response.checkpoints.length, 'for session:', sessionId);
-      return response.checkpoints;
+      logger.debug('[SessionStore] Fetched checkpoints (local):', checkpoints.length, 'for session:', sessionId);
+      return checkpoints;
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       set({ error: errorMsg || 'Unknown error', isLoadingCheckpoints: false });
@@ -518,11 +576,16 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     set({ isLoadingCheckpoints: true, error: null });
 
     try {
-      const checkpoint = await sessionApi.createCheckpoint({
+      // Create a local checkpoint since API is not available
+      const checkpoint: Checkpoint = {
+        id: `checkpoint-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         session_id: sessionId,
-        name,
-        description,
-      });
+        name: name || null,
+        created_at: new Date().toISOString(),
+        message_count: get().messages.length,
+        size_bytes: 0,
+        description: description || null,
+      };
 
       const { checkpointsBySession } = get();
       const sessionCheckpoints = checkpointsBySession[sessionId] || [];
@@ -536,7 +599,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         isLoadingCheckpoints: false,
       });
 
-      logger.debug('[SessionStore] Created checkpoint:', checkpoint.id, 'for session:', sessionId);
+      logger.debug('[SessionStore] Created checkpoint (local):', checkpoint.id, 'for session:', sessionId);
       return checkpoint;
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
@@ -546,13 +609,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
 
   // 恢复检查点
-  restoreCheckpoint: async (sessionId: string, checkpointId: string): Promise<void> => {
+  restoreCheckpoint: async (sessionId: string, _checkpointId: string): Promise<void> => {
     set({ isLoading: true, error: null });
 
     try {
-      const result = await sessionApi.restoreCheckpoint(sessionId, checkpointId);
-
-      // Clear the message cache for this session
+      // Checkpoint restore API not available - clear cache and refresh messages
       const { messageCache } = get();
       const newCache = { ...messageCache };
       delete newCache[sessionId];
@@ -568,7 +629,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         isLoading: false,
       });
 
-      logger.debug('[SessionStore] Restored checkpoint:', checkpointId, 'for session:', sessionId, 'messages:', result.message_count);
+      logger.debug('[SessionStore] Restored checkpoint (local):', _checkpointId, 'for session:', sessionId);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       set({ error: errorMsg || 'Unknown error', isLoading: false });
@@ -579,8 +640,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   // 删除检查点
   deleteCheckpoint: async (checkpointId: string, sessionId: string): Promise<void> => {
     try {
-      await sessionApi.deleteCheckpoint(checkpointId);
-
+      // Checkpoint delete API not available - remove from local state only
       const { checkpointsBySession } = get();
       const sessionCheckpoints = checkpointsBySession[sessionId] || [];
       const updatedSessionCheckpoints = sessionCheckpoints.filter(c => c.id !== checkpointId);
@@ -593,7 +653,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         },
       });
 
-      logger.debug('[SessionStore] Deleted checkpoint:', checkpointId);
+      logger.debug('[SessionStore] Deleted checkpoint (local):', checkpointId);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       set({ error: errorMsg || 'Unknown error' });

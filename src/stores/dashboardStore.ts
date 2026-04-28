@@ -2,11 +2,16 @@
 
 import { create } from 'zustand';
 import type { UsageAnalytics, SystemStatus, CronJob, Skill } from '../types';
-import { analyticsApi, statusApi, cronJobsApi, skillsApi } from '../services';
+import { analyticsApi as _analyticsApi, statusApi as _statusApi, cronJobsApi, skillsApi } from '../services';
 import { t } from '../lib/i18n';
 import { logger } from '../lib/logger';
 import { getErrorMessage } from '../lib/errorUtils';
 import { useThemeStore } from './themeStore';
+
+// statusApi and analyticsApi are re-exported as namespace objects from services/index.ts
+// The actual API objects are nested: _statusApi.statusApi, _analyticsApi.analyticsApi
+const statusApi: typeof _statusApi.statusApi = _statusApi.statusApi;
+const analyticsApi: typeof _analyticsApi.analyticsApi = _analyticsApi.analyticsApi;
 
 interface DashboardState {
   // 系统状态
@@ -100,9 +105,9 @@ export const useDashboardStore = create<DashboardState>((set) => ({
     set({ isLoadingSkills: true, error: null });
     try {
       logger.debug('[Dashboard] Fetching skills...');
-      const response = await skillsApi.listSkills();
-      logger.debug('[Dashboard] Skills fetched:', response);
-      set({ skills: response.skills, isLoadingSkills: false });
+      const skills = await skillsApi.listSkills();
+      logger.debug('[Dashboard] Skills fetched:', skills);
+      set({ skills, isLoadingSkills: false });
     } catch (err) {
       logger.error('[Dashboard] Failed to fetch skills:', err);
       const lang = useThemeStore.getState().language;
@@ -118,8 +123,7 @@ export const useDashboardStore = create<DashboardState>((set) => ({
     set({ isLoadingTasks: true, error: null });
     try {
       logger.debug('[Dashboard] Fetching today tasks...');
-      const response = await cronJobsApi.listCronJobs();
-      const jobs = response.jobs;
+      const jobs = await cronJobsApi.listCronJobs();
       // 过滤出今日要执行的任务
       const today = new Date();
       today.setHours(0, 0, 0, 0);

@@ -2,7 +2,7 @@
 
 import { create } from 'zustand';
 import type { CronJob, CronJobOutput } from '../types/cron';
-import { cronJobsApi } from '../services/cronJobsApi';
+import * as cronJobsApi from '../services/cronJobsApi';
 import { getErrorMessage } from '../lib/errorUtils';
 
 export interface CreateCronJobParams {
@@ -48,18 +48,6 @@ interface CronJobsState {
   clearError: () => void;
 }
 
-  // Parse schedule string into Schedule object
-  function parseSchedule(schedule: string): { kind: string; display: string; minutes?: number } {
-    const trimmed = schedule.trim();
-    // Check if it's a cron expression (5 space-separated fields)
-    if (/^(\d+|\*|\/\d+|\d+-\d+|\d+\/\d+)\s+/.test(trimmed) && trimmed.split(/\s+/).length === 5) {
-      return { kind: 'cron', display: trimmed };
-    }
-    // Otherwise treat as interval minutes
-    const minutes = parseInt(trimmed.replace(/[^0-9]/g, ''), 10) || 60;
-    return { kind: 'interval', display: `每 ${minutes} 分钟`, minutes };
-  }
-
   export const useCronJobsStore = create<CronJobsState>((set, get) => ({
   // 初始状态
   jobs: [],
@@ -76,7 +64,7 @@ interface CronJobsState {
   fetchJobs: async () => {
     set({ isLoadingJobs: true, error: null });
     try {
-      const { jobs } = await cronJobsApi.listCronJobs();
+      const jobs = await cronJobsApi.listCronJobs();
       set({ jobs, isLoadingJobs: false });
     } catch (err) {
       set({ error: getErrorMessage(err), isLoadingJobs: false });
@@ -88,18 +76,18 @@ interface CronJobsState {
     set({ isLoadingDetail: true, error: null });
     try {
       const job = await cronJobsApi.getCronJob(jobId);
-      set({ selectedJob: job, isLoadingDetail: false });
+      set({ selectedJob: job ?? null, isLoadingDetail: false });
     } catch (err) {
       set({ error: getErrorMessage(err), isLoadingDetail: false });
     }
   },
 
   // 获取执行历史
-  fetchJobOutputs: async (jobId: string, limit = 10) => {
+  fetchJobOutputs: async (jobId: string, _limit = 10) => {
     set({ isLoadingOutputs: true });
     try {
-      const outputs = await cronJobsApi.getCronOutputs(jobId, limit);
-      set({ jobOutputs: outputs || [], isLoadingOutputs: false });
+      const response = await cronJobsApi.getCronJobOutputs(jobId);
+      set({ jobOutputs: response.outputs || [], isLoadingOutputs: false });
     } catch (err) {
       set({ error: getErrorMessage(err), isLoadingOutputs: false });
     }
@@ -109,18 +97,12 @@ interface CronJobsState {
   createJob: async (params: CreateCronJobParams) => {
     set({ error: null });
     try {
-      const newJob = {
-        id: crypto.randomUUID(),
-        ...params,
-        enabled: true,
-        run_count: 0,
-        schedule: { ...parseSchedule(params.schedule) },
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      } as CronJob;
-      await cronJobsApi.saveCronJob(newJob);
-      const jobs = [...get().jobs, newJob];
-      set({ jobs });
+      await cronJobsApi.createCronJob(params);
+      // Refresh the jobs list from server
+      await get().fetchJobs();
+      // Return the newly created job (find by name as a best effort)
+      const jobs = get().jobs;
+      const newJob = jobs.find(j => j.name === params.name) || null;
       return newJob;
     } catch (err) {
       set({ error: getErrorMessage(err) });
@@ -132,23 +114,11 @@ interface CronJobsState {
   updateJob: async (jobId: string, updates: Partial<CreateCronJobParams>) => {
     set({ error: null });
     try {
-      const existingJob = get().jobs.find(j => j.id === jobId);
-      if (!existingJob) throw new Error('Job not found');
-      
-      const updatedJob = {
-        ...existingJob,
-        ...updates,
-        schedule: updates.schedule 
-          ? { kind: 'interval' as const, display: updates.schedule, minutes: 60 }
-          : existingJob.schedule,
-        updated_at: new Date().toISOString(),
-      } as CronJob;
-      
-      await cronJobsApi.saveCronJob(updatedJob);
-      const jobs = get().jobs.map((job) =>
-        job.id === jobId ? updatedJob : job
-      );
-      set({ jobs, editingJob: null, isEditing: false });
+      await cronJobsApi.updateCronJob(jobId, { updates });
+      // Refresh the jobs list from server
+      await get().fetchJobs();
+      const updatedJob = get().jobs.find(j => j.id === jobId) || null;
+      set({ editingJob: null, isEditing: false });
       return updatedJob;
     } catch (err) {
       set({ error: getErrorMessage(err) });

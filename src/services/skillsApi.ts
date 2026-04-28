@@ -1,130 +1,89 @@
-// Skills API Service - Tauri Commands
-
-import { safeInvoke } from '../lib/tauri';
+import { apiClient, getErrorDetail } from './apiClient';
+import type {
+  Skill,
+  SkillDetail,
+  SkillCategoriesResponse,
+  CreateSkillParams,
+  UpdateSkillParams,
+  ToggleSkillParams,
+  ToggleSkillResponse,
+  Toolset,
+} from '../types/skill';
+import type { ApiOkResponse } from '../types/common';
 import { logger } from '../lib/logger';
-import type { Skill, SkillDetail, SkillCategory, CreateSkillParams, SkillExecutionParams, SkillExecutionRecord } from '../types/skill';
 
-export interface SkillListResponse {
-  skills: Skill[];
-  total: number;
-}
-
-export interface SkillCategoriesResponse {
-  categories: SkillCategory[];
-}
-
-// List all skills
-export async function listSkills(category?: string): Promise<SkillListResponse> {
-  const skills = await safeInvoke<Skill[]>('list_skills', category ? { category } : undefined);
-  return {
-    skills: skills || [],
-    total: skills?.length || 0,
-  };
-}
-
-// Get a single skill by name
-export async function getSkill(name: string): Promise<Skill> {
-  return safeInvoke<Skill>('get_skill', { name });
-}
-
-// Get skill detail by category and name
-export async function getSkillDetail(category: string, name: string): Promise<SkillDetail> {
-  return safeInvoke<SkillDetail>('get_skill_detail', { category, name });
-}
-
-// Get skill categories
-export async function getCategories(): Promise<SkillCategoriesResponse> {
-  const categories = await safeInvoke<SkillCategory[]>('get_skill_categories');
-  logger.debug('[SkillsApi] getCategories result:', categories);
-  return {
-    categories: categories || [],
-  };
-}
-
-// Toggle skill enabled status
-export async function toggleSkill(name: string, enabled: boolean): Promise<void> {
-  await safeInvoke('toggle_skill', { name, enabled });
-}
-
-// Save a skill
-export async function saveSkill(skill: Skill): Promise<void> {
-  await safeInvoke('save_skill', { skill });
-}
-
-// Create a new skill with content
-export async function createSkill(params: CreateSkillParams): Promise<void> {
-  await safeInvoke('create_skill', { params });
-}
-
-// Delete a skill
-export async function deleteSkill(category: string, name: string): Promise<void> {
-  await safeInvoke('delete_skill', { category, name });
-}
-
-// Get skills directory path
-export async function getSkillsPath(): Promise<string> {
-  return safeInvoke<string>('get_skills_path');
-}
-
-// Execute a skill with parameters
-export async function executeSkill(params: SkillExecutionParams): Promise<{ session_id: string; status: string }> {
-  logger.debug('[SkillsApi] executeSkill params:', params);
-  // For now, execution starts a new chat session with the skill context
-  // This is handled by the frontend navigation, but we can track execution here
-  const sessionId = `skill_${params.skill_category}_${params.skill_name}_${Date.now()}`;
-  return {
-    session_id: sessionId,
-    status: 'started',
-  };
-}
-
-// Get skill execution history (mock implementation - stores in localStorage)
-export async function getExecutionHistory(skillName?: string): Promise<SkillExecutionRecord[]> {
-  // In a real implementation, this would fetch from backend
-  // For now, we use localStorage for demo purposes
-  const historyKey = 'hermes_skill_execution_history';
-  const storedHistory = localStorage.getItem(historyKey);
-  if (!storedHistory) return [];
-
+export async function listSkills(): Promise<Skill[]> {
   try {
-    const history: SkillExecutionRecord[] = JSON.parse(storedHistory);
-    if (skillName) {
-      return history.filter(record => record.skill_name === skillName);
-    }
-    return history;
+    return await apiClient.invoke<Skill[]>('list_skills');
   } catch (error) {
-    logger.error('[SkillsApi] Failed to parse execution history:', error);
+    logger.error(`[SkillsApi] listSkills failed: ${getErrorDetail(error)}`);
     return [];
   }
 }
 
-// Save execution record to history
-export async function saveExecutionRecord(record: SkillExecutionRecord): Promise<void> {
-  const historyKey = 'hermes_skill_execution_history';
-  const storedHistory = localStorage.getItem(historyKey);
-  const history: SkillExecutionRecord[] = storedHistory ? JSON.parse(storedHistory) : [];
-
-  // Add new record and keep only last 100
-  history.unshift(record);
-  if (history.length > 100) {
-    history.pop();
+export async function getSkillDetail(name: string, category: string): Promise<SkillDetail | null> {
+  try {
+    return await apiClient.invoke<SkillDetail>('get_skill_detail', { name, category });
+  } catch (error) {
+    logger.error(`[SkillsApi] getSkillDetail failed: ${getErrorDetail(error)}`);
+    return null;
   }
-
-  localStorage.setItem(historyKey, JSON.stringify(history));
 }
 
-// Export all functions
-export const skillsApi = {
-  listSkills,
-  getSkill,
-  getSkillDetail,
-  getCategories,
-  toggleSkill,
-  saveSkill,
-  createSkill,
-  deleteSkill,
-  getSkillsPath,
-  executeSkill,
-  getExecutionHistory,
-  saveExecutionRecord,
-};
+export async function getSkillCategories(): Promise<SkillCategoriesResponse> {
+  try {
+    const categories = await apiClient.invoke<SkillCategoriesResponse['categories']>('get_skill_categories');
+    return { categories };
+  } catch (error) {
+    logger.error(`[SkillsApi] getSkillCategories failed: ${getErrorDetail(error)}`);
+    return { categories: [] };
+  }
+}
+
+export async function toggleSkill(params: ToggleSkillParams): Promise<ToggleSkillResponse> {
+  return apiClient.invoke<ToggleSkillResponse>('toggle_skill', {
+    name: params.name,
+    enabled: params.enabled,
+  });
+}
+
+export async function createSkill(params: CreateSkillParams): Promise<ApiOkResponse> {
+  return apiClient.invoke<ApiOkResponse>('create_skill', {
+    name: params.name,
+    category: params.category,
+    description: params.description,
+    content: params.content,
+    metadata: params.metadata,
+  });
+}
+
+export async function updateSkill(name: string, category: string, params: UpdateSkillParams): Promise<ApiOkResponse> {
+  return apiClient.invoke<ApiOkResponse>('save_skill', {
+    name,
+    category,
+    description: params.description,
+    content: params.content,
+    metadata: params.metadata,
+  });
+}
+
+export async function deleteSkill(name: string, category: string): Promise<ApiOkResponse> {
+  return apiClient.invoke<ApiOkResponse>('delete_skill', { name, category });
+}
+
+export async function getToolsets(): Promise<Toolset[]> {
+  try {
+    return await apiClient.invoke<Toolset[]>('get_toolsets');
+  } catch (error) {
+    logger.error(`[SkillsApi] getToolsets failed: ${getErrorDetail(error)}`);
+    return [];
+  }
+}
+
+export async function getSkillsPath(): Promise<string> {
+  try {
+    return await apiClient.invoke<string>('get_skills_path');
+  } catch {
+    return '~/.hermes/skills';
+  }
+}

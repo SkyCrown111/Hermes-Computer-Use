@@ -1,323 +1,189 @@
-// Hermes Chat API Client
-// Uses Tauri commands to bypass CORS restrictions
-
 import { invoke } from '@tauri-apps/api/core';
-import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { emit } from '@tauri-apps/api/event';
+import { HermesApiError, isTauri } from '../lib/tauri';
+import { getErrorDetail } from './apiClient';
 import { logger } from '../lib/logger';
 
 export interface ChatMessage {
-  role: 'user' | 'assistant' | 'system';
+  role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
   timestamp?: string;
+  tool_calls?: { name: string; args: Record<string, unknown> }[];
+  tool_name?: string;
+  reasoning?: string;
 }
 
-export interface ChatCompletionResponse {
-  id: string;
-  object: string;
-  created: number;
-  model: string;
-  choices: Array<{
-    index: number;
-    message: {
-      role: string;
-      content: string;
+export interface ChatStreamEvent {
+  type: 'token' | 'tool_call' | 'tool_result' | 'thinking' | 'done' | 'error';
+  content?: string;
+  tool_name?: string;
+  tool_args?: Record<string, unknown>;
+  tool_result?: string;
+  reasoning?: string;
+  error?: string;
+}
+
+export interface SendMessageParams {
+  message: string;
+  session_id?: string;
+  platform?: string;
+  chat_id?: string;
+  skills?: string[];
+  model_override?: { provider?: string; model?: string };
+  stream?: boolean;
+}
+
+export interface SendMessageResponse {
+  session_id: string;
+  response: string;
+  tool_calls_count?: number;
+  input_tokens?: number;
+  output_tokens?: number;
+  estimated_cost_usd?: number;
+}
+
+export interface StreamCallbacks {
+  onStatus?: (status: string, message?: string) => void;
+  onChunk?: (chunk: string, accumulated: string) => void;
+  onReasoning?: (text: string, accumulated: string) => void;
+  onTool?: (tool: Record<string, unknown>) => void;
+  onUsage?: (usage: Record<string, unknown>) => void;
+  onComplete?: (content: string, newSessionId: string | null, usage: Record<string, unknown> | null, reasoning: string | null) => void;
+  onError?: (error: string | Error | unknown) => void;
+  onApproval?: (approval: Record<string, unknown>) => void;
+  onClarify?: (clarify: Record<string, unknown>) => void;
+  onSecret?: (secret: Record<string, unknown>) => void;
+  onSessionCreated?: (newSessionId: string) => void;
+}
+
+function wrapChatCall<T>(command: string, args: Record<string, unknown>, errorCode: string): Promise<T> {
+  return invoke<T>(command, args).catch(error => {
+    const detail = getErrorDetail(error);
+    logger.error(`[HermesChat] ${command} failed: ${detail}`);
+    throw new HermesApiError(errorCode, detail);
+  });
+}
+
+export async function sendMessage(params: SendMessageParams): Promise<SendMessageResponse> {
+  if (!isTauri()) {
+    logger.warn('[HermesChat] Not in Tauri environment, returning mock response');
+    return {
+      session_id: params.session_id ?? `mock_${Date.now()}`,
+      response: `[Mock] Received: "${params.message}"`,
+      tool_calls_count: 0,
+      input_tokens: 10,
+      output_tokens: 20,
+      estimated_cost_usd: 0,
     };
-    finish_reason: string;
-  }>;
-  usage?: {
-    prompt_tokens: number;
-    completion_tokens: number;
-    total_tokens: number;
+  }
+
+  return wrapChatCall<SendMessageResponse>('send_chat_message', {
+    message: params.message,
+    session_id: params.session_id,
+    platform: params.platform,
+    chat_id: params.chat_id,
+    skills: params.skills,
+    model_override: params.model_override,
+    stream: params.stream ?? true,
+  }, 'chat_error');
+}
+
+export type StreamEventHandler = (event: ChatStreamEvent) => void;
+
+export function createStreamSubscription(sessionId: string, handler: StreamEventHandler): () => void {
+  if (!isTauri()) {
+    logger.warn('[HermesChat] Not in Tauri environment, stream not available');
+    return () => {};
+  }
+
+  let unlisten: (() => void) | null = null;
+  const eventName = `chat-stream-${sessionId}`;
+
+  (async () => {
+    try {
+      const { listen } = await import('@tauri-apps/api/event');
+      unlisten = await listen<ChatStreamEvent>(eventName, (event) => {
+        handler(event.payload);
+      });
+    } catch (error) {
+      logger.error(`[HermesChat] Failed to subscribe to stream: ${error}`);
+    }
+  })();
+
+  return () => {
+    if (unlisten) {
+      unlisten();
+      unlisten = null;
+    }
   };
 }
 
-export type ChatStatus = 'idle' | 'thinking' | 'streaming' | 'complete' | 'error';
-
-export interface StreamCallbacks {
-  onStatus?: (status: string, message: string) => void;
-  onChunk?: (content: string, accumulated: string) => void;
-  onReasoning?: (text: string, accumulated: string) => void;
-  onTool?: (tool: { event_type: string; name: string; preview?: string; args?: Record<string, unknown>; duration?: number; is_error?: boolean }) => void;
-  onUsage?: (usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number }) => void;
-  onComplete?: (content: string, sessionId: string, usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number }, reasoning?: string) => void;
-  onError?: (error: Error) => void;
-  onApproval?: (approval: { id: string; command: string; description: string; allow_permanent: boolean; choices: string[] }) => void;
-  onClarify?: (clarify: { id: string; question: string; choices: string[]; is_open_ended: boolean }) => void;
-  onSecret?: (secret: { id: string; var_name: string; prompt: string; metadata: Record<string, unknown> }) => void;
-  onSessionCreated?: (sessionId: string) => void; // Called when session is created
+export async function interruptSession(sessionId: string): Promise<void> {
+  if (!isTauri()) return;
+  return wrapChatCall('interrupt_session', { session_id: sessionId }, 'interrupt_error');
 }
 
-/**
- * Check if Hermes API is available
- */
-export async function checkHermesApiHealth(): Promise<boolean> {
+export async function emitChatEvent(sessionId: string, event: ChatStreamEvent): Promise<void> {
   try {
-    const result = await invoke<boolean>('check_hermes_health');
-    logger.debug('[HermesChat] Health check result:', result);
-    return result;
+    await emit(`chat-stream-${sessionId}`, event);
   } catch (error) {
-    logger.error('[HermesChat] Health check error:', error);
+    logger.error(`[HermesChat] emitChatEvent failed: ${error}`);
+  }
+}
+
+export async function streamChatRealtime(
+  message: string,
+  sessionId: string | null,
+  _historyOrCallbacks?: Array<unknown> | StreamCallbacks,
+  callbacks?: StreamCallbacks
+): Promise<void> {
+  const resolvedCallbacks: StreamCallbacks = (callbacks ?? (_historyOrCallbacks && !Array.isArray(_historyOrCallbacks) ? _historyOrCallbacks as StreamCallbacks : {})) || {};
+
+  if (!isTauri()) {
+    logger.warn('[HermesChat] Not in Tauri environment, stream not available');
+    resolvedCallbacks.onComplete?.('[Mock response]', sessionId, {}, null);
+    return;
+  }
+
+  try {
+    resolvedCallbacks.onStatus?.('connecting');
+    await invoke('stream_chat_realtime', { message, session_id: sessionId });
+    resolvedCallbacks.onStatus?.('connected');
+  } catch (error) {
+    const detail = getErrorDetail(error);
+    logger.error(`[HermesChat] streamChatRealtime failed: ${detail}`);
+    resolvedCallbacks.onError?.(detail);
+  }
+}
+
+export async function checkHermesApiHealth(): Promise<boolean> {
+  if (!isTauri()) return false;
+
+  try {
+    const result = await invoke<{ status: string }>('check_hermes_health');
+    return result.status === 'ok' || result.status === 'healthy';
+  } catch (error) {
+    logger.error(`[HermesChat] checkHermesApiHealth failed: ${error}`);
     return false;
   }
 }
 
-/**
- * Send a chat message to Hermes Agent
- */
-export async function sendChatMessage(
-  message: string,
-  sessionId: string | undefined,
-  history: ChatMessage[] = []
-): Promise<{ response: string; sessionId: string }> {
-  logger.debug('[HermesChat] Sending message:', message.substring(0, 50));
-  logger.debug('[HermesChat] Session ID:', sessionId);
-
-  const messages = [
-    ...history.map(m => ({ role: m.role, content: m.content })),
-    { role: 'user' as const, content: message }
-  ];
-
-  try {
-    const response = await invoke<string>('stream_chat_message', {
-      messages,
-      session_id: sessionId || null,
-    });
-
-    logger.debug('[HermesChat] Raw response:', response);
-
-    // Parse hermes CLI output format: "session_id: <id>\n<response>"
-    const lines = response.split('\n');
-    let newSessionId = sessionId || '';
-    let responseContent = response;
-
-    if (lines[0]?.startsWith('session_id:')) {
-      newSessionId = lines[0].replace('session_id:', '').trim();
-      responseContent = lines.slice(1).join('\n').trim();
-    }
-
-    return {
-      response: responseContent,
-      sessionId: newSessionId,
-    };
-  } catch (error) {
-    logger.error('[HermesChat] Error:', error);
-    throw error;
-  }
+export async function respondApproval(approvalId: string, approved: boolean): Promise<void> {
+  if (!isTauri()) return;
+  return wrapChatCall('respond_approval', { approval_id: approvalId, approved }, 'approval_error');
 }
 
-/**
- * Respond to an approval request
- */
-export async function respondApproval(approvalId: string, choice: 'once' | 'session' | 'always' | 'deny'): Promise<void> {
-  logger.debug('[HermesChat] Responding to approval:', approvalId, choice);
-  try {
-    await invoke('respond_approval', { approval_id: approvalId, choice });
-  } catch (error) {
-    logger.error('[HermesChat] Failed to respond to approval:', error);
-    throw error;
-  }
+export async function respondClarify(clarifyId: string, response: string): Promise<void> {
+  if (!isTauri()) return;
+  return wrapChatCall('respond_clarify', { clarify_id: clarifyId, response }, 'clarify_error');
 }
 
-/**
- * Respond to a clarify question
- */
-export async function respondClarify(clarifyId: string, answer: string): Promise<void> {
-  logger.debug('[HermesChat] Responding to clarify:', clarifyId, answer);
-  try {
-    await invoke('respond_clarify', { clarify_id: clarifyId, answer });
-  } catch (error) {
-    logger.error('[HermesChat] Failed to respond to clarify:', error);
-    throw error;
-  }
-}
-
-/**
- * Respond to a secret capture request
- */
 export async function respondSecret(secretId: string, value: string): Promise<void> {
-  logger.debug('[HermesChat] Responding to secret:', secretId, value ? '***' : '(skipped)');
-  try {
-    await invoke('respond_secret', { secret_id: secretId, value });
-  } catch (error) {
-    logger.error('[HermesChat] Failed to respond to secret:', error);
-    throw error;
-  }
+  if (!isTauri()) return;
+  return wrapChatCall('respond_secret', { secret_id: secretId, value }, 'secret_error');
 }
 
-/**
- * Abort the currently running chat stream
- */
-export async function abortChat(): Promise<void> {
-  logger.debug('[HermesChat] Aborting chat...');
-  try {
-    await invoke('abort_chat');
-  } catch (error) {
-    logger.error('[HermesChat] Failed to abort chat:', error);
-    throw error;
-  }
-}
-
-/**
- * Stream a chat message with real-time events
- * This is the new streaming implementation with true real-time updates
- */
-export async function streamChatRealtime(
-  message: string,
-  sessionId: string | undefined,
-  history: ChatMessage[],
-  callbacks: StreamCallbacks
-): Promise<void> {
-  logger.debug('[HermesChat] Starting realtime stream:', message.substring(0, 50));
-  logger.debug('[HermesChat] Starting realtime stream, sessionId:', sessionId);
-
-  const messages = [
-    ...history.map(m => ({ role: m.role, content: m.content })),
-    { role: 'user' as const, content: message }
-  ];
-
-  // Set up event listeners
-  const unlisteners: UnlistenFn[] = [];
-  let fullContent = '';
-
-  // Maximum content size to prevent memory issues (10MB)
-  const MAX_CONTENT_SIZE = 10 * 1024 * 1024;
-
-  // Create a promise that resolves when chat:complete is received
-  let completeResolve: () => void;
-  const completePromise = new Promise<void>((resolve) => {
-    completeResolve = resolve;
-  });
-
-  try {
-    // Listen for status updates
-    unlisteners.push(
-      await listen<{ status: string; message: string }>('chat:status', (event) => {
-        logger.debug('[HermesChat] Status event:', event.payload);
-        callbacks.onStatus?.(event.payload.status, event.payload.message);
-      })
-    );
-
-    // Listen for content chunks
-    unlisteners.push(
-      await listen<{ content: string; accumulated: string }>('chat:chunk', (event) => {
-        logger.debug('[HermesChat] Chunk event:', event.payload);
-        // Limit accumulated content size to prevent memory issues
-        if (event.payload.accumulated.length <= MAX_CONTENT_SIZE) {
-          fullContent = event.payload.accumulated;
-          callbacks.onChunk?.(event.payload.content, fullContent);
-        } else {
-          logger.warn('[HermesChat] Content size exceeded limit, truncating');
-          fullContent = event.payload.accumulated.slice(0, MAX_CONTENT_SIZE);
-          callbacks.onChunk?.(event.payload.content, fullContent);
-        }
-      })
-    );
-
-    // Listen for reasoning
-    unlisteners.push(
-      await listen<{ text: string; accumulated: string }>('chat:reasoning', (event) => {
-        logger.debug('[HermesChat] Reasoning event:', event.payload);
-        // Limit reasoning size to prevent memory issues
-        if (event.payload.accumulated.length <= MAX_CONTENT_SIZE) {
-          callbacks.onReasoning?.(event.payload.text, event.payload.accumulated);
-        } else {
-          logger.warn('[HermesChat] Reasoning size exceeded limit');
-          callbacks.onReasoning?.(event.payload.text, event.payload.accumulated.slice(0, MAX_CONTENT_SIZE));
-        }
-      })
-    );
-
-    // Listen for tool calls
-    unlisteners.push(
-      await listen<{ event_type: string; name: string; preview?: string; args?: Record<string, unknown>; duration?: number; is_error?: boolean }>('chat:tool', (event) => {
-        logger.debug('[HermesChat] Tool event:', event.payload);
-        callbacks.onTool?.(event.payload);
-      })
-    );
-
-    // Listen for usage updates
-    unlisteners.push(
-      await listen<{ prompt_tokens: number; completion_tokens: number; total_tokens: number }>('chat:usage', (event) => {
-        logger.debug('[HermesChat] Usage event:', event.payload);
-        callbacks.onUsage?.(event.payload);
-      })
-    );
-
-    // Listen for completion
-    unlisteners.push(
-      await listen<{ id: string; content: string; reasoning?: string; usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number } }>('chat:complete', (event) => {
-        logger.debug('[HermesChat] Complete event:', event.payload);
-        logger.debug('[HermesChat] Complete content length:', event.payload.content?.length);
-        logger.debug('[HermesChat] Complete reasoning:', event.payload.reasoning?.substring(0, 100));
-        // Use accumulated content if event content is empty
-        const finalContent = event.payload.content || fullContent;
-        callbacks.onComplete?.(finalContent, event.payload.id, event.payload.usage, event.payload.reasoning);
-        // Resolve the promise to signal completion
-        completeResolve();
-      })
-    );
-
-    // Listen for errors
-    unlisteners.push(
-      await listen<{ error: string }>('chat:error', (event) => {
-        logger.error('[HermesChat] Error event:', event.payload);
-        callbacks.onError?.(new Error(event.payload.error));
-        // Also resolve on error to avoid hanging
-        completeResolve();
-      })
-    );
-
-    // Listen for approval requests
-    unlisteners.push(
-      await listen<{ id: string; command: string; description: string; allow_permanent: boolean; choices: string[] }>('chat:approval', (event) => {
-        logger.debug('[HermesChat] Approval event:', event.payload);
-        callbacks.onApproval?.(event.payload);
-      })
-    );
-
-    // Listen for clarify questions
-    unlisteners.push(
-      await listen<{ id: string; question: string; choices: string[]; is_open_ended: boolean }>('chat:clarify', (event) => {
-        logger.debug('[HermesChat] Clarify event:', event.payload);
-        callbacks.onClarify?.(event.payload);
-      })
-    );
-
-    // Listen for secret capture requests
-    unlisteners.push(
-      await listen<{ id: string; var_name: string; prompt: string; metadata: Record<string, unknown> }>('chat:secret', (event) => {
-        logger.debug('[HermesChat] Secret event:', event.payload.var_name);
-        callbacks.onSecret?.(event.payload);
-      })
-    );
-
-    // Listen for session creation (emitted immediately when session is created)
-    unlisteners.push(
-      await listen<{ session_id: string; created_at: number }>('chat:session', (event) => {
-        logger.debug('[HermesChat] Session created:', event.payload);
-        callbacks.onSessionCreated?.(event.payload.session_id);
-      })
-    );
-
-    logger.debug('[HermesChat] Invoking stream_chat_realtime command...');
-    // Call the streaming command
-    const result = await invoke<string>('stream_chat_realtime', {
-      messages,
-      session_id: sessionId || null,
-    });
-    logger.debug('[HermesChat] Command returned:', result);
-
-    // Wait for the chat:complete event before cleaning up listeners
-    // This ensures we don't miss the final event
-    await completePromise;
-
-  } catch (error) {
-    logger.error('[HermesChat] Stream error:', error);
-    callbacks.onError?.(error as Error);
-  } finally {
-    // Clean up all listeners
-    for (const unlisten of unlisteners) {
-      unlisten();
-    }
-  }
+export async function abortChat(sessionId: string): Promise<void> {
+  if (!isTauri()) return;
+  return wrapChatCall('abort_chat', { session_id: sessionId }, 'abort_error');
 }

@@ -128,7 +128,7 @@ export const SessionChat: React.FC<SessionChatProps> = ({
         },
         onTool: (tool) => {
           if (isStoppedRef.current) return;
-          streamingToolsRef.current = [...streamingToolsRef.current, tool];
+          streamingToolsRef.current = [...streamingToolsRef.current, tool as any];
           setStreamingTools([...streamingToolsRef.current]);
         },
         onComplete: (content, _newSessionId, usage) => {
@@ -148,9 +148,9 @@ export const SessionChat: React.FC<SessionChatProps> = ({
             reasoning: finalReasoning || undefined,
             tools: finalTools,
             timestamp: new Date().toISOString(),
-            inputTokens: usage?.prompt_tokens,
-            outputTokens: usage?.completion_tokens,
-            totalTokens: usage?.total_tokens,
+            inputTokens: (usage as any)?.prompt_tokens ?? (usage as any)?.input_tokens,
+            outputTokens: (usage as any)?.completion_tokens ?? (usage as any)?.output_tokens,
+            totalTokens: (usage as any)?.total_tokens,
           };
           setMessages(prev => [...prev, assistantMsg]);
 
@@ -168,7 +168,7 @@ export const SessionChat: React.FC<SessionChatProps> = ({
           const errorMsg: ChatMessage = {
             id: nextId(),
             role: 'assistant',
-            content: `${t('chat.error')}: ${error.message}. ${t('chat.ensureGateway')}`,
+            content: `${t('chat.error')}: ${error instanceof Error ? error.message : String(error)}. ${t('chat.ensureGateway')}`,
             timestamp: new Date().toISOString(),
           };
           setMessages(prev => [...prev, errorMsg]);
@@ -182,7 +182,7 @@ export const SessionChat: React.FC<SessionChatProps> = ({
         onApproval: (approval) => {
           if (isStoppedRef.current) return;
           // Auto-deny for SessionChat (no permission UI)
-          respondApproval(approval.id, 'deny').catch(() => {});
+          respondApproval((approval as any).id, false).catch(() => {});
         },
       });
     } catch (error) {
@@ -207,7 +207,7 @@ export const SessionChat: React.FC<SessionChatProps> = ({
     isStoppedRef.current = true;
     setIsStreaming(false);
     try {
-      await abortChat();
+      await abortChat(session.id);
     } catch (error) {
       logger.error('[SessionChat] Failed to abort chat:', error);
     }
