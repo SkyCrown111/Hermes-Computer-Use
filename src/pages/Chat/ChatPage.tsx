@@ -371,7 +371,6 @@ export const ChatPage: React.FC<ChatPageProps> = ({
       logger.debug('[ChatPage] Stopping current stream to send new message');
       isStoppedRef.current = true;
       setStreaming(effectiveSessionId, false);
-      setStreamingText(effectiveSessionId, '');
       // Clear streaming tools to prevent duplication
       clearStreamingTools(effectiveSessionId);
       // Abort the backend process
@@ -394,7 +393,6 @@ export const ChatPage: React.FC<ChatPageProps> = ({
 
     isStoppedRef.current = false;
     clearStreamingTools(requestSessionId);
-    setStreamingText(requestSessionId, '');
 
     // Add user message to chatStore
     addMessage(requestSessionId, {
@@ -457,8 +455,6 @@ export const ChatPage: React.FC<ChatPageProps> = ({
             setStreamingText(targetSessionId, '');
             clearReasoningText(targetSessionId);
             setStreaming(targetSessionId, false);
-            setStreamingText(targetSessionId, '');
-            clearStreamingTools(targetSessionId);
 
             // Add complete assistant message
             const currentMessages = currentSession?.messages;
@@ -573,7 +569,6 @@ export const ChatPage: React.FC<ChatPageProps> = ({
     const currentStreamingText = currentSession?.streamingText || '';
 
     setStreaming(targetSessionId, false);
-    setStreamingText(targetSessionId, '');
 
     // Get the last message from the current store state (not closure)
     const currentMessages = currentSession?.messages;
