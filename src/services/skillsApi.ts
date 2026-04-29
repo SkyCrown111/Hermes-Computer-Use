@@ -1,4 +1,5 @@
 import { apiClient, getErrorDetail } from './apiClient';
+import { logger } from '../lib/logger';
 import type {
   Skill,
   SkillDetail,
@@ -10,7 +11,6 @@ import type {
   Toolset,
 } from '../types/skill';
 import type { ApiOkResponse } from '../types/common';
-import { logger } from '../lib/logger';
 
 export async function listSkills(): Promise<Skill[]> {
   try {
@@ -93,7 +93,8 @@ export async function getToolsets(): Promise<Toolset[]> {
 export async function getSkillsPath(): Promise<string> {
   try {
     return await apiClient.invoke<string>('get_skills_path');
-  } catch {
+  } catch (error) {
+    logger.debug('[Skills] getSkillsPath failed, using default:', getErrorDetail(error));
     return '~/.hermes/skills';
   }
 }

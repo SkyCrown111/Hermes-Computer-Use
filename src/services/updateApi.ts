@@ -32,7 +32,8 @@ export async function getCurrentVersion(): Promise<string> {
   try {
     _currentVersion = await getVersion();
     return _currentVersion;
-  } catch {
+  } catch (error) {
+    logger.debug('[Update] getCurrentVersion failed, using fallback:', error);
     _currentVersion = '0.1.1';
     return _currentVersion;
   }

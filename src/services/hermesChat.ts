@@ -42,17 +42,55 @@ export interface SendMessageResponse {
   estimated_cost_usd?: number;
 }
 
+export interface StreamToolEvent {
+  name: string;
+  event_type: string;
+  preview?: string;
+  args?: Record<string, unknown>;
+  duration?: number;
+  is_error?: boolean;
+}
+
+export interface StreamUsageEvent {
+  prompt_tokens?: number;
+  input_tokens?: number;
+  completion_tokens?: number;
+  output_tokens?: number;
+  total_tokens?: number;
+}
+
+export interface StreamApprovalEvent {
+  id: string;
+  command: string;
+  description: string;
+  allow_permanent: boolean;
+}
+
+export interface StreamClarifyEvent {
+  id: string;
+  question: string;
+  choices: string[];
+  is_open_ended: boolean;
+}
+
+export interface StreamSecretEvent {
+  id: string;
+  var_name: string;
+  prompt: string;
+  metadata: Record<string, unknown>;
+}
+
 export interface StreamCallbacks {
   onStatus?: (status: string, message?: string) => void;
   onChunk?: (chunk: string, accumulated: string) => void;
   onReasoning?: (text: string, accumulated: string) => void;
-  onTool?: (tool: Record<string, unknown>) => void;
-  onUsage?: (usage: Record<string, unknown>) => void;
-  onComplete?: (content: string, newSessionId: string | null, usage: Record<string, unknown> | null, reasoning: string | null) => void;
+  onTool?: (tool: StreamToolEvent) => void;
+  onUsage?: (usage: StreamUsageEvent) => void;
+  onComplete?: (content: string, newSessionId: string | null, usage: StreamUsageEvent | null, reasoning: string | null) => void;
   onError?: (error: string | Error | unknown) => void;
-  onApproval?: (approval: Record<string, unknown>) => void;
-  onClarify?: (clarify: Record<string, unknown>) => void;
-  onSecret?: (secret: Record<string, unknown>) => void;
+  onApproval?: (approval: StreamApprovalEvent) => void;
+  onClarify?: (clarify: StreamClarifyEvent) => void;
+  onSecret?: (secret: StreamSecretEvent) => void;
   onSessionCreated?: (newSessionId: string) => void;
 }
 
@@ -174,27 +212,27 @@ export async function streamChatRealtime(
     }));
     
     // Listen for tool events
-    unlisteners.push(await listen<Record<string, unknown>>('chat:tool', (event) => {
+    unlisteners.push(await listen<StreamToolEvent>('chat:tool', (event) => {
       resolvedCallbacks.onTool?.(event.payload);
     }));
-    
+
     // Listen for approval events
-    unlisteners.push(await listen<Record<string, unknown>>('chat:approval', (event) => {
+    unlisteners.push(await listen<StreamApprovalEvent>('chat:approval', (event) => {
       resolvedCallbacks.onApproval?.(event.payload);
     }));
-    
+
     // Listen for clarify events
-    unlisteners.push(await listen<Record<string, unknown>>('chat:clarify', (event) => {
+    unlisteners.push(await listen<StreamClarifyEvent>('chat:clarify', (event) => {
       resolvedCallbacks.onClarify?.(event.payload);
     }));
-    
+
     // Listen for secret events
-    unlisteners.push(await listen<Record<string, unknown>>('chat:secret', (event) => {
+    unlisteners.push(await listen<StreamSecretEvent>('chat:secret', (event) => {
       resolvedCallbacks.onSecret?.(event.payload);
     }));
-    
+
     // Listen for usage events
-    unlisteners.push(await listen<Record<string, unknown>>('chat:usage', (event) => {
+    unlisteners.push(await listen<StreamUsageEvent>('chat:usage', (event) => {
       resolvedCallbacks.onUsage?.(event.payload);
     }));
     

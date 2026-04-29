@@ -1,6 +1,6 @@
 import { useRef, useCallback } from 'react';
 import { streamChatRealtime, respondApproval, abortChat } from '../services/hermesChat';
-import type { StreamCallbacks } from '../services/hermesChat';
+import type { StreamCallbacks, StreamToolEvent, StreamUsageEvent, StreamApprovalEvent } from '../services/hermesChat';
 import { getErrorMessage } from '../lib/errorUtils';
 import { logger } from '../lib/logger';
 
@@ -8,10 +8,10 @@ export interface StreamChatOptions {
   sessionId: string | null;
   onContentChunk?: (chunk: string, accumulated: string) => void;
   onReasoningChunk?: (text: string, accumulated: string) => void;
-  onToolCall?: (tool: Record<string, unknown>) => void;
+  onToolCall?: (tool: StreamToolEvent) => void;
   onComplete?: (result: StreamCompleteResult) => void;
   onError?: (error: string) => void;
-  onApproval?: (approval: Record<string, unknown>) => void;
+  onApproval?: (approval: StreamApprovalEvent) => void;
   onStatusChange?: (status: 'idle' | 'streaming' | 'done' | 'error') => void;
   autoDenyApprovals?: boolean;
 }
@@ -19,8 +19,8 @@ export interface StreamChatOptions {
 export interface StreamCompleteResult {
   content: string;
   reasoning: string | null;
-  tools: Record<string, unknown>[];
-  usage: Record<string, unknown> | null;
+  tools: StreamToolEvent[];
+  usage: StreamUsageEvent | null;
   newSessionId: string | null;
 }
 
@@ -40,7 +40,7 @@ export function useStreamChat(options: StreamChatOptions) {
   const isStoppedRef = useRef(false);
   const streamingContentRef = useRef('');
   const streamingReasoningRef = useRef('');
-  const streamingToolsRef = useRef<Record<string, unknown>[]>([]);
+  const streamingToolsRef = useRef<StreamToolEvent[]>([]);
 
   const resetStreamingState = useCallback(() => {
     streamingContentRef.current = '';
@@ -70,8 +70,8 @@ export function useStreamChat(options: StreamChatOptions) {
       },
       onTool: (tool) => {
         if (isStoppedRef.current) return;
-        streamingToolsRef.current = [...streamingToolsRef.current, tool as Record<string, unknown>];
-        onToolCall?.(tool as Record<string, unknown>);
+        streamingToolsRef.current = [...streamingToolsRef.current, tool];
+        onToolCall?.(tool);
       },
       onComplete: (content, newSessionId, usage, reasoning) => {
         if (isStoppedRef.current) return;
@@ -95,9 +95,9 @@ export function useStreamChat(options: StreamChatOptions) {
       onApproval: (approval) => {
         if (isStoppedRef.current) return;
         if (autoDenyApprovals) {
-          respondApproval((approval as Record<string, unknown>).id as string, false).catch(() => {});
+          respondApproval(approval.id, false).catch((err) => logger.error('[useStreamChat] Auto-deny approval failed:', err));
         } else {
-          onApproval?.(approval as Record<string, unknown>);
+          onApproval?.(approval);
         }
       },
     };

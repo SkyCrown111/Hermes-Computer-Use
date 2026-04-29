@@ -38,10 +38,8 @@ src-tauri/target
 Thumbs.db
 .DS_Store
 
-# Test files
+# Test scripts (not test source files)
 test.ps1
-*.test.ts
-*.spec.ts
 
 # Temporary files
 *.tmp
