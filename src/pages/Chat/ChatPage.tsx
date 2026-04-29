@@ -426,22 +426,22 @@ export const ChatPage: React.FC<ChatPageProps> = ({
         initialHistoryForApi,
         {
           onChunk: (_chunk, accumulated) => {
-            if (isStoppedRef.current || !isMountedRef.current) return;
+            if (isStoppedRef.current) return;
             const targetSessionId = getStreamSessionId();
             setStreamingText(targetSessionId, accumulated);
           },
           onReasoning: (_text, accumulated) => {
-            if (isStoppedRef.current || !isMountedRef.current) return;
+            if (isStoppedRef.current) return;
             const targetSessionId = getStreamSessionId();
             setReasoningText(targetSessionId, accumulated);
           },
           onTool: (tool) => {
-            if (isStoppedRef.current || !isMountedRef.current) return;
+            if (isStoppedRef.current) return;
             const targetSessionId = getStreamSessionId();
             useChatStore.getState().addStreamingTool(targetSessionId, tool);
           },
           onComplete: (content, newSessionId, usage) => {
-            if (isStoppedRef.current || !isMountedRef.current) return;
+            if (isStoppedRef.current) return;
 
             let targetSessionId = getStreamSessionId();
             if (newSessionId) {
@@ -490,7 +490,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({
             }
           },
           onError: (error) => {
-            if (isStoppedRef.current || !isMountedRef.current) return;
+            if (isStoppedRef.current) return;
             const targetSessionId = getStreamSessionId();
             setStreamingText(targetSessionId, '');
             clearReasoningText(targetSessionId);
@@ -514,13 +514,10 @@ export const ChatPage: React.FC<ChatPageProps> = ({
             }
           },
           onApproval: (approval) => {
-            if (!isMountedRef.current) return;
             // Auto-deny in CLI mode
             respondApproval(approval.id, false).catch((err) => logger.error('[ChatPage] Auto-deny approval failed:', err));
           },
           onSessionCreated: (newSessionId) => {
-            if (!isMountedRef.current) return;
-
             if (requestSessionId.startsWith('new_')) {
               registerSessionMigration(requestSessionId, newSessionId);
               streamSessionId = newSessionId;
@@ -533,7 +530,6 @@ export const ChatPage: React.FC<ChatPageProps> = ({
         }
       );
     } catch (error) {
-      if (!isMountedRef.current) return;
       logger.error('[ChatPage] Error:', error);
       const targetSessionId = getStreamSessionId();
       setStreaming(targetSessionId, false);
