@@ -3,9 +3,10 @@ import React, { useState, memo } from 'react';
 interface ThinkingBlockProps {
   content: string;
   isActive?: boolean;
+  label?: string;
 }
 
-const ThinkingBlockComponent: React.FC<ThinkingBlockProps> = ({ content, isActive }) => {
+const ThinkingBlockComponent: React.FC<ThinkingBlockProps> = ({ content, isActive, label = 'Thinking' }) => {
   const [expanded, setExpanded] = useState(false);
   const lines = content.split('\n').filter(l => l.trim());
   const firstLine = lines[0]?.replace(/\s+/g, ' ').trim() || '';
@@ -19,7 +20,7 @@ const ThinkingBlockComponent: React.FC<ThinkingBlockProps> = ({ content, isActiv
       >
         <span className="thinking-block-arrow">{expanded ? '▾' : '▸'}</span>
         <span className="thinking-block-label">
-          思考过程
+          {label}
           {isActive && <span className="thinking-dots-animate" />}
         </span>
         {!expanded && preview && (

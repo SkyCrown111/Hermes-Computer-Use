@@ -1,10 +1,12 @@
 import React, { useRef, useEffect, useMemo, memo } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { MessageContent } from './MessageContent';
+import { ThinkingBlock } from './ThinkingBlock';
+import { MarkdownRenderer } from '../ui/MarkdownRenderer/MarkdownRenderer';
 import { parseToolJson } from './parseToolJson';
 import type { SessionSearchResult } from './constants';
 import type { ChatMessage } from '../../stores/chatStore';
-import { ZapIcon, AlertIcon } from '../../components';
+import { ZapIcon, AlertIcon, BotIcon } from '../../components';
 
 // ---- Types ----
 
@@ -30,6 +32,8 @@ export interface MessageListProps {
   visibleMessages: ChatMessage[];
   shouldVirtualize: boolean;
   isStreaming: boolean;
+  streamingText?: string;
+  reasoningText?: string;
   streamingTools: ToolCallInfo[];
   pendingPermission: PermissionApproval | null;
   apiAvailable: boolean | null;
@@ -65,6 +69,8 @@ const MessageListComponent: React.FC<MessageListProps> = ({
   visibleMessages,
   shouldVirtualize,
   isStreaming,
+  streamingText,
+  reasoningText,
   streamingTools,
   apiAvailable,
   showMessageSearch,
@@ -138,10 +144,25 @@ const MessageListComponent: React.FC<MessageListProps> = ({
     el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [activeMatchIndex, messageMatchIndices, messages]);
 
-  // Auto-scroll to bottom on new messages
+  // Auto-scroll: only when user is already near the bottom
+  const isNearBottomRef = useRef(true);
+
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      isNearBottomRef.current = scrollHeight - scrollTop - clientHeight < 150;
+    };
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  useEffect(() => {
+    if (isNearBottomRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, streamingText, streamingTools]);
 
   return (
     <>
@@ -291,28 +312,52 @@ const MessageListComponent: React.FC<MessageListProps> = ({
           })
         )}
 
-        {/* Streaming tools - displayed during active streaming */}
-        {isStreaming && streamingTools.length > 0 && (
-          <div className="streaming-tools">
-            {streamingTools.map((tool, i) => (
-              <div key={i} className="streaming-tool-item">
-                <span className="streaming-tool-icon">⚙️</span>
-                <span className="streaming-tool-name">{tool.name || 'tool'}</span>
-                {tool.preview && <span className="streaming-tool-preview">{tool.preview}</span>}
-              </div>
-            ))}
-          </div>
-        )}
+        {/* Streaming message — live display during generation */}
+        {isStreaming && (streamingText || reasoningText || streamingTools.length > 0) && (
+          <div className="chat-message assistant streaming-message">
+            <div className="message-avatar">
+              <BotIcon size={16} />
+            </div>
+            <div className="message-body">
+              {/* Streaming tools */}
+              {streamingTools.length > 0 && (
+                <div className="streaming-tools">
+                  {streamingTools.map((tool, i) => (
+                    <div key={i} className="streaming-tool-item">
+                      <span className="material-symbols-outlined streaming-tool-icon">
+                        {tool.is_error ? 'error' : tool.event_type === 'tool.completed' ? 'check_circle' : 'sync'}
+                      </span>
+                      <span className="streaming-tool-name">{tool.name || 'tool'}</span>
+                      {tool.preview && <span className="streaming-tool-preview">{tool.preview}</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
 
-        {/* CLI-style processing indicator */}
-        {isStreaming && (
-          <div className="cli-processing">
-            <span className="cli-processing-dots">
-              <span></span>
-              <span></span>
-              <span></span>
-            </span>
-            <span className="cli-processing-text">processing</span>
+              {/* Reasoning / thinking block */}
+              {reasoningText && (
+                <ThinkingBlock content={reasoningText} isActive={true} />
+              )}
+
+              {/* Streaming text with cursor */}
+              {streamingText && (
+                <div className="message-text streaming-text">
+                  <MarkdownRenderer content={streamingText} />
+                  <span className="streaming-cursor">{'▌'}</span>
+                </div>
+              )}
+
+              {/* Show processing dots only when no text yet */}
+              {!streamingText && !reasoningText && streamingTools.length === 0 && (
+                <div className="cli-processing">
+                  <span className="cli-processing-dots">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
         )}
 

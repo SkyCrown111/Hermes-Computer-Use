@@ -32,17 +32,17 @@ const ToolsBlockComponent: React.FC<ToolsBlockProps> = ({ tools, isStreaming }) 
         className="tools-block-header"
       >
         <span className="material-symbols-outlined tools-block-icon">build</span>
-        <span className="tools-block-title">工具调用</span>
-        <span className="tools-block-count">{tools.length} 个</span>
+        <span className="tools-block-title">Tool Calls</span>
+        <span className="tools-block-count">{tools.length}</span>
         <span className="tools-block-spacer" />
         {runningCount > 0 && (
-          <span className="tools-block-status running">{runningCount} 运行中</span>
+          <span className="tools-block-status running">{runningCount} running</span>
         )}
         {completedCount > 0 && (
-          <span className="tools-block-status">{completedCount} 完成</span>
+          <span className="tools-block-status">{completedCount} done</span>
         )}
         {errorCount > 0 && (
-          <span className="tools-block-status error">{errorCount} 错误</span>
+          <span className="tools-block-status error">{errorCount} failed</span>
         )}
         <span className="material-symbols-outlined tools-block-expand">
           {expanded ? 'expand_less' : 'expand_more'}
