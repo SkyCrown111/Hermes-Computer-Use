@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { useTranslation } from '../../hooks/useTranslation';
 import { PlusIcon, PlayIcon, StopIcon, XIcon } from '../ui/Icons';
 import { logger } from '../../lib/logger';
@@ -45,7 +45,7 @@ const getHermesCommands = (t: (key: string) => string) => [
 export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
   ({ onSendMessage, onStop, isStreaming, hasPendingPermission }, ref) => {
     const { t } = useTranslation();
-    const HERMES_COMMANDS = getHermesCommands(t);
+    const HERMES_COMMANDS = useMemo(() => getHermesCommands(t), [t]);
 
     // ---- State ----
     const [inputValue, setInputValue] = useState('');
@@ -89,9 +89,21 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 
     // ---- Handlers ----
 
+    // Auto-resize textarea to fit content
+    const resizeTextarea = useCallback(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.style.height = 'auto';
+      const maxHeight = 200; // ~8 lines
+      el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`;
+    }, []);
+
     const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       const value = e.target.value;
       setInputValue(value);
+
+      // Auto-resize
+      requestAnimationFrame(resizeTextarea);
 
       // Check for slash command
       if (value.startsWith('/')) {
@@ -116,9 +128,13 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
   const handleSend = () => {
       if (!inputValue.trim()) return;
 
+      // Reset textarea height
+      if (inputRef.current) {
+        inputRef.current.style.height = 'auto';
+      }
+
       // CLI behavior: if streaming, let parent handle abort+resend
       if (isStreaming && !hasPendingPermission) {
-        // Let parent handle abort+resend
         const text = inputValue.trim();
         const files = attachedFiles;
         setInputValue('');

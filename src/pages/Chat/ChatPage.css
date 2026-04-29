@@ -366,6 +366,35 @@
   box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.1);
 }
 
+/* Streaming message bubble (live during generation) */
+.streaming-message {
+  opacity: 0.95;
+}
+
+.streaming-message .message-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.streaming-message .streaming-text {
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 0 0 2px rgba(143, 72, 47, 0.15);
+}
+
+.streaming-cursor {
+  display: inline-block;
+  animation: blink-cursor 1s step-end infinite;
+  color: var(--color-primary);
+  font-size: 14px;
+  margin-left: 2px;
+  user-select: none;
+}
+
+@keyframes blink-cursor {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
 .typing-indicator {
   display: inline-block;
   animation: pulse 1.5s ease-in-out infinite;
@@ -469,7 +498,13 @@
 }
 
 .streaming-tool-icon {
-  font-size: 14px;
+  font-size: 16px;
+  color: var(--color-primary);
+}
+
+.streaming-tool-icon[aria-label="error"],
+.streaming-tool-item.error .streaming-tool-icon {
+  color: var(--color-error, #ef4444);
 }
 
 .streaming-tool-name {
@@ -1855,8 +1890,9 @@
   font-family: var(--font-body);
   line-height: 1.6;
   resize: none;
-  min-height: 100px;
-  max-height: 300px;
+  min-height: 44px;
+  max-height: 200px;
+  overflow-y: auto;
   outline: none;
 }
 

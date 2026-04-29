@@ -36,7 +36,7 @@ const ToolItemComponent: React.FC<ToolItemProps> = ({ tool, isStreaming }) => {
         )}
         <span className="tool-item-spacer" />
         {isRunning && (
-          <span className="tool-item-status running">运行中...</span>
+          <span className="tool-item-status running">Running...</span>
         )}
         {!isRunning && !tool.is_error && (
           <span className="tool-item-status success">
@@ -47,7 +47,7 @@ const ToolItemComponent: React.FC<ToolItemProps> = ({ tool, isStreaming }) => {
         {tool.is_error && (
           <span className="tool-item-status error">
             <span className="material-symbols-outlined">error</span>
-            失败
+            Failed
           </span>
         )}
         {canShowDiff && (
