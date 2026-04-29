@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//d/Aiagent/Hermes/hermes-console/hermes-app/**)",
+      "mcp__plugin_everything-claude-code_github__list_pull_requests"
+    ]
+  }
+}
