@@ -25,7 +25,7 @@ const ToolItemComponent: React.FC<ToolItemProps> = ({ tool, isStreaming }) => {
 
   return (
     <div className={`tool-item ${tool.is_error ? 'error' : 'success'}`}>
-      <div className="tool-item-header" onClick={() => canShowDiff && setShowDiff(!showDiff)}>
+      <div className="tool-item-header" onClick={() => canShowDiff && setShowDiff(!showDiff)} {...(canShowDiff ? { role: 'button', tabIndex: 0, onKeyDown: (e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setShowDiff(!showDiff); } } } : {})}>
         <span className="material-symbols-outlined tool-item-icon">{icon}</span>
         <span className="tool-item-name">{tool.name}</span>
         {filePath && (

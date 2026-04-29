@@ -95,44 +95,39 @@ export const Files: React.FC = () => {
   // Virtual list ref for file browser
   const fileListRef = useRef<HTMLDivElement>(null);
 
-  // 使用 filesStore
-  const {
-    // 状态
-    currentPath,
-    directoryContent,
-    isLoadingDirectory,
-    currentFile,
-    editState,
-    searchQuery,
-    searchResults,
-    selectedFiles,
-    error,
-    favoriteFiles,
-    recentFiles,
-
-    // Actions
-    navigateTo,
-    refreshDirectory,
-    goUp,
-    openFile,
-    closeFile,
-    startEdit,
-    cancelEdit,
-    updateEditContent,
-    saveFile,
-    createFile,
-    deleteFile,
-    selectFile,
-    selectAll,
-    deselectAll,
-    searchFiles,
-    clearSearch,
-    loadFavorites,
-    loadRecentFiles,
-    addFavorite,
-    removeFavorite,
-    clearError,
-  } = useFilesStore();
+  // 使用 filesStore — individual selectors to avoid unnecessary re-renders
+  const currentPath = useFilesStore(s => s.currentPath);
+  const directoryContent = useFilesStore(s => s.directoryContent);
+  const isLoadingDirectory = useFilesStore(s => s.isLoadingDirectory);
+  const currentFile = useFilesStore(s => s.currentFile);
+  const editState = useFilesStore(s => s.editState);
+  const searchQuery = useFilesStore(s => s.searchQuery);
+  const searchResults = useFilesStore(s => s.searchResults);
+  const selectedFiles = useFilesStore(s => s.selectedFiles);
+  const error = useFilesStore(s => s.error);
+  const favoriteFiles = useFilesStore(s => s.favoriteFiles);
+  const recentFiles = useFilesStore(s => s.recentFiles);
+  const navigateTo = useFilesStore(s => s.navigateTo);
+  const refreshDirectory = useFilesStore(s => s.refreshDirectory);
+  const goUp = useFilesStore(s => s.goUp);
+  const openFile = useFilesStore(s => s.openFile);
+  const closeFile = useFilesStore(s => s.closeFile);
+  const startEdit = useFilesStore(s => s.startEdit);
+  const cancelEdit = useFilesStore(s => s.cancelEdit);
+  const updateEditContent = useFilesStore(s => s.updateEditContent);
+  const saveFile = useFilesStore(s => s.saveFile);
+  const createFile = useFilesStore(s => s.createFile);
+  const deleteFile = useFilesStore(s => s.deleteFile);
+  const selectFile = useFilesStore(s => s.selectFile);
+  const selectAll = useFilesStore(s => s.selectAll);
+  const deselectAll = useFilesStore(s => s.deselectAll);
+  const searchFiles = useFilesStore(s => s.searchFiles);
+  const clearSearch = useFilesStore(s => s.clearSearch);
+  const loadFavorites = useFilesStore(s => s.loadFavorites);
+  const loadRecentFiles = useFilesStore(s => s.loadRecentFiles);
+  const addFavorite = useFilesStore(s => s.addFavorite);
+  const removeFavorite = useFilesStore(s => s.removeFavorite);
+  const clearError = useFilesStore(s => s.clearError);
 
   // 初始化加载
   useEffect(() => {
@@ -252,7 +247,7 @@ export const Files: React.FC = () => {
   }, [cacheItems]);
 
   // 切换工作区
-  const handleWorkspaceChange = (workspaceId: string) => {
+  const handleWorkspaceChange = useCallback((workspaceId: string) => {
     const workspace = workspaces.find(ws => ws.id === workspaceId);
     if (workspace) {
       setWorkspaces(prev => prev.map(ws => ({
@@ -261,10 +256,10 @@ export const Files: React.FC = () => {
       })));
       navigateTo(workspace.path);
     }
-  };
+  }, [workspaces, navigateTo]);
 
   // 添加工作区
-  const handleAddWorkspace = async () => {
+  const handleAddWorkspace = useCallback(async () => {
     if (!newWorkspaceName.trim() || !newWorkspacePath.trim()) {
       toast.error(t('files.workspaceNameRequired') || 'Please enter workspace name and path');
       return;
@@ -280,10 +275,10 @@ export const Files: React.FC = () => {
     } else {
       toast.error(result.message);
     }
-  };
+  }, [newWorkspaceName, newWorkspacePath, t]);
 
   // 移除工作区
-  const handleRemoveWorkspace = async (id: string) => {
+  const handleRemoveWorkspace = useCallback(async (id: string) => {
     const result = await filesApi.removeWorkspace(id);
     if (result.success) {
       const stored = await filesApi.getWorkspaces();
@@ -296,10 +291,10 @@ export const Files: React.FC = () => {
       }
       toast.success(t('files.workspaceRemoved') || 'Workspace removed');
     }
-  };
+  }, [navigateTo, t]);
 
   // 切换收藏状态
-  const handleToggleFavorite = async (path: string) => {
+  const handleToggleFavorite = useCallback(async (path: string) => {
     const isFav = favoriteFiles.some(f => f.path === path);
     if (isFav) {
       await removeFavorite(path);
@@ -308,54 +303,54 @@ export const Files: React.FC = () => {
       await addFavorite(path);
       toast.success(t('files.favoriteAdded') || 'Added to favorites');
     }
-  };
+  }, [favoriteFiles, removeFavorite, addFavorite, t]);
 
   // 清除最近文件
-  const handleClearRecentFiles = async () => {
+  const handleClearRecentFiles = useCallback(async () => {
     await filesApi.clearRecentFiles();
     loadRecentFiles();
     toast.success(t('files.recentCleared') || 'Recent files cleared');
-  };
+  }, [loadRecentFiles, t]);
 
   // 切换文件选择
-  const handleToggleFileSelection = (path: string, multi: boolean = false) => {
+  const handleToggleFileSelection = useCallback((path: string, multi: boolean = false) => {
     selectFile(path, multi);
-  };
+  }, [selectFile]);
 
   // 全选/取消全选
-  const handleToggleSelectAll = () => {
+  const handleToggleSelectAll = useCallback(() => {
     if (selectedFiles.size === filteredFiles.length && filteredFiles.length > 0) {
       deselectAll();
     } else {
       selectAll();
     }
-  };
+  }, [selectedFiles.size, filteredFiles.length, deselectAll, selectAll]);
 
   // 切换排序
-  const handleSort = (field: 'name' | 'size' | 'modified') => {
+  const handleSort = useCallback((field: 'name' | 'size' | 'modified') => {
     if (sortBy === field) {
       setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
     } else {
       setSortBy(field);
       setSortOrder('asc');
     }
-  };
+  }, [sortBy]);
 
   // 清除缓存
-  const handleClearCache = async (type?: 'file' | 'search' | 'metadata') => {
+  const handleClearCache = useCallback(async (type?: 'file' | 'search' | 'metadata') => {
     await filesApi.clearCache(type);
     if (type) {
       setCacheItems(prev => prev.filter(item => item.type !== type));
     } else {
       setCacheItems([]);
     }
-  };
+  }, []);
 
   // 删除缓存项
-  const handleDeleteCacheItem = async (key: string) => {
+  const handleDeleteCacheItem = useCallback(async (key: string) => {
     await filesApi.deleteCacheItem(key);
     setCacheItems(prev => prev.filter(item => item.key !== key));
-  };
+  }, []);
 
   // 处理搜索
   const handleSearch = useCallback((query: string) => {
@@ -367,7 +362,7 @@ export const Files: React.FC = () => {
   }, [searchFiles, clearSearch]);
 
   // 处理文件操作
-  const handleViewFile = async (path: string) => {
+  const handleViewFile = useCallback(async (path: string) => {
     await openFile(path);
     // Track in recent files
     await filesApi.addRecentFile(path);
@@ -377,9 +372,9 @@ export const Files: React.FC = () => {
       size: 0,
       type: 'file',
     });
-  };
+  }, [openFile]);
 
-  const handleEditFile = async (path: string) => {
+  const handleEditFile = useCallback(async (path: string) => {
     await openFile(path);
     startEdit();
     // Track in recent files
@@ -390,38 +385,38 @@ export const Files: React.FC = () => {
       size: 0,
       type: 'file',
     });
-  };
+  }, [openFile, startEdit]);
 
-  const handleDeleteFile = async (path: string) => {
+  const handleDeleteFile = useCallback(async (path: string) => {
     setDeleteConfirm({ path });
-  };
+  }, []);
 
-  const confirmDelete = async () => {
+  const confirmDelete = useCallback(async () => {
     if (deleteConfirm) {
       await deleteFile(deleteConfirm.path);
       setDeleteConfirm(null);
     }
-  };
+  }, [deleteConfirm, deleteFile]);
 
   // 处理新建文件
-  const handleCreateFile = async (name: string) => {
+  const handleCreateFile = useCallback(async (name: string) => {
     const isDirectory = name.endsWith('/');
     await createFile(name, isDirectory ? 'directory' : 'file');
     setNewFileModal(false);
-  };
+  }, [createFile]);
 
   // 处理新建文件夹
-  const handleCreateFolder = async (name: string) => {
+  const handleCreateFolder = useCallback(async (name: string) => {
     await createFile(name, 'directory');
     setNewFolderModal(false);
-  };
+  }, [createFile]);
 
   // 处理文件上传
-  const handleUploadClick = () => {
+  const handleUploadClick = useCallback(() => {
     fileInputRef.current?.click();
-  };
+  }, []);
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -437,11 +432,11 @@ export const Files: React.FC = () => {
           const targetPath = `${currentPath}/${file.name}`.replace('//', '/');
 
           await filesApi.uploadFile(targetPath, base64Content);
-          toast.success(`文件 ${file.name} 上传成功`);
+          toast.success(`${file.name} ${t('nav.home') === 'Home' ? 'uploaded successfully' : '上传成功'}`);
           refreshDirectory();
         } catch (err) {
           logger.error('[Files] Upload failed:', err);
-          toast.error(`上传失败: ${getErrorMessage(err)}`);
+          toast.error(`${t('nav.home') === 'Home' ? 'Upload failed' : '上传失败'}: ${getErrorMessage(err)}`);
         } finally {
           setIsUploading(false);
         }
@@ -449,16 +444,16 @@ export const Files: React.FC = () => {
       reader.readAsDataURL(file);
     } catch (err) {
       logger.error('[Files] Upload failed:', err);
-      toast.error(`上传失败: ${getErrorMessage(err)}`);
+      toast.error(`${t('nav.home') === 'Home' ? 'Upload failed' : '上传失败'}: ${getErrorMessage(err)}`);
       setIsUploading(false);
     }
 
     // Reset file input
     e.target.value = '';
-  };
+  }, [currentPath, refreshDirectory, t]);
 
   // 处理文件下载
-  const handleDownload = async (path: string) => {
+  const handleDownload = useCallback(async (path: string) => {
     setIsDownloading(path);
     try {
       const result = await filesApi.downloadFile(path);
@@ -481,14 +476,14 @@ export const Files: React.FC = () => {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      toast.success(`文件 ${result.filename} 下载成功`);
+      toast.success(`${result.filename} ${t('nav.home') === 'Home' ? 'downloaded successfully' : '下载成功'}`);
     } catch (err) {
       logger.error('[Files] Download failed:', err);
-      toast.error(`下载失败: ${getErrorMessage(err)}`);
+      toast.error(`${t('nav.home') === 'Home' ? 'Download failed' : '下载失败'}: ${getErrorMessage(err)}`);
     } finally {
       setIsDownloading(null);
     }
-  };
+  }, [t]);
 
   // 获取排序图标
   const getSortIcon = (field: 'name' | 'size' | 'modified') => {
@@ -711,7 +706,7 @@ export const Files: React.FC = () => {
                     onClick={handleUploadClick}
                     disabled={isUploading}
                   >
-                    {isUploading ? <><HourglassIcon size={14} /> {'上传中...'}</> : <><UploadIcon size={14} /> {'上传'}</>}
+                    {isUploading ? <><HourglassIcon size={14} /> {t('files.uploading')}</> : <><UploadIcon size={14} /> {t('files.upload')}</>}
                   </Button>
                   <input
                     ref={fileInputRef}
@@ -855,7 +850,7 @@ export const Files: React.FC = () => {
                                   </button>
                                   <button
                                     className="file-action-btn"
-                                    title={t('files.download') || '下载'}
+                                    title={t('files.download')}
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       handleDownload(file.path);
@@ -944,7 +939,7 @@ export const Files: React.FC = () => {
                               </button>
                               <button
                                 className="file-action-btn"
-                                title={t('files.download') || '下载'}
+                                title={t('files.download')}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleDownload(file.path);

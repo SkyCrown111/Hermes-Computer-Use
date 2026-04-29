@@ -20,6 +20,52 @@ interface PerformanceHistory {
   timestamps: number[];
 }
 
+// Safe number helper - returns default value if input is null/undefined
+const safeNumber = (value: number | null | undefined, defaultValue: number = 0): number => {
+  if (value == null || isNaN(value)) return defaultValue;
+  return value;
+};
+
+// Safe toFixed helper - returns default value if input is null/undefined
+const safeToFixed = (value: number | null | undefined, decimals: number = 1, defaultValue: string = '0'): string => {
+  if (value == null || isNaN(value)) return defaultValue;
+  return value.toFixed(decimals);
+};
+
+const formatUptime = (seconds: number): string => {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (h > 0) return `${h}h ${m}m ${s}s`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+};
+
+const formatBytes = (bytes: number | null | undefined): string => {
+  if (bytes == null) return '0 B';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+};
+
+// Get event type color
+const getEventColor = (eventType: ConnectionEvent['event_type']): string => {
+  switch (eventType) {
+    case 'connect': return 'var(--color-success)';
+    case 'disconnect': return 'var(--color-warning)';
+    case 'error': return 'var(--color-error)';
+    default: return 'var(--text-tertiary)';
+  }
+};
+
+// Get progress bar class based on percentage
+const getProgressClass = (percent: number): string => {
+  if (percent < 60) return 'metric-fill-normal';
+  if (percent < 85) return 'metric-fill-warning';
+  return 'metric-fill-danger';
+};
+
 export const Gateway: React.FC = () => {
   const { t } = useTranslation();
   const [status, setStatus] = useState<GatewayDetailedStatus | null>(null);
@@ -38,18 +84,6 @@ export const Gateway: React.FC = () => {
   // Use ref for interval to handle dynamic timing
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Safe number helper - returns default value if input is null/undefined
-  const safeNumber = (value: number | null | undefined, defaultValue: number = 0): number => {
-    if (value == null || isNaN(value)) return defaultValue;
-    return value;
-  };
-
-  // Safe toFixed helper - returns default value if input is null/undefined
-  const safeToFixed = (value: number | null | undefined, decimals: number = 1, defaultValue: string = '0'): string => {
-    if (value == null || isNaN(value)) return defaultValue;
-    return value.toFixed(decimals);
-  };
-
   const fetchStatus = useCallback(async (isRetry = false) => {
     if (isRetry) setIsRetrying(true);
     setIsLoading(true);
@@ -66,7 +100,7 @@ export const Gateway: React.FC = () => {
         const newCpu = [...prev.cpu, safeNumber(result.cpu_usage_percent)].slice(-MAX_HISTORY_POINTS);
         const newMemory = [...prev.memory, safeNumber(result.memory_usage_mb)].slice(-MAX_HISTORY_POINTS);
         const newTimestamps = [...prev.timestamps, Date.now()].slice(-MAX_HISTORY_POINTS);
-        return { cpu: newCpu, memory: newTimestamps.length ? newMemory : [], timestamps: newTimestamps };
+        return { cpu: newCpu, memory: newMemory, timestamps: newTimestamps };
       });
     } catch (err) {
       logger.error('[Gateway] Failed to fetch status:', err);
@@ -116,7 +150,7 @@ export const Gateway: React.FC = () => {
     fetchStatus(true);
   }, [fetchStatus]);
 
-  const handleRestart = async () => {
+  const handleRestart = useCallback(async () => {
     setIsRestarting(true);
     setError(null);
     try {
@@ -133,9 +167,9 @@ export const Gateway: React.FC = () => {
     } finally {
       setIsRestarting(false);
     }
-  };
+  }, [fetchStatus, t]);
 
-  const handleReloadConfig = async () => {
+  const handleReloadConfig = useCallback(async () => {
     setIsReloadingConfig(true);
     setError(null);
     try {
@@ -151,24 +185,7 @@ export const Gateway: React.FC = () => {
     } finally {
       setIsReloadingConfig(false);
     }
-  };
-
-  const formatUptime = (seconds: number): string => {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = seconds % 60;
-    if (h > 0) return `${h}h ${m}m ${s}s`;
-    if (m > 0) return `${m}m ${s}s`;
-    return `${s}s`;
-  };
-
-  const formatBytes = (bytes: number | null | undefined): string => {
-    if (bytes == null) return '0 B';
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-  };
+  }, [fetchStatus, t]);
 
   const statusColor = status?.status === 'online' ? 'var(--color-success)'
     : status?.status === 'degraded' ? 'var(--color-warning)'
@@ -179,22 +196,8 @@ export const Gateway: React.FC = () => {
     : status?.status === 'degraded' ? t('gateway.degraded')
     : t('gateway.offline');
 
-  // Get event type color
-  const getEventColor = (eventType: ConnectionEvent['event_type']): string => {
-    switch (eventType) {
-      case 'connect': return 'var(--color-success)';
-      case 'disconnect': return 'var(--color-warning)';
-      case 'error': return 'var(--color-error)';
-      default: return 'var(--text-tertiary)';
-    }
-  };
-
-  // Get progress bar class based on percentage
-  const getProgressClass = (percent: number): string => {
-    if (percent < 60) return 'metric-fill-normal';
-    if (percent < 85) return 'metric-fill-warning';
-    return 'metric-fill-danger';
-  };
+  // Memoize refresh click handler
+  const handleRefreshClick = useCallback(() => fetchStatus(), [fetchStatus]);
 
   return (
     <div className="gateway-page">
@@ -203,7 +206,7 @@ export const Gateway: React.FC = () => {
         <div className="gateway-actions">
           <Button
             variant="secondary"
-            onClick={() => fetchStatus()}
+            onClick={handleRefreshClick}
             disabled={isLoading}
           >
             <RefreshIcon size={14} className={isLoading ? 'spinning' : ''} />

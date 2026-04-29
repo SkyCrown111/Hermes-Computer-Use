@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Card, Button, ChatIcon, UserIcon, BotIcon, ToolIcon, ExportIcon, SearchIcon, ClockIcon, TrashIcon, SettingsIcon, AlertIcon, EditIcon, ConfirmModal, XIcon } from '../../components';
 import { useSessionStore, useNavigationStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
@@ -25,9 +25,9 @@ interface SessionCardProps {
   t: (key: string) => string;
 }
 
-const SessionCard: React.FC<SessionCardProps> = ({ session, isSelected, isBatchMode, onClick, onDetail, onDelete, onEdit, onExport, onToggleSelect, t }) => {
+const SessionCard: React.FC<SessionCardProps> = React.memo(({ session, isSelected, isBatchMode, onClick, onDetail, onDelete, onEdit, onExport, onToggleSelect, t }) => {
   return (
-    <div className={`session-card ${isSelected ? 'session-card-selected' : ''}`} onClick={isBatchMode ? onToggleSelect : onClick}>
+    <div className={`session-card ${isSelected ? 'session-card-selected' : ''}`} onClick={isBatchMode ? onToggleSelect : onClick} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); isBatchMode ? onToggleSelect() : onClick(); } }}>
       {isBatchMode && (
         <div className="session-checkbox" onClick={(e) => e.stopPropagation()}>
           <input type="checkbox" checked={isSelected} onChange={onToggleSelect} />
@@ -102,7 +102,7 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, isSelected, isBatchM
       </div>
     </div>
   );
-};
+});
 
 // Message Item Component
 interface MessageItemProps {
@@ -110,7 +110,7 @@ interface MessageItemProps {
   t: (key: string) => string;
 }
 
-const MessageItem: React.FC<MessageItemProps> = ({ message, t }) => {
+const MessageItem: React.FC<MessageItemProps> = React.memo(({ message, t }) => {
   const getRoleIcon = (role: string) => {
     if (role === 'user') return <UserIcon size={16} />;
     if (role === 'assistant') return <BotIcon size={16} />;
@@ -149,7 +149,7 @@ const MessageItem: React.FC<MessageItemProps> = ({ message, t }) => {
       </div>
     </div>
   );
-};
+});
 
 // Export Modal Component
 interface ExportModalProps {
@@ -191,40 +191,37 @@ const ExportModal: React.FC<ExportModalProps> = ({ session, onClose, onExport, t
 
 // Main Sessions Page Component
 export const Sessions: React.FC = () => {
-  logger.component('Sessions', 'Component rendering...');
-
   const { t } = useTranslation();
 
-  // Get store state and actions
-  const {
-    sessions,
-    currentSession,
-    messages,
-    total,
-    isLoading,
-    isLoadingMessages,
-    error,
-    platform,
-    searchQuery,
-    limit,
-    offset,
-    refreshKey,
-    fetchSessions,
-    fetchSession,
-    deleteSession,
-    updateSessionTitle,
-    setPlatform,
-    setSearchQuery,
-    clearCurrentSession,
-    setPagination,
-    // Checkpoint actions
-    checkpoints,
-    isLoadingCheckpoints,
-    fetchCheckpoints,
-    createCheckpoint,
-    restoreCheckpoint,
-    deleteCheckpoint,
-  } = useSessionStore();
+  // Get store state and actions - only subscribe to what's needed for the list view
+  const sessions = useSessionStore(s => s.sessions);
+  const currentSession = useSessionStore(s => s.currentSession);
+  const total = useSessionStore(s => s.total);
+  const isLoading = useSessionStore(s => s.isLoading);
+  const error = useSessionStore(s => s.error);
+  const platform = useSessionStore(s => s.platform);
+  const searchQuery = useSessionStore(s => s.searchQuery);
+  const limit = useSessionStore(s => s.limit);
+  const offset = useSessionStore(s => s.offset);
+  const refreshKey = useSessionStore(s => s.refreshKey);
+  const fetchSessions = useSessionStore(s => s.fetchSessions);
+  const fetchSession = useSessionStore(s => s.fetchSession);
+  const deleteSession = useSessionStore(s => s.deleteSession);
+  const updateSessionTitle = useSessionStore(s => s.updateSessionTitle);
+  const setPlatform = useSessionStore(s => s.setPlatform);
+  const setSearchQuery = useSessionStore(s => s.setSearchQuery);
+  const clearCurrentSession = useSessionStore(s => s.clearCurrentSession);
+  const setPagination = useSessionStore(s => s.setPagination);
+
+  // Only subscribe to detail-related state when detail drawer is open
+  const messages = useSessionStore(s => s.messages);
+  const isLoadingMessages = useSessionStore(s => s.isLoadingMessages);
+  const checkpoints = useSessionStore(s => s.checkpoints);
+  const isLoadingCheckpoints = useSessionStore(s => s.isLoadingCheckpoints);
+  const fetchCheckpoints = useSessionStore(s => s.fetchCheckpoints);
+  const createCheckpoint = useSessionStore(s => s.createCheckpoint);
+  const restoreCheckpoint = useSessionStore(s => s.restoreCheckpoint);
+  const deleteCheckpoint = useSessionStore(s => s.deleteCheckpoint);
 
   // Navigation
   const { openTab } = useNavigationStore();
@@ -248,26 +245,39 @@ export const Sessions: React.FC = () => {
   const [checkpointDescription, setCheckpointDescription] = useState('');
   const [isCreatingCheckpoint, setIsCreatingCheckpoint] = useState(false);
 
-  const toggleBatchMode = () => {
+  // Debounced search
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleSearchChange = useCallback((value: string) => {
+    setSearchQuery(value);
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => {
+      if (value.trim()) {
+        useSessionStore.getState().searchSessions(value, platform ?? undefined, 30);
+      } else {
+        fetchSessions(platform ?? undefined, limit, offset);
+      }
+    }, 300);
+  }, [setSearchQuery, platform, limit, offset, fetchSessions]);
+
+  const toggleBatchMode = useCallback(() => {
     setIsBatchMode(prev => {
       if (prev) {
-        // Exiting batch mode - clear selection
         setSelectedIds(new Set());
       }
       return !prev;
     });
-  };
+  }, []);
 
-  const toggleSelect = (id: string) => {
+  const toggleSelect = useCallback((id: string) => {
     setSelectedIds(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  };
+  }, []);
 
-  const clearSelection = () => setSelectedIds(new Set());
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
 
   const handleBatchDelete = async () => {
     const ids = Array.from(selectedIds);
@@ -394,34 +404,35 @@ export const Sessions: React.FC = () => {
   }, [currentSession?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Handlers
-  const handleSessionClick = (session: Session) => {
-    logger.component('Sessions', 'Opening session as tab:', session.id);
+  const handleSessionClick = useCallback((session: Session) => {
     openTab(session.id, session.chat_name || t('sessions.untitled').replace('{id}', session.id.slice(0, 8)), 'session');
-  };
+  }, [openTab, t]);
 
-  const handleShowDetail = async (session: Session) => {
-    logger.component('Sessions', 'Showing detail for session:', session.id);
+  const handleShowDetail = useCallback(async (session: Session) => {
     try {
       await fetchSession(session.id);
     } catch (err) {
       logger.error('[Sessions] Error fetching session:', err);
-      // Check if session was not found
       const errorMsg = err instanceof Error ? err.message : String(err);
       if (errorMsg.includes('not found') || errorMsg.includes('Session not found')) {
         toast.error(t('sessions.sessionNotFound').replace('{id}', session.id.slice(0, 12)));
-        // Refresh the session list to remove stale entries
         useSessionStore.getState().refreshSessions();
       } else {
         toast.error(t('sessions.loadFailed') || 'Failed to load session details');
       }
     }
-  };
+  }, [fetchSession, t]);
 
-  const handleDeleteSession = (session: Session) => {
+  const handleDeleteSession = useCallback((session: Session) => {
     setDeleteConfirm(session);
-  };
+  }, []);
 
-  const confirmDeleteSession = async () => {
+  const handleEditSession = useCallback((session: Session) => {
+    setEditingSession(session);
+    setEditName(session.chat_name || '');
+  }, []);
+
+  const confirmDeleteSession = useCallback(async () => {
     if (deleteConfirm) {
       await deleteSession(deleteConfirm.id);
       if (currentSession?.id === deleteConfirm.id) {
@@ -429,29 +440,24 @@ export const Sessions: React.FC = () => {
       }
       setDeleteConfirm(null);
     }
-  };
+  }, [deleteConfirm, deleteSession, currentSession, clearCurrentSession]);
 
-  const handleEditSession = (session: Session) => {
-    setEditingSession(session);
-    setEditName(session.chat_name || '');
-  };
-
-  const handleSaveEdit = async () => {
+  const handleSaveEdit = useCallback(async () => {
     if (editingSession && editName.trim()) {
       await updateSessionTitle(editingSession.id, editName.trim());
       setEditingSession(null);
       setEditName('');
     }
-  };
+  }, [editingSession, editName, updateSessionTitle]);
 
-  const handleSearch = (e: React.FormEvent) => {
+  const handleSearch = useCallback((e: React.FormEvent) => {
     e.preventDefault();
     if (searchQuery.trim()) {
       useSessionStore.getState().searchSessions(searchQuery, platform ?? undefined, 30);
     } else {
       fetchSessions(platform ?? undefined, limit, offset);
     }
-  };
+  }, [searchQuery, platform, limit, offset, fetchSessions]);
 
   const handleExport = async (format: 'jsonl' | 'json' | 'markdown') => {
     if (!selectedSessionForExport) return;
@@ -475,10 +481,10 @@ export const Sessions: React.FC = () => {
     setSelectedSessionForExport(null);
   };
 
-  const handlePageChange = (newPage: number) => {
+  const handlePageChange = useCallback((newPage: number) => {
     const newOffset = newPage * limit;
     setPagination(limit, newOffset);
-  };
+  }, [limit, setPagination]);
 
   // Checkpoint handlers
   const handleCreateCheckpoint = async () => {
@@ -586,7 +592,7 @@ export const Sessions: React.FC = () => {
               className="search-input"
               placeholder={t('sessions.search')}
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => handleSearchChange(e.target.value)}
             />
           </div>
           <Button type="submit" variant="primary" icon={<SearchIcon size={16} />}>{t('common.search')}</Button>

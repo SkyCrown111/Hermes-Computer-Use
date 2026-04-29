@@ -19,7 +19,8 @@ export const CommandPalette: React.FC = () => {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const { setActiveItem, openChat } = useNavigationStore();
+  const setActiveItem = useNavigationStore(s => s.setActiveItem);
+  const openChat = useNavigationStore(s => s.openChat);
   const { t } = useTranslation();
 
   const commands: Command[] = [

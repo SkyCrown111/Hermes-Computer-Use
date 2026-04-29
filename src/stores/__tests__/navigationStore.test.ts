@@ -1,5 +1,13 @@
 // Navigation Store Tests
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+vi.mock('../../services/sessionApi', () => ({
+  getSession: vi.fn().mockImplementation(async (id: string) => ({
+    session_id: id,
+    messages: [],
+  })),
+}));
+
 import { useNavigationStore } from '../navigationStore';
 
 describe('NavigationStore', () => {
@@ -40,7 +48,7 @@ describe('NavigationStore', () => {
       useNavigationStore.getState().openTab('session-1', '');
 
       const state = useNavigationStore.getState();
-      expect(state.openTabs[0].title).toBe('New Chat');
+      expect(state.openTabs[0].title).toBe('新会话');
     });
   });
 
@@ -152,10 +160,13 @@ describe('NavigationStore', () => {
   });
 
   describe('persistence', () => {
-    it('should persist and restore tabs', () => {
+    it('should persist and restore tabs', async () => {
       useNavigationStore.getState().openTab('session-1', 'Chat 1');
       useNavigationStore.getState().openTab('session-2', 'Chat 2');
       useNavigationStore.getState().switchTab('session-2');
+
+      // Wait for debounced saveTabs (300ms) to fire
+      await new Promise(r => setTimeout(r, 350));
 
       // Simulate fresh store
       useNavigationStore.setState({
@@ -165,13 +176,12 @@ describe('NavigationStore', () => {
         activeTabId: null,
       });
 
-      useNavigationStore.getState().restoreTabs().then(() => {
-        const state = useNavigationStore.getState();
-        expect(state.openTabs).toHaveLength(2);
-        expect(state.openTabs[0].id).toBe('session-1');
-        expect(state.openTabs[1].id).toBe('session-2');
-        expect(state.activeTabId).toBe('session-2');
-      });
+      await useNavigationStore.getState().restoreTabs();
+      const state = useNavigationStore.getState();
+      expect(state.openTabs).toHaveLength(2);
+      expect(state.openTabs[0].id).toBe('session-1');
+      expect(state.openTabs[1].id).toBe('session-2');
+      expect(state.activeTabId).toBe('session-2');
     });
 
     it('should handle empty localStorage gracefully', async () => {

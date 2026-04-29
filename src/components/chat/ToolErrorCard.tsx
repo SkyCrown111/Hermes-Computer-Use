@@ -1,10 +1,10 @@
-import React from 'react';
+import React, { memo, useMemo } from 'react';
 
 interface ToolErrorCardProps {
   error: string;
 }
 
-export const ToolErrorCard: React.FC<ToolErrorCardProps> = ({ error }) => {
+const ToolErrorCardComponent: React.FC<ToolErrorCardProps> = ({ error }) => {
   // Parse various error formats for cleaner display
   const parseError = (errorMsg: string): { title: string; details: string } => {
     // Vision analysis error
@@ -40,7 +40,7 @@ export const ToolErrorCard: React.FC<ToolErrorCardProps> = ({ error }) => {
     };
   };
 
-  const { title, details } = parseError(error);
+  const { title, details } = useMemo(() => parseError(error), [error]);
 
   return (
     <div className="tool-error-card">
@@ -54,3 +54,6 @@ export const ToolErrorCard: React.FC<ToolErrorCardProps> = ({ error }) => {
     </div>
   );
 };
+
+// Memoize to prevent re-renders when parent message updates but error hasn't changed
+export const ToolErrorCard = memo(ToolErrorCardComponent);

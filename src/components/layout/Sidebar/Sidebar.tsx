@@ -1,8 +1,7 @@
-import React from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { NavItem } from '../../../types';
 import { useNavigationStore, useThemeStore } from '../../../stores';
 import { useTranslation } from '../../../hooks/useTranslation';
-import { logger } from '../../../lib/logger';
 import './Sidebar.css';
 
 // SVG Icons
@@ -132,18 +131,23 @@ function PlusIcon() {
 }
 
 export const Sidebar: React.FC = () => {
-  const { activeItem, setActiveItem, openTab } = useNavigationStore();
-  const { sidebarCollapsed, toggleSidebar, mobileSidebarOpen, setMobileSidebarOpen } = useThemeStore();
+  const activeItem = useNavigationStore(s => s.activeItem);
+  const setActiveItem = useNavigationStore(s => s.setActiveItem);
+  const openTab = useNavigationStore(s => s.openTab);
+  const sidebarCollapsed = useThemeStore(s => s.sidebarCollapsed);
+  const toggleSidebar = useThemeStore(s => s.toggleSidebar);
+  const mobileSidebarOpen = useThemeStore(s => s.mobileSidebarOpen);
+  const setMobileSidebarOpen = useThemeStore(s => s.setMobileSidebarOpen);
   const { t } = useTranslation();
 
   // Handle new chat creation
-  const handleNewChat = () => {
+  const handleNewChat = useCallback(() => {
     const newId = `new_${Date.now()}`;
     openTab(newId, t('sidebar.newChat'), 'new');
-  };
+  }, [openTab, t]);
 
   // Navigation items with translated labels
-  const navItems: NavItem[] = [
+  const navItems: NavItem[] = useMemo(() => [
     { id: 'dashboard', label: t('nav.home'), icon: <HomeIcon />, path: '/' },
     { id: 'sessions', label: t('nav.sessions'), icon: <ChatIcon />, path: '/sessions' },
     { id: 'skills', label: t('nav.skills'), icon: <SkillsIcon />, path: '/skills' },
@@ -155,11 +159,11 @@ export const Sidebar: React.FC = () => {
     { id: 'gateway', label: t('gateway.title'), icon: <GatewayIcon />, path: '/gateway' },
     { id: 'files', label: t('nav.files'), icon: <FilesIcon />, path: '/files' },
     { id: 'mcp', label: t('nav.mcp'), icon: <McpIcon />, path: '/mcp' },
-  ];
+  ], [t]);
 
-  const bottomNavItems: NavItem[] = [
+  const bottomNavItems: NavItem[] = useMemo(() => [
     { id: 'preferences', label: t('nav.preferences'), icon: <PreferencesIcon />, path: '/preferences' },
-  ];
+  ], [t]);
 
   return (
     <>
@@ -203,10 +207,7 @@ export const Sidebar: React.FC = () => {
             <li key={item.id} className="nav-item">
               <button
                 className={`nav-link ${activeItem === item.id ? 'nav-link-active' : ''}`}
-                onClick={() => {
-                  logger.debug('[Sidebar] Clicking nav item:', item.id);
-                  setActiveItem(item.id);
-                }}
+                onClick={() => setActiveItem(item.id)}
                 aria-current={activeItem === item.id ? 'page' : undefined}
                 aria-label={item.label}
               >
@@ -230,10 +231,7 @@ export const Sidebar: React.FC = () => {
             <li key={item.id} className="nav-item">
               <button
                 className={`nav-link ${activeItem === item.id ? 'nav-link-active' : ''}`}
-                onClick={() => {
-                  logger.debug('[Sidebar] Clicking nav item:', item.id);
-                  setActiveItem(item.id);
-                }}
+                onClick={() => setActiveItem(item.id)}
                 aria-current={activeItem === item.id ? 'page' : undefined}
                 aria-label={item.label}
               >

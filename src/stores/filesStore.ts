@@ -447,7 +447,7 @@ export const useFilesStore = create<FilesState>((set, get) => ({
     }
   },
 
-  // 搜索文件
+  // 搜索文件 (with race condition guard via searchQuery check)
   searchFiles: async (query, path) => {
     const searchPath = path || get().currentPath;
     if (!query.trim()) {
@@ -461,10 +461,14 @@ export const useFilesStore = create<FilesState>((set, get) => ({
         query,
         recursive: true,
       });
-      set({ searchResults: results, isSearching: false });
+      // Guard: only apply results if the query hasn't changed since we started
+      if (get().searchQuery === query) {
+        set({ searchResults: results, isSearching: false });
+      }
     } catch (err) {
-      set({ searchResults: [], isSearching: false });
-      logger.error('Search failed:', err);
+      if (get().searchQuery === query) {
+        set({ searchResults: [], isSearching: false, error: getErrorMessage(err) });
+      }
     }
   },
 
@@ -480,6 +484,7 @@ export const useFilesStore = create<FilesState>((set, get) => ({
       set({ fileTree: tree });
     } catch (err) {
       logger.error('Failed to load file tree:', err);
+      set({ error: getErrorMessage(err) });
     }
   },
 
@@ -527,6 +532,7 @@ export const useFilesStore = create<FilesState>((set, get) => ({
       set({ favoriteFiles: favorites });
     } catch (err) {
       logger.error('Failed to load favorites:', err);
+      set({ error: getErrorMessage(err) });
     }
   },
 
@@ -537,6 +543,7 @@ export const useFilesStore = create<FilesState>((set, get) => ({
       set({ recentFiles: recent });
     } catch (err) {
       logger.error('Failed to load recent files:', err);
+      set({ error: getErrorMessage(err) });
     }
   },
 
@@ -547,6 +554,7 @@ export const useFilesStore = create<FilesState>((set, get) => ({
       get().loadFavorites();
     } catch (err) {
       logger.error('Failed to add favorite:', err);
+      set({ error: getErrorMessage(err) });
     }
   },
 
@@ -557,6 +565,7 @@ export const useFilesStore = create<FilesState>((set, get) => ({
       get().loadFavorites();
     } catch (err) {
       logger.error('Failed to remove favorite:', err);
+      set({ error: getErrorMessage(err) });
     }
   },
 

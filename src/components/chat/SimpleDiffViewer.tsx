@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo, useMemo } from 'react';
 
 interface SimpleDiffViewerProps {
   oldStr: string;
@@ -6,44 +6,44 @@ interface SimpleDiffViewerProps {
   filePath?: string;
 }
 
-export const SimpleDiffViewer: React.FC<SimpleDiffViewerProps> = ({ oldStr, newStr, filePath }) => {
-  const oldLines = oldStr.split('\n');
-  const newLines = newStr.split('\n');
+const SimpleDiffViewerComponent: React.FC<SimpleDiffViewerProps> = ({ oldStr, newStr, filePath }) => {
+  const { diffLines, additions, deletions } = useMemo(() => {
+    const oldLines = oldStr.split('\n');
+    const newLines = newStr.split('\n');
 
-  // Simple line-by-line diff
-  const diffLines: Array<{ type: 'context' | 'add' | 'remove'; oldNum?: number; newNum?: number; content: string }> = [];
-  let oldIdx = 0;
-  let newIdx = 0;
+    // Simple line-by-line diff
+    const lines: Array<{ type: 'context' | 'add' | 'remove'; oldNum?: number; newNum?: number; content: string }> = [];
+    let oldIdx = 0;
+    let newIdx = 0;
 
-  while (oldIdx < oldLines.length || newIdx < newLines.length) {
-    const oldLine = oldLines[oldIdx];
-    const newLine = newLines[newIdx];
+    while (oldIdx < oldLines.length || newIdx < newLines.length) {
+      const oldLine = oldLines[oldIdx];
+      const newLine = newLines[newIdx];
 
-    if (oldIdx >= oldLines.length) {
-      // Only new lines left
-      diffLines.push({ type: 'add', newNum: newIdx + 1, content: newLine });
-      newIdx++;
-    } else if (newIdx >= newLines.length) {
-      // Only old lines left
-      diffLines.push({ type: 'remove', oldNum: oldIdx + 1, content: oldLine });
-      oldIdx++;
-    } else if (oldLine === newLine) {
-      // Context line
-      diffLines.push({ type: 'context', oldNum: oldIdx + 1, newNum: newIdx + 1, content: oldLine });
-      oldIdx++;
-      newIdx++;
-    } else {
-      // Check if this is a modification
-      diffLines.push({ type: 'remove', oldNum: oldIdx + 1, content: oldLine });
-      diffLines.push({ type: 'add', newNum: newIdx + 1, content: newLine });
-      oldIdx++;
-      newIdx++;
+      if (oldIdx >= oldLines.length) {
+        lines.push({ type: 'add', newNum: newIdx + 1, content: newLine });
+        newIdx++;
+      } else if (newIdx >= newLines.length) {
+        lines.push({ type: 'remove', oldNum: oldIdx + 1, content: oldLine });
+        oldIdx++;
+      } else if (oldLine === newLine) {
+        lines.push({ type: 'context', oldNum: oldIdx + 1, newNum: newIdx + 1, content: oldLine });
+        oldIdx++;
+        newIdx++;
+      } else {
+        lines.push({ type: 'remove', oldNum: oldIdx + 1, content: oldLine });
+        lines.push({ type: 'add', newNum: newIdx + 1, content: newLine });
+        oldIdx++;
+        newIdx++;
+      }
     }
-  }
 
-  // Count additions and deletions
-  const additions = diffLines.filter(l => l.type === 'add').length;
-  const deletions = diffLines.filter(l => l.type === 'remove').length;
+    return {
+      diffLines: lines,
+      additions: lines.filter(l => l.type === 'add').length,
+      deletions: lines.filter(l => l.type === 'remove').length,
+    };
+  }, [oldStr, newStr]);
 
   return (
     <div className="diff-viewer">
@@ -72,3 +72,6 @@ export const SimpleDiffViewer: React.FC<SimpleDiffViewerProps> = ({ oldStr, newS
     </div>
   );
 };
+
+// Memoize to prevent re-renders when parent tool item updates but diff content hasn't changed
+export const SimpleDiffViewer = memo(SimpleDiffViewerComponent);

@@ -136,11 +136,6 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       const response = await sessionApi.listSessions({ platform: platform || undefined, limit, offset });
       logger.debug('[SessionStore] Server returned sessions:', response.sessions.length);
 
-      // Log each session ID for debugging
-      response.sessions.forEach((s, i) => {
-        logger.debug(`[SessionStore] Server session ${i}:`, s.id, s.chat_name);
-      });
-
       // Preserve optimistically added sessions that are not yet in the server response
       const { sessions: currentSessions, optimisticSessionIds } = get();
       const optimisticSessions = currentSessions.filter(s =>
@@ -171,8 +166,6 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
       // Check for open tabs that are not in the session list
       const { openTabs } = useNavigationStore.getState();
-
-      logger.debug('[SessionStore] Open tabs to check:', openTabs.map(t => t.id));
 
       // For each open tab that's not in mergedSessions
       for (const tab of openTabs) {
@@ -263,9 +256,6 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       });
 
       logger.debug('[SessionStore] Final merged sessions:', mergedSessions.length);
-      mergedSessions.forEach((s, i) => {
-        logger.debug(`[SessionStore] Final session ${i}:`, s.id, s.chat_name);
-      });
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       set({ error: errorMsg || 'Unknown error', isLoading: false });

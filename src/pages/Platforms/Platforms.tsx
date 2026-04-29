@@ -1,10 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { ConfirmModal, AlertIcon, WarningIcon, CheckIcon } from '../../components';
 import { usePlatformStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
 import { toast } from '../../stores/toastStore';
 import { platformApi } from '../../services/platformApi';
-import { logger } from '../../lib/logger';
 import type { Platform, PlatformType } from '../../types/platform';
 import './Platforms.css';
 
@@ -72,19 +71,17 @@ const StatusBadge = ({ status, t }: { status: Platform['status']; t: (key: strin
 export function Platforms() {
   const { t } = useTranslation();
 
-  const {
-    platforms,
-    selectedPlatform,
-    isConfigModalOpen,
-    fetchPlatforms,
-    openConfigModal,
-    closeConfigModal,
-    updateConfig,
-    enablePlatform,
-    disablePlatform,
-    testConnection,
-    reconnect,
-  } = usePlatformStore();
+  const platforms = usePlatformStore(s => s.platforms);
+  const selectedPlatform = usePlatformStore(s => s.selectedPlatform);
+  const isConfigModalOpen = usePlatformStore(s => s.isConfigModalOpen);
+  const fetchPlatforms = usePlatformStore(s => s.fetchPlatforms);
+  const openConfigModal = usePlatformStore(s => s.openConfigModal);
+  const closeConfigModal = usePlatformStore(s => s.closeConfigModal);
+  const updateConfig = usePlatformStore(s => s.updateConfig);
+  const enablePlatform = usePlatformStore(s => s.enablePlatform);
+  const disablePlatform = usePlatformStore(s => s.disablePlatform);
+  const testConnection = usePlatformStore(s => s.testConnection);
+  const reconnect = usePlatformStore(s => s.reconnect);
 
   // Controlled form state for config modal
   const [configForm, setConfigForm] = useState<Record<string, string>>({});
@@ -112,22 +109,22 @@ export function Platforms() {
   const [disableConfirm, setDisableConfirm] = useState<Platform | null>(null);
   const [connectionError, setConnectionError] = useState<{ platform: PlatformType; error: string; details?: string } | null>(null);
 
-  const handleTogglePlatform = async (platform: Platform) => {
+  const handleTogglePlatform = useCallback(async (platform: Platform) => {
     if (platform.enabled) {
       setDisableConfirm(platform);
     } else {
       await enablePlatform(platform.type);
     }
-  };
+  }, [enablePlatform]);
 
-  const confirmDisable = async () => {
+  const confirmDisable = useCallback(async () => {
     if (disableConfirm) {
       await disablePlatform(disableConfirm.type);
       setDisableConfirm(null);
     }
-  };
+  }, [disableConfirm, disablePlatform]);
 
-  const handleTestConnection = async (type: PlatformType) => {
+  const handleTestConnection = useCallback(async (type: PlatformType) => {
     setConnectionError(null);
     const result = await testConnection(type);
     if (result.ok) {
@@ -140,13 +137,13 @@ export function Platforms() {
         details: result.details,
       });
     }
-  };
+  }, [testConnection, t]);
 
-  const handleConfigChange = (key: string, value: string | boolean) => {
+  const handleConfigChange = useCallback((key: string, value: string | boolean) => {
     setConfigForm(prev => ({ ...prev, [key]: String(value) }));
-  };
+  }, []);
 
-  const handleSaveConfig = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSaveConfig = useCallback(async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!selectedPlatform) return;
 
@@ -154,7 +151,7 @@ export function Platforms() {
     if (success) {
       closeConfigModal();
     }
-  };
+  }, [selectedPlatform, updateConfig, configForm, closeConfigModal]);
 
   // ===== WeChat QR Code =====
   const [qrcodeUrl, setQrcodeUrl] = useState<string | null>(null);
@@ -162,7 +159,7 @@ export function Platforms() {
   const [qrcodeError, setQrcodeError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const loadQRCode = async () => {
+  const loadQRCode = useCallback(async () => {
     setQrcodeUrl(null);
     setQrcodeStatus('pending');
     setQrcodeError(null);
@@ -172,7 +169,7 @@ export function Platforms() {
     } catch {
       setQrcodeError(t('platforms.wechat.loadFailed'));
     }
-  };
+  }, [t]);
 
   // Fetch QR code when opening WeChat config modal
   useEffect(() => {
@@ -192,7 +189,7 @@ export function Platforms() {
             clearInterval(pollRef.current ?? undefined);
           }
         } catch (error) {
-          logger.debug('[Platforms] WeChat QR code polling failed:', error);
+          // QR code polling failed silently
         }
       }, 3000);
     }

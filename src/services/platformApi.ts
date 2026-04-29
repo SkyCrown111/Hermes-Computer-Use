@@ -9,6 +9,33 @@ export interface PlatformStatusResponse {
   error?: string;
 }
 
+export interface PlatformChat {
+  chat_id: string;
+  chat_type: string;
+  name: string;
+  platform: string;
+  unread_count?: number;
+  last_message?: string;
+  last_message_time?: string;
+}
+
+export interface PlatformSendMessageResult {
+  success: boolean;
+  result?: unknown;
+  error?: string;
+}
+
+export interface PlatformMessage {
+  message_id: string;
+  chat_id: string;
+  sender_id: string;
+  sender_name?: string;
+  content: string;
+  timestamp: string;
+  is_from_me: boolean;
+  reply_to?: string;
+}
+
 export const platformApi = {
   getPlatforms: async (): Promise<Platform[]> => {
     try {
@@ -20,7 +47,12 @@ export const platformApi = {
   },
 
   getPlatformStatus: async (type: PlatformType): Promise<PlatformStatusResponse> => {
-    return apiClient.invoke<PlatformStatusResponse>('get_platform_status', { platform_type: type });
+    try {
+      return await apiClient.invoke<PlatformStatusResponse>('get_platform_status', { platform_type: type });
+    } catch (error) {
+      logger.error('[PlatformApi] getPlatformStatus failed:', getErrorDetail(error));
+      return { type, status: 'disconnected', error: getErrorDetail(error) };
+    }
   },
 
   updatePlatformConfig: async (type: PlatformType, config: Record<string, unknown>): Promise<void> => {
@@ -52,15 +84,7 @@ export const platformApi = {
   },
 
   // New API methods for platform messaging
-  getPlatformChats: async (platformType: PlatformType, limit?: number): Promise<{
-    chat_id: string;
-    chat_type: string;
-    name: string;
-    platform: string;
-    unread_count?: number;
-    last_message?: string;
-    last_message_time?: string;
-  }[]> => {
+  getPlatformChats: async (platformType: PlatformType, limit?: number): Promise<PlatformChat[]> => {
     try {
       return await apiClient.invoke('get_platform_chats', { platform_type: platformType, limit });
     } catch (error) {
@@ -69,7 +93,7 @@ export const platformApi = {
     }
   },
 
-  sendPlatformMessage: async (platformType: PlatformType, chatId: string, message: string): Promise<{ success: boolean; result?: unknown; error?: string }> => {
+  sendPlatformMessage: async (platformType: PlatformType, chatId: string, message: string): Promise<PlatformSendMessageResult> => {
     try {
       return await apiClient.invoke('send_platform_message', {
         platform_type: platformType,
@@ -82,16 +106,7 @@ export const platformApi = {
     }
   },
 
-  getPlatformMessages: async (platformType: PlatformType, chatId: string, limit?: number, beforeId?: string): Promise<{
-    message_id: string;
-    chat_id: string;
-    sender_id: string;
-    sender_name?: string;
-    content: string;
-    timestamp: string;
-    is_from_me: boolean;
-    reply_to?: string;
-  }[]> => {
+  getPlatformMessages: async (platformType: PlatformType, chatId: string, limit?: number, beforeId?: string): Promise<PlatformMessage[]> => {
     try {
       return await apiClient.invoke('get_platform_messages', {
         platform_type: platformType,

@@ -7,16 +7,19 @@ export interface RequestOptions {
   retryDelay?: number;
 }
 
-const DEFAULT_OPTIONS: RequestOptions = {
+const DEFAULT_OPTIONS: Required<RequestOptions> = {
   timeout: 30000,
   retries: 1,
   retryDelay: 1000,
 };
 
+/** Error codes that should never be retried (client errors). */
+const NON_RETRIABLE_CODES = new Set(['not_found', 'validation', 'permission']);
+
 export { HermesApiError };
 
 export class ApiClient {
-  private defaultOptions: RequestOptions;
+  private defaultOptions: Required<RequestOptions>;
 
   constructor(options?: RequestOptions) {
     this.defaultOptions = { ...DEFAULT_OPTIONS, ...options };
@@ -25,32 +28,60 @@ export class ApiClient {
   async invoke<T>(command: string, args?: Record<string, unknown>, options?: RequestOptions): Promise<T> {
     const opts = { ...this.defaultOptions, ...options };
     let lastError: HermesApiError | null = null;
-    const maxAttempts = opts.retries ?? 1;
+    const maxAttempts = opts.retries;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        const result = await safeInvoke<T>(command, args);
+        const result = await this.invokeWithTimeout<T>(command, args, opts.timeout);
         return result;
       } catch (error) {
-        if (error instanceof HermesApiError) {
-          lastError = error;
-          if (error.code === 'not_found' || error.code === 'validation' || error.code === 'permission') {
-            throw error;
-          }
-          if (attempt < maxAttempts) {
-            logger.info(`[ApiClient] Retrying ${command} (attempt ${attempt + 1}/${maxAttempts})`);
-            await this.delay(opts.retryDelay ?? 1000);
-            continue;
-          }
-        } else {
-          const detail = error instanceof Error ? error.message : String(error);
-          lastError = new HermesApiError('unknown', detail);
+        const hermesError = this.toHermesError(error);
+
+        // Non-retriable errors are thrown immediately regardless of attempt count.
+        if (NON_RETRIABLE_CODES.has(hermesError.code)) {
+          throw hermesError;
         }
-        throw lastError;
+
+        lastError = hermesError;
+
+        if (attempt < maxAttempts) {
+          logger.info(`[ApiClient] Retrying ${command} (attempt ${attempt + 1}/${maxAttempts})`);
+          await this.delay(opts.retryDelay);
+          continue;
+        }
       }
     }
 
     throw lastError ?? new HermesApiError('unknown', 'Unknown error');
+  }
+
+  /**
+   * Wraps safeInvoke with a timeout. If the timeout elapses before the
+   * promise settles, a HermesApiError with code 'timeout' is thrown.
+   */
+  private async invokeWithTimeout<T>(command: string, args: Record<string, unknown> | undefined, timeoutMs: number): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const timeoutPromise = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => {
+        reject(new HermesApiError('timeout', `Command "${command}" timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+    });
+
+    try {
+      return await Promise.race([safeInvoke<T>(command, args), timeoutPromise]);
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Normalises any thrown value into a HermesApiError.
+   */
+  private toHermesError(error: unknown): HermesApiError {
+    if (error instanceof HermesApiError) return error;
+    const detail = error instanceof Error ? error.message : String(error);
+    return new HermesApiError('unknown', detail);
   }
 
   private delay(ms: number): Promise<void> {

@@ -5,6 +5,8 @@ import { useThemeStore } from './themeStore';
 import { restoreMessages } from './chatStore';
 
 const TAB_STORAGE_KEY = 'hermes-open-tabs';
+const SAVE_TABS_DEBOUNCE_MS = 300;
+let saveTabsTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
 interface ChatContext {
   sessionId?: string;
@@ -150,18 +152,24 @@ export const useNavigationStore = create<NavigationState>((set, get) => ({
     logger.debug('[NavigationStore] Replaced tab ID:', oldId, '->', newId);
     // Note: Message migration is handled by the caller (ChatPage) before calling replaceTabId
   },
-  // Save tabs to localStorage
+  // Save tabs to localStorage (debounced to batch rapid mutations)
   saveTabs: () => {
-    const { openTabs, activeTabId } = get();
-    const data: TabPersistence = {
-      openTabs: openTabs.map(t => ({ id: t.id, title: t.title, type: t.type })),
-      activeTabId,
-    };
-    try {
-      localStorage.setItem(TAB_STORAGE_KEY, JSON.stringify(data));
-    } catch {
-      // noop
+    if (saveTabsTimeoutId) {
+      clearTimeout(saveTabsTimeoutId);
     }
+    saveTabsTimeoutId = setTimeout(() => {
+      saveTabsTimeoutId = null;
+      const { openTabs, activeTabId } = get();
+      const data: TabPersistence = {
+        openTabs: openTabs.map(t => ({ id: t.id, title: t.title, type: t.type })),
+        activeTabId,
+      };
+      try {
+        localStorage.setItem(TAB_STORAGE_KEY, JSON.stringify(data));
+      } catch (err) {
+        logger.warn('[NavigationStore] Failed to save tabs to localStorage:', err);
+      }
+    }, SAVE_TABS_DEBOUNCE_MS);
   },
   // Restore tabs from localStorage (call on app init)
   restoreTabs: async () => {

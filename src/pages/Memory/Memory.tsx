@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Card, Button, BrainIcon, UserIcon, BookIcon, SearchIcon, EmptyIcon, AlertIcon, HourglassIcon, CheckIcon, RefreshIcon } from '../../components';
 import { useMemoryStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
@@ -251,21 +251,21 @@ interface SectionItemProps {
 const SectionItem: React.FC<SectionItemProps> = ({ section, isExpanded, onToggle }) => {
   return (
     <div className="section-item">
-      <div className="section-header" onClick={onToggle}>
+      <div className="section-header" onClick={onToggle} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } }}>
         <div className="section-title-area">
           <span className={`section-toggle ${isExpanded ? 'section-toggle-expanded' : ''}`}>
             ▶
           </span>
           <span className="section-title">
-            {section.title || `段落 ${section.id.split('-')[1]}`}
+            {section.title || `Section ${section.id.split('-')[1]}`}
           </span>
         </div>
         <div className="section-meta">
           <span className="section-char-count">
-            {formatCharCount(section.charCount)} 字符
+            {formatCharCount(section.charCount)} chars
           </span>
           <span className="section-line-range">
-            行 {section.startLine + 1}-{section.endLine + 1}
+            L{section.startLine + 1}-{section.endLine + 1}
           </span>
         </div>
       </div>
@@ -279,29 +279,28 @@ const SectionItem: React.FC<SectionItemProps> = ({ section, isExpanded, onToggle
 // Main Memory Page Component
 export const Memory: React.FC = () => {
   const { t } = useTranslation();
-  const {
-    memoryData,
-    isLoading,
-    editingType,
-    editingContent,
-    isEditing,
-    searchQuery,
-    searchResults,
-    isSearching,
-    expandedSections,
-    error,
-    saveError,
-    fetchMemory,
-    startEdit,
-    cancelEdit,
-    updateContent,
-    saveMemory,
-    searchMemory,
-    toggleSection,
-    expandAllSections,
-    collapseAllSections,
-    clearError,
-  } = useMemoryStore();
+  // Individual Zustand selectors to avoid unnecessary re-renders
+  const memoryData = useMemoryStore(s => s.memoryData);
+  const isLoading = useMemoryStore(s => s.isLoading);
+  const editingType = useMemoryStore(s => s.editingType);
+  const editingContent = useMemoryStore(s => s.editingContent);
+  const isEditing = useMemoryStore(s => s.isEditing);
+  const searchQuery = useMemoryStore(s => s.searchQuery);
+  const searchResults = useMemoryStore(s => s.searchResults);
+  const isSearching = useMemoryStore(s => s.isSearching);
+  const expandedSections = useMemoryStore(s => s.expandedSections);
+  const error = useMemoryStore(s => s.error);
+  const saveError = useMemoryStore(s => s.saveError);
+  const fetchMemory = useMemoryStore(s => s.fetchMemory);
+  const startEdit = useMemoryStore(s => s.startEdit);
+  const cancelEdit = useMemoryStore(s => s.cancelEdit);
+  const updateContent = useMemoryStore(s => s.updateContent);
+  const saveMemory = useMemoryStore(s => s.saveMemory);
+  const searchMemory = useMemoryStore(s => s.searchMemory);
+  const toggleSection = useMemoryStore(s => s.toggleSection);
+  const expandAllSections = useMemoryStore(s => s.expandAllSections);
+  const collapseAllSections = useMemoryStore(s => s.collapseAllSections);
+  const clearError = useMemoryStore(s => s.clearError);
 
   const [activeTab, setActiveTab] = useState<MemoryFileType | 'both'>('both');
 
@@ -316,7 +315,7 @@ export const Memory: React.FC = () => {
   }, [fetchMemory]);
 
   // 搜索处理 - supports case sensitivity and regex
-  const handleSearch = (query: string) => {
+  const handleSearch = useCallback((query: string) => {
     if (!query.trim()) {
       searchMemory('');
       setLocalSearchResults([]);
@@ -331,10 +330,10 @@ export const Memory: React.FC = () => {
       searchMemory(query);
       setLocalSearchResults([]);
     }
-  };
+  }, [searchMemory, searchCaseSensitive, searchRegex]);
 
   // Advanced search implementation
-  const performAdvancedSearch = (query: string) => {
+  const performAdvancedSearch = useCallback((query: string) => {
     if (!memoryData) return;
 
     const results: MemorySearchResult[] = [];
@@ -382,17 +381,17 @@ export const Memory: React.FC = () => {
     }
 
     setLocalSearchResults(results);
-  };
+  }, [memoryData, activeTab, searchRegex, searchCaseSensitive]);
 
   // 开始编辑
-  const handleStartEdit = (type: MemoryFileType) => {
+  const handleStartEdit = useCallback((type: MemoryFileType) => {
     startEdit(type);
-  };
+  }, [startEdit]);
 
   // 保存记忆
-  const handleSaveMemory = async (): Promise<boolean> => {
+  const handleSaveMemory = useCallback(async (): Promise<boolean> => {
     return saveMemory();
-  };
+  }, [saveMemory]);
 
   if (isLoading) {
     return (

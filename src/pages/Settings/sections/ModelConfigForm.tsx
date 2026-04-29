@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Button, Input } from '../../../components';
 import type { ModelConfig } from '../../../types/config';
-import { logger } from '../../../lib/logger';
 
 const ModelConfigForm: React.FC<{
   config: ModelConfig | null;
@@ -24,9 +23,7 @@ const ModelConfigForm: React.FC<{
   };
 
   useEffect(() => {
-    logger.debug('[ModelConfigForm] Config changed:', config);
     if (config) {
-      logger.debug('[ModelConfigForm] Setting formData to:', config);
       setFormData(config);
     }
   }, [config]);

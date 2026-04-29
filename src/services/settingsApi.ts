@@ -1,5 +1,6 @@
 import { apiClient, getErrorDetail } from './apiClient';
 import { logger } from '../lib/logger';
+import { DEFAULT_PATHS } from './constants';
 import type {
   HermesConfig,
   ConfigSection,
@@ -76,7 +77,7 @@ export async function getDataDir(): Promise<string> {
     return await apiClient.invoke<string>('get_data_dir');
   } catch (error) {
     logger.debug('[Settings] getDataDir failed, using default:', getErrorDetail(error));
-    return '~/.hermes';
+    return DEFAULT_PATHS.dataDir;
   }
 }
 

@@ -85,16 +85,15 @@ export const ChatPage: React.FC<ChatPageProps> = ({
     sessionTokenUsage,
   ]);
 
-  const {
-    addMessage,
-    updateMessage,
-    setStreaming,
-    setStreamingText,
-    setReasoningText,
-    clearReasoningText,
-    clearStreamingTools,
-    clearPendingPermission,
-  } = useChatStore();
+  // Use individual selectors for store actions to avoid subscribing to entire store
+  const addMessage = useChatStore((s) => s.addMessage);
+  const updateMessage = useChatStore((s) => s.updateMessage);
+  const setStreaming = useChatStore((s) => s.setStreaming);
+  const setStreamingText = useChatStore((s) => s.setStreamingText);
+  const setReasoningText = useChatStore((s) => s.setReasoningText);
+  const clearReasoningText = useChatStore((s) => s.clearReasoningText);
+  const clearStreamingTools = useChatStore((s) => s.clearStreamingTools);
+  const clearPendingPermission = useChatStore((s) => s.clearPendingPermission);
 
   // Session store for loading history from server
   const updateSessionActivity = useSessionStore((s) => s.updateSessionActivity);
@@ -542,7 +541,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({
   }, [effectiveSessionId, addMessage, updateMessage, setStreaming, t, updateSessionActivity]);
 
   // Stop running
-  const handleStop = async () => {
+  const handleStop = useCallback(async () => {
     // Get current session ID from navigation store (in case tab was switched)
     const currentTabId = useNavigationStore.getState().activeTabId;
     const targetSessionId = currentTabId || effectiveSessionId;
@@ -582,55 +581,26 @@ export const ChatPage: React.FC<ChatPageProps> = ({
     setStreamingText(targetSessionId, '');
     clearReasoningText(targetSessionId);
     clearStreamingTools(targetSessionId);
-  };
-
-  // Handle approval response - wrapped in useCallback to prevent stale closure issues
-  const handleApprovalResponse = useCallback(async (choice: 'once' | 'session' | 'always' | 'deny') => {
-    // Get current pending permission from store directly to avoid stale closure
-    const currentSessionId = effectiveSessionId || useNavigationStore.getState().activeTabId;
-    const currentPendingPermission = useChatStore.getState().sessions[currentSessionId || '']?.pendingPermission;
-
-    if (!currentSessionId || !currentPendingPermission) {
-      logger.warn('[ChatPage] handleApprovalResponse - No session or pending permission', {
-        currentSessionId,
-        hasPermission: !!currentPendingPermission
-      });
-      return;
-    }
-
-    logger.info('[ChatPage] Approval response:', {
-      choice,
-      approvalId: currentPendingPermission.id,
-      sessionId: currentSessionId
-    });
-
-    try {
-      await respondApproval(currentPendingPermission.id, choice !== 'deny');
-      logger.info('[ChatPage] Approval response sent successfully');
-    } catch (error) {
-      logger.error('[ChatPage] Failed to send approval response:', error);
-    }
-    clearPendingPermission(currentSessionId);
-  }, [effectiveSessionId, clearPendingPermission]);
+  }, [effectiveSessionId, setStreaming, setStreamingText, clearReasoningText, clearStreamingTools, updateMessage, t]);
 
   // ---- Message operations ----
   const [editMessageId, setEditMessageId] = useState<string | null>(null);
   const [editMessageContent, setEditMessageContent] = useState('');
 
-  const copyMessage = async (content: string) => {
+  const copyMessage = useCallback(async (content: string) => {
     try {
       await navigator.clipboard.writeText(content);
     } catch (err) {
       logger.error('[ChatPage] Failed to copy:', err);
     }
-  };
+  }, []);
 
-  const handleDeleteMessage = (messageId: string) => {
+  const handleDeleteMessage = useCallback((messageId: string) => {
     if (!effectiveSessionId) return;
     useChatStore.getState().deleteMessage(effectiveSessionId, messageId);
-  };
+  }, [effectiveSessionId]);
 
-  const handleRegenerate = () => {
+  const handleRegenerate = useCallback(() => {
     if (!effectiveSessionId) return;
     const msgs = useChatStore.getState().sessions[effectiveSessionId]?.messages ?? [];
     // Find the last user message before the current assistant message
@@ -659,26 +629,26 @@ export const ChatPage: React.FC<ChatPageProps> = ({
 
     // Fill the input for the user to review/edit before sending
     chatInputRef.current?.triggerSend(userMsg.content);
-  };
+  }, [effectiveSessionId]);
 
-  const startEditMessage = (messageId: string, content: string) => {
+  const startEditMessage = useCallback((messageId: string, content: string) => {
     setEditMessageId(messageId);
     setEditMessageContent(content);
-  };
+  }, []);
 
-  const cancelEditMessage = () => {
+  const cancelEditMessage = useCallback(() => {
     setEditMessageId(null);
     setEditMessageContent('');
-  };
+  }, []);
 
-  const saveEditMessage = (messageId: string) => {
+  const saveEditMessage = useCallback((messageId: string) => {
     if (!effectiveSessionId || !editMessageContent.trim()) return;
     useChatStore.getState().updateMessage(effectiveSessionId, messageId, {
       content: editMessageContent.trim(),
     });
     setEditMessageId(null);
     setEditMessageContent('');
-  };
+  }, [effectiveSessionId, editMessageContent]);
 
   const closeSearch = useCallback(() => {
     setShowMessageSearch(false);
@@ -698,7 +668,6 @@ export const ChatPage: React.FC<ChatPageProps> = ({
         streamingText={sessionState.streamingText}
         reasoningText={sessionState.reasoningText}
         streamingTools={sessionState.streamingTools}
-        pendingPermission={sessionState.pendingPermission}
         apiAvailable={apiAvailable}
         showMessageSearch={showMessageSearch}
         messageSearchQuery={messageSearchQuery}
@@ -721,7 +690,6 @@ export const ChatPage: React.FC<ChatPageProps> = ({
         onCancelEdit={cancelEditMessage}
         onSaveEdit={saveEditMessage}
         onEditContentChange={setEditMessageContent}
-        onApprovalResponse={handleApprovalResponse}
         t={t}
       />
 

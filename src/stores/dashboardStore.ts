@@ -62,9 +62,7 @@ export const useDashboardStore = create<DashboardState>((set) => ({
   fetchSystemStatus: async () => {
     set({ isLoadingStatus: true, error: null });
     try {
-      logger.debug('[Dashboard] Fetching system status...');
       const status = await statusApi.getSystemStatus();
-      logger.debug('[Dashboard] System status fetched:', status);
       set({ systemStatus: status, isLoadingStatus: false });
     } catch (err) {
       logger.error('[Dashboard] Failed to fetch system status:', err);
@@ -80,11 +78,7 @@ export const useDashboardStore = create<DashboardState>((set) => ({
   fetchUsageAnalytics: async (days = 30) => {
     set({ isLoadingAnalytics: true, error: null });
     try {
-      logger.debug('[Dashboard] Fetching usage analytics...');
       const analytics = await analyticsApi.getUsage({ days });
-      logger.debug('[Dashboard] Usage analytics fetched:', analytics);
-      logger.debug('[Dashboard] Total sessions:', analytics.totals.total_sessions);
-      logger.debug('[Dashboard] Daily data:', analytics.daily);
       set({
         usageAnalytics: analytics,
         recentSessionsCount: analytics.totals.total_sessions,
@@ -104,9 +98,7 @@ export const useDashboardStore = create<DashboardState>((set) => ({
   fetchSkills: async () => {
     set({ isLoadingSkills: true, error: null });
     try {
-      logger.debug('[Dashboard] Fetching skills...');
       const skills = await skillsApi.listSkills();
-      logger.debug('[Dashboard] Skills fetched:', skills);
       set({ skills, isLoadingSkills: false });
     } catch (err) {
       logger.error('[Dashboard] Failed to fetch skills:', err);
@@ -122,7 +114,6 @@ export const useDashboardStore = create<DashboardState>((set) => ({
   fetchTodayTasks: async () => {
     set({ isLoadingTasks: true, error: null });
     try {
-      logger.debug('[Dashboard] Fetching today tasks...');
       const jobs = await cronJobsApi.listCronJobs();
       // 过滤出今日要执行的任务
       const today = new Date();
@@ -136,7 +127,6 @@ export const useDashboardStore = create<DashboardState>((set) => ({
         return nextRun >= today && nextRun < tomorrow && job.enabled;
       });
 
-      logger.debug('[Dashboard] Today tasks fetched:', todayJobs);
       set({ todayTasks: todayJobs, isLoadingTasks: false });
     } catch (err) {
       logger.error('[Dashboard] Failed to fetch today tasks:', err);
@@ -150,7 +140,6 @@ export const useDashboardStore = create<DashboardState>((set) => ({
 
   // 获取所有数据
   fetchAll: async () => {
-    logger.debug('[Dashboard] Fetching all dashboard data...');
     set({ error: null });
     await Promise.all([
       useDashboardStore.getState().fetchSystemStatus(),
@@ -158,7 +147,6 @@ export const useDashboardStore = create<DashboardState>((set) => ({
       useDashboardStore.getState().fetchSkills(),
       useDashboardStore.getState().fetchTodayTasks(),
     ]);
-    logger.debug('[Dashboard] All dashboard data fetched');
   },
 
   // 清除错误

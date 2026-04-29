@@ -1,5 +1,6 @@
 import { apiClient, getErrorDetail } from './apiClient';
 import { logger } from '../lib/logger';
+import { DEFAULT_PATHS } from './constants';
 import type {
   CronJob,
   CreateCronJobParams,
@@ -82,6 +83,6 @@ export async function getCronPath(): Promise<string> {
     return await apiClient.invoke<string>('get_cron_path');
   } catch (error) {
     logger.debug('[CronJobs] getCronPath failed, using default:', getErrorDetail(error));
-    return '~/.hermes/cron';
+    return DEFAULT_PATHS.cron;
   }
 }

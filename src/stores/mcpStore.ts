@@ -100,8 +100,8 @@ export const useMcpStore = create<McpState>((set, get) => ({
       const stats = await mcpApi.getStats();
       set({ stats });
     } catch (error) {
-      logger.debug('[McpStore] fetchStats failed, using defaults:', error);
-      set({ stats: defaultStats });
+      logger.warn('[McpStore] fetchStats failed, using defaults:', error);
+      set({ stats: defaultStats, error: getErrorMessage(error) });
     }
   },
 
@@ -197,8 +197,8 @@ export const useMcpStore = create<McpState>((set, get) => ({
       const tools = await mcpApi.getTools(name);
       set({ tools });
     } catch (error) {
-      logger.debug('[McpStore] fetchTools failed:', error);
-      set({ tools: [] });
+      logger.warn('[McpStore] fetchTools failed:', error);
+      set({ tools: [], error: getErrorMessage(error) });
     }
   },
 
@@ -208,8 +208,8 @@ export const useMcpStore = create<McpState>((set, get) => ({
       const resources = await mcpApi.getResources(name);
       set({ resources });
     } catch (error) {
-      logger.debug('[McpStore] fetchResources failed:', error);
-      set({ resources: [] });
+      logger.warn('[McpStore] fetchResources failed:', error);
+      set({ resources: [], error: getErrorMessage(error) });
     }
   },
 
@@ -219,8 +219,8 @@ export const useMcpStore = create<McpState>((set, get) => ({
       const logs = await mcpApi.getLogs(name);
       set({ logs });
     } catch (error) {
-      logger.debug('[McpStore] fetchLogs failed:', error);
-      set({ logs: [] });
+      logger.warn('[McpStore] fetchLogs failed:', error);
+      set({ logs: [], error: getErrorMessage(error) });
     }
   },
 
