@@ -33,6 +33,7 @@ export const Layout: React.FC<LayoutProps> = ({
   const sidebarCollapsed = useThemeStore((s) => s.sidebarCollapsed);
   const setSidebarCollapsed = useThemeStore((s) => s.setSidebarCollapsed);
   const toggleMobileSidebar = useThemeStore((s) => s.toggleMobileSidebar);
+  const sidebarPosition = useThemeStore((s) => s.displayPreferences.sidebarPosition);
   const activeItem = useNavigationStore((s) => s.activeItem);
   const { t } = useTranslation();
 
@@ -68,28 +69,41 @@ export const Layout: React.FC<LayoutProps> = ({
     return titles[activeItem] || 'Hermes';
   };
 
-  return (
-    <div className={layoutClasses}>
+  const sidebarContent = (
+    <>
       <Sidebar />
       <SessionSidebar />
-      <main className="layout-main">
-        {/* Mobile Header */}
-        <div className="mobile-header">
-          <button className="hamburger-btn" onClick={toggleMobileSidebar} aria-label="Open menu">
-            <MenuIcon />
-          </button>
-          <span className="mobile-header-title">{getPageTitle()}</span>
-          {actions && <div className="mobile-actions">{actions}</div>}
-        </div>
+    </>
+  );
 
-        {(title || actions) && (
-          <header className="layout-header">
-            {title && <h1 className="layout-title">{title}</h1>}
-            {actions && <div className="layout-actions">{actions}</div>}
-          </header>
-        )}
-        <div className={`layout-content ${className}`}>{children}</div>
-      </main>
+  const mainContent = (
+    <main className="layout-main">
+      {/* Mobile Header */}
+      <div className="mobile-header">
+        <button className="hamburger-btn" onClick={toggleMobileSidebar} aria-label="Open menu">
+          <MenuIcon />
+        </button>
+        <span className="mobile-header-title">{getPageTitle()}</span>
+        {actions && <div className="mobile-actions">{actions}</div>}
+      </div>
+
+      {(title || actions) && (
+        <header className="layout-header">
+          {title && <h1 className="layout-title">{title}</h1>}
+          {actions && <div className="layout-actions">{actions}</div>}
+        </header>
+      )}
+      <div className={`layout-content ${className}`}>{children}</div>
+    </main>
+  );
+
+  return (
+    <div className={layoutClasses} data-sidebar-position={sidebarPosition}>
+      {sidebarPosition === 'right' ? (
+        <>{mainContent}{sidebarContent}</>
+      ) : (
+        <>{sidebarContent}{mainContent}</>
+      )}
       <StatusBar />
       <KeyboardShortcutsHelp />
     </div>

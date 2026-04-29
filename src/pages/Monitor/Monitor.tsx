@@ -415,6 +415,9 @@ export const Monitor: React.FC = () => {
           <div className="error-message">
             <AlertIcon size={16} />
             <span>{error}</span>
+            <Button variant="ghost" size="sm" onClick={handleRefresh}>
+              <RefreshIcon size={14} /> {t('common.refresh')}
+            </Button>
           </div>
         )}
 

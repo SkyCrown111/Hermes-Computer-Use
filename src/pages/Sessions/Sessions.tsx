@@ -363,11 +363,11 @@ export const Sessions: React.FC = () => {
   const totalPages = Math.ceil(total / limit);
 
   // Single source of truth for fetching sessions
-  // Only depends on: platform, offset, refreshKey
+  // Only depends on: platform, offset, limit, refreshKey
   useEffect(() => {
-    logger.component('Sessions', 'Fetching sessions...', { platform, offset, refreshKey });
+    logger.component('Sessions', 'Fetching sessions...', { platform, offset, limit, refreshKey });
     fetchSessions(platform ?? undefined, limit, offset);
-  }, [platform, offset, refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [platform, offset, limit, refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Clear session detail on mount
   useEffect(() => {

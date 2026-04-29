@@ -603,3 +603,244 @@ pub fn update_platform_config(
 
     write_gateway_state(&gateway_state)
 }
+
+/// Platform chat/conversation info
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlatformChat {
+    pub chat_id: String,
+    pub chat_type: String,  // "private", "group", "channel"
+    pub name: String,
+    pub platform: String,
+    pub unread_count: Option<u32>,
+    pub last_message: Option<String>,
+    pub last_message_time: Option<String>,
+}
+
+/// Platform message
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlatformMessage {
+    pub message_id: String,
+    pub chat_id: String,
+    pub sender_id: String,
+    pub sender_name: Option<String>,
+    pub content: String,
+    pub timestamp: String,
+    pub is_from_me: bool,
+    pub reply_to: Option<String>,
+}
+
+/// Get chats list from a platform
+#[tauri::command]
+pub fn get_platform_chats(platform_type: String, limit: Option<usize>) -> Result<Vec<PlatformChat>, String> {
+    let valid_type = validate_platform_type(&platform_type)?;
+    let limit = limit.unwrap_or(50);
+
+    let script = format!(
+        r#"
+import sys
+import json
+sys.path.insert(0, str(__import__('pathlib').Path.home() / '.hermes' / 'hermes-agent'))
+import os
+
+platform = "{}"
+limit = {}
+
+# Try to load platform-specific chat list
+state_file = os.path.expanduser("~/.hermes/gateway_state.json")
+chats = []
+
+try:
+    with open(state_file, 'r') as f:
+        state = json.load(f)
+    
+    platform_state = state.get("platforms", {{}}).get(platform, {{}})
+    cached_chats = platform_state.get("cached_chats", [])
+    
+    for chat in cached_chats[:limit]:
+        chats.append({{
+            "chat_id": chat.get("id", ""),
+            "chat_type": chat.get("type", "private"),
+            "name": chat.get("name", "Unknown"),
+            "platform": platform,
+            "unread_count": chat.get("unread_count"),
+            "last_message": chat.get("last_message"),
+            "last_message_time": chat.get("last_message_time")
+        }})
+except Exception as e:
+    pass
+
+print(json.dumps(chats))
+"#,
+        valid_type, limit
+    );
+
+    let output = create_command("wsl")
+        .args(["python3", "-c", &script])
+        .output()
+        .map_err(|e| format!("Failed to get platform chats: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to get platform chats: {}", stderr));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let chats: Vec<PlatformChat> = serde_json::from_str(&stdout.trim())
+        .map_err(|e| format!("Failed to parse chats: {}", e))?;
+
+    Ok(chats)
+}
+
+/// Send message through platform gateway
+#[tauri::command]
+pub fn send_platform_message(
+    platform_type: String,
+    chat_id: String,
+    message: String,
+) -> Result<serde_json::Value, String> {
+    let valid_type = validate_platform_type(&platform_type)?;
+
+    // Use Hermes send_message tool via Python
+    let script = format!(
+        r#"
+import sys
+import json
+sys.path.insert(0, str(__import__('pathlib').Path.home() / '.hermes' / 'hermes-agent'))
+
+# Construct target string
+target = "{}:{}"
+
+# Call send_message tool
+try:
+    from tools.send_message_tool import send_message
+    result = send_message(target=target, message="""{}""")
+    print(json.dumps({{"success": True, "result": result}}))
+except Exception as e:
+    print(json.dumps({{"success": False, "error": str(e)}}))
+"#,
+        valid_type, chat_id,
+        message.replace("\"", "\\\"").replace("\n", "\\n")
+    );
+
+    let output = create_command("wsl")
+        .args(["python3", "-c", &script])
+        .output()
+        .map_err(|e| format!("Failed to send message: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to send message: {}", stderr));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let result: serde_json::Value = serde_json::from_str(&stdout.trim())
+        .map_err(|e| format!("Failed to parse result: {}", e))?;
+
+    Ok(result)
+}
+
+/// Get recent messages from a platform chat
+#[tauri::command]
+pub fn get_platform_messages(
+    platform_type: String,
+    chat_id: String,
+    limit: Option<usize>,
+    before_id: Option<String>,
+) -> Result<Vec<PlatformMessage>, String> {
+    let valid_type = validate_platform_type(&platform_type)?;
+    let limit = limit.unwrap_or(50);
+
+    let _before_clause = match before_id {
+        Some(id) => format!(r#", "before_id": "{}""#, id),
+        None => String::new(),
+    };
+
+    let script = format!(
+        r#"
+import sys
+import json
+import os
+sys.path.insert(0, str(__import__('pathlib').Path.home() / '.hermes' / 'hermes-agent'))
+
+platform = "{}"
+chat_id = "{}"
+limit = {}
+
+# Load cached messages from gateway state
+state_file = os.path.expanduser("~/.hermes/gateway_state.json")
+messages = []
+
+try:
+    with open(state_file, 'r') as f:
+        state = json.load(f)
+    
+    platform_state = state.get("platforms", {{}}).get(platform, {{}})
+    cached_msgs = platform_state.get("cached_messages", {{}}).get(chat_id, [])
+    
+    for msg in cached_msgs[:limit]:
+        messages.append({{
+            "message_id": msg.get("id", ""),
+            "chat_id": chat_id,
+            "sender_id": msg.get("sender_id", ""),
+            "sender_name": msg.get("sender_name"),
+            "content": msg.get("content", ""),
+            "timestamp": msg.get("timestamp", ""),
+            "is_from_me": msg.get("is_from_me", False),
+            "reply_to": msg.get("reply_to")
+        }})
+except Exception as e:
+    pass
+
+print(json.dumps(messages))
+"#,
+        valid_type, chat_id, limit
+    );
+
+    let output = create_command("wsl")
+        .args(["python3", "-c", &script])
+        .output()
+        .map_err(|e| format!("Failed to get messages: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to get messages: {}", stderr));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let messages: Vec<PlatformMessage> = serde_json::from_str(&stdout.trim())
+        .map_err(|e| format!("Failed to parse messages: {}", e))?;
+
+    Ok(messages)
+}
+
+/// Mark chat as read on platform
+#[tauri::command]
+pub fn mark_platform_chat_read(platform_type: String, chat_id: String) -> Result<(), String> {
+    let valid_type = validate_platform_type(&platform_type)?;
+
+    // Update gateway state to clear unread count
+    let mut gateway_state = read_gateway_state()?;
+
+    if let Some(platforms) = gateway_state.get_mut("platforms") {
+        if let Some(platforms_obj) = platforms.as_object_mut() {
+            if let Some(platform) = platforms_obj.get_mut(&valid_type) {
+                if let Some(platform_obj) = platform.as_object_mut() {
+                    if let Some(cached_chats) = platform_obj.get_mut("cached_chats") {
+                        if let Some(chats_arr) = cached_chats.as_array_mut() {
+                            for chat in chats_arr.iter_mut() {
+                                if let Some(chat_obj) = chat.as_object_mut() {
+                                    if chat_obj.get("id").and_then(|v| v.as_str()) == Some(&chat_id) {
+                                        chat_obj.insert("unread_count".to_string(), serde_json::Value::Number(0.into()));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    write_gateway_state(&gateway_state)?;
+    Ok(())
+}

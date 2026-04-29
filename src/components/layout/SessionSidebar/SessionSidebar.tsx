@@ -27,8 +27,12 @@ export const SessionSidebar: React.FC = () => {
   const closeTab = useNavigationStore((s) => s.closeTab);
   const updateSessionTitle = useSessionStore((s) => s.updateSessionTitle);
 
-  // Get chat sessions state for status indicators
-  const chatSessions = useChatStore((s) => s.sessions);
+  // 只订阅流式激活状态（布尔值），不订阅整个 chatSessions
+  const isStreamingActive = useChatStore(s =>
+    Object.values(s.sessions).some(session => session?.isStreaming)
+  );
+
+  // 会话状态指示器用：按需读取 chatSessions，不触发重渲染
 
   const [searchQuery, setSearchQuery] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -61,18 +65,14 @@ export const SessionSidebar: React.FC = () => {
     };
   }, [fetchSessions]);
 
-  // Refresh when streaming ends (was streaming, now not)
+  // 流式结束后刷新 — 只依赖布尔值，不依赖整个 chatSessions 对象
   useEffect(() => {
-    const isCurrentlyStreaming = Object.values(chatSessions).some(s => s?.isStreaming);
-
-    // If was streaming but now stopped, refresh the session list
-    if (wasStreamingRef.current && !isCurrentlyStreaming) {
+    // 如果流式刚结束，刷新会话列表
+    if (wasStreamingRef.current && !isStreamingActive) {
       fetchSessions();
     }
-
-    // Update ref for next check
-    wasStreamingRef.current = isCurrentlyStreaming;
-  }, [chatSessions, fetchSessions]);
+    wasStreamingRef.current = isStreamingActive;
+  }, [isStreamingActive, fetchSessions]);
 
   // Context menu state
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
@@ -116,13 +116,15 @@ export const SessionSidebar: React.FC = () => {
   };
 
   // Get session status: 'streaming' | 'active' | 'idle'
+  // 直接从 store 读取最新状态，避免闭包依赖整个 chatSessions 对象
   const getSessionStatus = useCallback((sessionId: string): 'streaming' | 'active' | 'idle' => {
+    const chatSessions = useChatStore.getState().sessions;
     const chatSession = chatSessions[sessionId];
     if (!chatSession) return 'idle';
     if (chatSession.isStreaming) return 'streaming';
     if (chatSession.messages && chatSession.messages.length > 0) return 'active';
     return 'idle';
-  }, [chatSessions]);
+  }, []);
 
   const handleNewChat = () => {
     const newId = `new_${Date.now()}`;

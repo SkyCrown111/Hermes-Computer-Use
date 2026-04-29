@@ -50,4 +50,66 @@ export const platformApi = {
   checkWechatQRCodeStatus: async (): Promise<{ status: string }> => {
     return apiClient.invoke('check_wechat_qrcode_status');
   },
+
+  // New API methods for platform messaging
+  getPlatformChats: async (platformType: PlatformType, limit?: number): Promise<{
+    chat_id: string;
+    chat_type: string;
+    name: string;
+    platform: string;
+    unread_count?: number;
+    last_message?: string;
+    last_message_time?: string;
+  }[]> => {
+    try {
+      return await apiClient.invoke('get_platform_chats', { platform_type: platformType, limit });
+    } catch (error) {
+      logger.error('[PlatformApi] getPlatformChats failed:', getErrorDetail(error));
+      return [];
+    }
+  },
+
+  sendPlatformMessage: async (platformType: PlatformType, chatId: string, message: string): Promise<{ success: boolean; result?: unknown; error?: string }> => {
+    try {
+      return await apiClient.invoke('send_platform_message', {
+        platform_type: platformType,
+        chat_id: chatId,
+        message
+      });
+    } catch (error) {
+      logger.error('[PlatformApi] sendPlatformMessage failed:', getErrorDetail(error));
+      return { success: false, error: getErrorDetail(error) };
+    }
+  },
+
+  getPlatformMessages: async (platformType: PlatformType, chatId: string, limit?: number, beforeId?: string): Promise<{
+    message_id: string;
+    chat_id: string;
+    sender_id: string;
+    sender_name?: string;
+    content: string;
+    timestamp: string;
+    is_from_me: boolean;
+    reply_to?: string;
+  }[]> => {
+    try {
+      return await apiClient.invoke('get_platform_messages', {
+        platform_type: platformType,
+        chat_id: chatId,
+        limit,
+        before_id: beforeId
+      });
+    } catch (error) {
+      logger.error('[PlatformApi] getPlatformMessages failed:', getErrorDetail(error));
+      return [];
+    }
+  },
+
+  markPlatformChatRead: async (platformType: PlatformType, chatId: string): Promise<void> => {
+    try {
+      await apiClient.invoke('mark_platform_chat_read', { platform_type: platformType, chat_id: chatId });
+    } catch (error) {
+      logger.error('[PlatformApi] markPlatformChatRead failed:', getErrorDetail(error));
+    }
+  },
 };

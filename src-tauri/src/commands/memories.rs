@@ -261,3 +261,191 @@ print(json.dumps({{"success": True}}))
 pub fn get_memories_path() -> Result<String, String> {
     Ok("~/.hermes/memories".to_string())
 }
+
+/// Search result from memory
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemorySearchResult {
+    pub file: String,
+    pub line_number: usize,
+    pub line_content: String,
+    pub context_before: Vec<String>,
+    pub context_after: Vec<String>,
+}
+
+/// Search memories for a query
+#[tauri::command]
+pub fn search_memories(query: String, case_sensitive: bool) -> Result<Vec<MemorySearchResult>, String> {
+    if query.is_empty() {
+        return Err("Query cannot be empty".to_string());
+    }
+
+    let script = format!(
+        r#"
+import os
+import json
+
+query = "{}"
+case_sensitive = {}
+results = []
+
+for filename in ["MEMORY.md", "USER.md"]:
+    filepath = os.path.expanduser("~/.hermes/memories/" + filename)
+    if not os.path.isfile(filepath):
+        continue
+    
+    with open(filepath, 'r', encoding='utf-8') as f:
+        lines = f.readlines()
+    
+    search_query = query if case_sensitive else query.lower()
+    
+    for i, line in enumerate(lines):
+        search_line = line if case_sensitive else line.lower()
+        if search_query in search_line:
+            context_before = [lines[j].rstrip() for j in range(max(0, i-2), i)]
+            context_after = [lines[j].rstrip() for j in range(i+1, min(len(lines), i+3))]
+            results.append({{
+                "file": filename,
+                "line_number": i + 1,
+                "line_content": line.rstrip(),
+                "context_before": context_before,
+                "context_after": context_after
+            }})
+
+print(json.dumps(results))
+"#,
+        query.replace("\"", "\\\""),
+        case_sensitive
+    );
+
+    let output = create_command("wsl")
+        .args(["python3", "-c", &script])
+        .output()
+        .map_err(|e| format!("Failed to search memories: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to search memories: {}", stderr));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let results: Vec<MemorySearchResult> = serde_json::from_str(&stdout.trim())
+        .map_err(|e| format!("Failed to parse search results: {}", e))?;
+
+    Ok(results)
+}
+
+/// Delete a section from memory by ID
+#[tauri::command]
+pub fn delete_memory_section(file_type: String, section_id: String) -> Result<serde_json::Value, String> {
+    let filename = if file_type == "user_profile" {
+        "USER.md"
+    } else {
+        "MEMORY.md"
+    };
+    let valid_filename = validate_memory_filename(filename)?;
+
+    // Read current content
+    let memory_file = read_memory_file(&valid_filename)?;
+    
+    // Find and remove the section
+    let section_index = memory_file.sections
+        .iter()
+        .position(|s| s.id == section_id)
+        .ok_or_else(|| format!("Section {} not found", section_id))?;
+
+    let section = &memory_file.sections[section_index];
+    
+    // Remove section content from the full content
+    let lines: Vec<&str> = memory_file.content.lines().collect();
+    let new_lines: Vec<&str> = lines
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| *i < section.start_line - 1 || *i >= section.end_line)
+        .map(|(_, l)| *l)
+        .collect();
+    
+    let new_content = new_lines.join("\n");
+
+    // Save the updated content
+    let encoded = STANDARD.encode(&new_content);
+    let script = format!(
+        r#"
+import os
+import base64
+
+filepath = os.path.expanduser("~/.hermes/memories/{}")
+content = base64.b64decode("{}").decode('utf-8')
+with open(filepath, 'w', encoding='utf-8') as f:
+    f.write(content)
+print('ok')
+"#,
+        valid_filename, encoded
+    );
+
+    let output = create_command("wsl")
+        .args(["python3", "-c", &script])
+        .output()
+        .map_err(|e| format!("Failed to delete section: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to delete section: {}", stderr));
+    }
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "deleted_section": section_id,
+        "remaining_chars": new_content.chars().count()
+    }))
+}
+
+/// Append content to memory
+#[tauri::command]
+pub fn append_memory(file_type: String, content: String, section_title: Option<String>) -> Result<serde_json::Value, String> {
+    let filename = if file_type == "user_profile" {
+        "USER.md"
+    } else {
+        "MEMORY.md"
+    };
+    let valid_filename = validate_memory_filename(filename)?;
+
+    // Read current content
+    let memory_file = read_memory_file(&valid_filename)?;
+    
+    let new_content = if let Some(title) = section_title {
+        format!("{}\n\n## {}\n\n{}\n", memory_file.content, title, content)
+    } else {
+        format!("{}\n\n{}\n", memory_file.content, content)
+    };
+
+    // Save the updated content
+    let encoded = STANDARD.encode(&new_content);
+    let script = format!(
+        r#"
+import os
+import base64
+
+filepath = os.path.expanduser("~/.hermes/memories/{}")
+content = base64.b64decode("{}").decode('utf-8')
+with open(filepath, 'w', encoding='utf-8') as f:
+    f.write(content)
+print('ok')
+"#,
+        valid_filename, encoded
+    );
+
+    let output = create_command("wsl")
+        .args(["python3", "-c", &script])
+        .output()
+        .map_err(|e| format!("Failed to append memory: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to append memory: {}", stderr));
+    }
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "char_count": new_content.chars().count()
+    }))
+}

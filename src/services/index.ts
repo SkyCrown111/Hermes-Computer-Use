@@ -14,6 +14,8 @@ export * from './platformApi';
 export * from './filesApi';
 export * from './mcpApi';
 export * from './updateApi';
+export * from './toolsApi';
+export * from './eventService';
 
 import * as _sessionApi from './sessionApi';
 import * as _skillsApi from './skillsApi';
@@ -26,6 +28,7 @@ import * as _memoryApi from './memoryApi';
 import * as _platformApi from './platformApi';
 import * as _filesApi from './filesApi';
 import * as _mcpApi from './mcpApi';
+import * as _toolsApi from './toolsApi';
 
 export const sessionApi = _sessionApi;
 export const skillsApi = _skillsApi;
@@ -38,3 +41,4 @@ export const memoryApi = _memoryApi;
 export const platformApi = _platformApi;
 export const filesApi = _filesApi;
 export const mcpApi = _mcpApi;
+export const toolsApi = _toolsApi;

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { useTranslation } from '../../hooks/useTranslation';
-import { PlusIcon, PlayIcon, StopIcon, HourglassIcon, XIcon } from '../ui/Icons';
+import { PlusIcon, PlayIcon, StopIcon, XIcon } from '../ui/Icons';
 import { logger } from '../../lib/logger';
 
 // ---- Types ----
@@ -15,11 +15,6 @@ export interface AttachedFile {
 
 export interface ChatInputHandle {
   triggerSend: (text: string) => void;
-}
-
-interface PendingMessage {
-  text: string;
-  files: AttachedFile[];
 }
 
 interface ChatInputProps {
@@ -59,7 +54,6 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const [filteredCommands, setFilteredCommands] = useState(HERMES_COMMANDS);
     const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
     const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
-    const [pendingMessage, setPendingMessage] = useState<PendingMessage | null>(null);
 
     // ---- Refs ----
     const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -81,15 +75,6 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     useEffect(() => {
       inputRef.current?.focus();
     }, []);
-
-    // Send pending message when streaming ends
-    useEffect(() => {
-      if (!isStreaming && pendingMessage) {
-        logger.debug('[ChatInput] Streaming ended, sending pending message');
-        onSendMessage(pendingMessage.text, pendingMessage.files);
-        setPendingMessage(null);
-      }
-    }, [isStreaming, pendingMessage, onSendMessage]);
 
     // Close menus when clicking outside
     useEffect(() => {
@@ -128,16 +113,17 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       inputRef.current?.focus();
     };
 
-    const handleSend = () => {
+  const handleSend = () => {
       if (!inputValue.trim()) return;
 
-      // If streaming AND no pending permission, queue the message
-      // If there's a pending permission, allow sending new message (will auto-deny permission)
+      // CLI behavior: if streaming, let parent handle abort+resend
       if (isStreaming && !hasPendingPermission) {
-        logger.debug('[ChatInput] Streaming in progress, queuing message');
-        setPendingMessage({ text: inputValue.trim(), files: attachedFiles });
+        // Let parent handle abort+resend
+        const text = inputValue.trim();
+        const files = attachedFiles;
         setInputValue('');
         setAttachedFiles([]);
+        onSendMessage(text, files);
         return;
       }
 
@@ -269,21 +255,6 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                   </button>
                 </div>
               ))}
-            </div>
-          )}
-
-          {/* Pending Message Indicator */}
-          {pendingMessage && (
-            <div className="pending-message-indicator">
-              <span className="pending-icon"><HourglassIcon size={14} /></span>
-              <span className="pending-text">{t('chat.messageQueued')}</span>
-              <button
-                className="cancel-pending-btn"
-                onClick={() => setPendingMessage(null)}
-                title={t('common.cancel')}
-              >
-                <XIcon size={14} />
-              </button>
             </div>
           )}
 

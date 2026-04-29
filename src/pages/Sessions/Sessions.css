@@ -357,10 +357,6 @@
   animation: fadeIn 0.2s ease-out;
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
 
 .session-detail-drawer {
   width: 90%;
@@ -374,16 +370,6 @@
   overflow: hidden;
 }
 
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
 
 .drawer-header {
   display: flex;
@@ -713,11 +699,6 @@
   border-width: 4px;
 }
 
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
 
 .error-message {
   display: flex;

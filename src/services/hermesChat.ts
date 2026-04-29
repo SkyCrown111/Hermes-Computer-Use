@@ -137,6 +137,9 @@ export async function streamChatRealtime(
   _historyOrCallbacks?: Array<unknown> | StreamCallbacks,
   callbacks?: StreamCallbacks
 ): Promise<void> {
+  // Resolve history and callbacks from flexible parameter signature
+  const history: Array<{ role: string; content: string }> =
+    Array.isArray(_historyOrCallbacks) ? _historyOrCallbacks as Array<{ role: string; content: string }> : [];
   const resolvedCallbacks: StreamCallbacks = (callbacks ?? (_historyOrCallbacks && !Array.isArray(_historyOrCallbacks) ? _historyOrCallbacks as StreamCallbacks : {})) || {};
 
   if (!isTauri()) {
@@ -147,8 +150,91 @@ export async function streamChatRealtime(
 
   try {
     resolvedCallbacks.onStatus?.('connecting');
-    await invoke('stream_chat_realtime', { message, session_id: sessionId });
+    
+    // Import Tauri event listener
+    const { listen } = await import('@tauri-apps/api/event');
+    
+    // Set up event listeners BEFORE calling the backend
+    const unlisteners: Array<() => void> = [];
+    
+    // Create a promise that resolves when chat:complete or chat:error is received
+    let resolveCompletion: () => void;
+    const completionPromise = new Promise<void>((resolve) => {
+      resolveCompletion = resolve;
+    });
+    
+    // Listen for chunk events
+    unlisteners.push(await listen<{ content: string; accumulated: string }>('chat:chunk', (event) => {
+      resolvedCallbacks.onChunk?.(event.payload.content, event.payload.accumulated);
+    }));
+    
+    // Listen for reasoning events
+    unlisteners.push(await listen<{ text: string; accumulated: string }>('chat:reasoning', (event) => {
+      resolvedCallbacks.onReasoning?.(event.payload.text, event.payload.accumulated);
+    }));
+    
+    // Listen for tool events
+    unlisteners.push(await listen<Record<string, unknown>>('chat:tool', (event) => {
+      resolvedCallbacks.onTool?.(event.payload);
+    }));
+    
+    // Listen for approval events
+    unlisteners.push(await listen<Record<string, unknown>>('chat:approval', (event) => {
+      resolvedCallbacks.onApproval?.(event.payload);
+    }));
+    
+    // Listen for clarify events
+    unlisteners.push(await listen<Record<string, unknown>>('chat:clarify', (event) => {
+      resolvedCallbacks.onClarify?.(event.payload);
+    }));
+    
+    // Listen for secret events
+    unlisteners.push(await listen<Record<string, unknown>>('chat:secret', (event) => {
+      resolvedCallbacks.onSecret?.(event.payload);
+    }));
+    
+    // Listen for usage events
+    unlisteners.push(await listen<Record<string, unknown>>('chat:usage', (event) => {
+      resolvedCallbacks.onUsage?.(event.payload);
+    }));
+    
+    // Listen for session creation events
+    unlisteners.push(await listen<{ session_id: string }>('chat:session', (event) => {
+      resolvedCallbacks.onSessionCreated?.(event.payload.session_id);
+    }));
+    
+    // Listen for completion events
+    unlisteners.push(await listen<{ id?: string; content: string; reasoning?: string }>('chat:complete', (event) => {
+      resolvedCallbacks.onComplete?.(
+        event.payload.content,
+        event.payload.id ?? null,
+        null,
+        event.payload.reasoning ?? null
+      );
+      // Clean up listeners after completion
+      unlisteners.forEach(unlisten => unlisten());
+      // Resolve the completion promise
+      resolveCompletion();
+    }));
+    
+    // Listen for error events
+    unlisteners.push(await listen<{ error: string }>('chat:error', (event) => {
+      resolvedCallbacks.onError?.(event.payload.error);
+      // Clean up listeners after error
+      unlisteners.forEach(unlisten => unlisten());
+      // Resolve the completion promise
+      resolveCompletion();
+    }));
+    
+    // Build messages array: history + current user message
+    const messages = [...history, { role: 'user', content: message }];
+    
+    // Call the backend command (don't await - it returns immediately)
+    invoke('stream_chat_realtime', { messages, session_id: sessionId });
     resolvedCallbacks.onStatus?.('connected');
+    
+    // Wait for the completion event before returning
+    await completionPromise;
   } catch (error) {
     const detail = getErrorDetail(error);
     logger.error(`[HermesChat] streamChatRealtime failed: ${detail}`);
@@ -170,12 +256,12 @@ export async function checkHermesApiHealth(): Promise<boolean> {
 
 export async function respondApproval(approvalId: string, approved: boolean): Promise<void> {
   if (!isTauri()) return;
-  return wrapChatCall('respond_approval', { approval_id: approvalId, approved }, 'approval_error');
+  return wrapChatCall('respond_approval', { approval_id: approvalId, choice: approved ? 'approved' : 'denied' }, 'approval_error');
 }
 
 export async function respondClarify(clarifyId: string, response: string): Promise<void> {
   if (!isTauri()) return;
-  return wrapChatCall('respond_clarify', { clarify_id: clarifyId, response }, 'clarify_error');
+  return wrapChatCall('respond_clarify', { clarify_id: clarifyId, answer: response }, 'clarify_error');
 }
 
 export async function respondSecret(secretId: string, value: string): Promise<void> {
@@ -183,7 +269,52 @@ export async function respondSecret(secretId: string, value: string): Promise<vo
   return wrapChatCall('respond_secret', { secret_id: secretId, value }, 'secret_error');
 }
 
-export async function abortChat(sessionId: string): Promise<void> {
+export async function abortChat(_sessionId: string): Promise<void> {
   if (!isTauri()) return;
-  return wrapChatCall('abort_chat', { session_id: sessionId }, 'abort_error');
+  return wrapChatCall('abort_chat', {}, 'abort_error');
+}
+
+// 启动 Hermes Gateway
+export async function startHermesGateway(): Promise<{ status: string; message?: string }> {
+  if (!isTauri()) return { status: 'mock' };
+  return wrapChatCall<{ status: string; message?: string }>('start_hermes_gateway', {}, 'gateway_error');
+}
+
+// 流式聊天消息（带进度回调）
+export async function streamChatWithProgress(
+  message: string,
+  sessionId: string | null,
+  onProgress?: (progress: number, status: string) => void
+): Promise<void> {
+  if (!isTauri()) return;
+  
+  try {
+    const messages = [{ role: 'user' as const, content: message }];
+    await invoke('stream_chat_with_progress', { 
+      messages, 
+      session_id: sessionId,
+      on_progress: onProgress 
+    });
+  } catch (error) {
+    const detail = getErrorDetail(error);
+    logger.error(`[HermesChat] streamChatWithProgress failed: ${detail}`);
+    throw new HermesApiError('stream_error', detail);
+  }
+}
+
+// 流式聊天消息（基础版本）
+export async function streamChatMessage(
+  message: string,
+  sessionId: string | null
+): Promise<void> {
+  if (!isTauri()) return;
+  
+  try {
+    const messages = [{ role: 'user' as const, content: message }];
+    await invoke('stream_chat_message', { messages, session_id: sessionId });
+  } catch (error) {
+    const detail = getErrorDetail(error);
+    logger.error(`[HermesChat] streamChatMessage failed: ${detail}`);
+    throw new HermesApiError('stream_error', detail);
+  }
 }

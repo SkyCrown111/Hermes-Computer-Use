@@ -127,4 +127,38 @@ export const memoryApi = {
       return '~/.hermes/memories';
     }
   },
+
+  // New API methods for enhanced memory operations
+  searchMemoriesDirect: async (query: string, caseSensitive: boolean = false): Promise<{
+    file: string;
+    line_number: number;
+    line_content: string;
+    context_before: string[];
+    context_after: string[];
+  }[]> => {
+    try {
+      return await apiClient.invoke('search_memories', { query, caseSensitive });
+    } catch (error) {
+      logger.error('[Memory] Failed to search memories:', getErrorDetail(error));
+      return [];
+    }
+  },
+
+  deleteMemorySection: async (type: MemoryFileType, sectionId: string): Promise<{ ok: boolean; deleted_section: string; remaining_chars: number }> => {
+    try {
+      return await apiClient.invoke('delete_memory_section', { file_type: type, section_id: sectionId });
+    } catch (error) {
+      logger.error('[Memory] Failed to delete section:', getErrorDetail(error));
+      return { ok: false, deleted_section: sectionId, remaining_chars: 0 };
+    }
+  },
+
+  appendMemoryDirect: async (type: MemoryFileType, content: string, sectionTitle?: string): Promise<{ ok: boolean; char_count: number }> => {
+    try {
+      return await apiClient.invoke('append_memory', { file_type: type, content, section_title: sectionTitle });
+    } catch (error) {
+      logger.error('[Memory] Failed to append memory:', getErrorDetail(error));
+      return { ok: false, char_count: 0 };
+    }
+  },
 };

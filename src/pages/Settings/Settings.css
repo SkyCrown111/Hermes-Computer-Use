@@ -443,14 +443,6 @@
   animation: fadeIn 0.2s ease-out;
 }
 
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
 
 .modal-content {
   background: var(--bg-secondary);
@@ -464,16 +456,6 @@
   animation: slideUp 0.3s ease-out;
 }
 
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
 
 .modal-header {
   display: flex;
@@ -707,11 +689,6 @@
   border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
 
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
 
 /* Responsive */
 @media (max-width: 768px) {

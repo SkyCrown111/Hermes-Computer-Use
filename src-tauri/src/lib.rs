@@ -15,6 +15,7 @@ use tauri::Manager;
 use commands::{
     abort_chat,
     add_mcp_server,
+    append_memory,
     check_data_dir_exists,
     check_hermes_health,
     check_wechat_qrcode_status,
@@ -26,6 +27,7 @@ use commands::{
     delete_checkpoint,
     delete_cron_job,
     delete_file,
+    delete_memory_section,
     delete_session,
     delete_skill,
     disable_platform,
@@ -55,6 +57,8 @@ use commands::{
     get_performance_metrics,
     get_platform_status,
     get_platforms,
+    get_platform_chats,
+    get_platform_messages,
     get_session,
     get_sessions_path,
     get_skill,
@@ -72,6 +76,7 @@ use commands::{
     list_sessions,
     list_skills,
     load_config,
+    mark_platform_chat_read,
     move_file,
     pause_cron_job,
     read_file,
@@ -89,8 +94,10 @@ use commands::{
     save_cron_job,
     save_memory,
     save_skill,
+    search_memories,
     search_sessions,
     send_chat_message,
+    send_platform_message,
     start_hermes_gateway,
     start_mcp_server,
     stop_mcp_server,
@@ -109,6 +116,13 @@ use commands::{
     update_session_title,
     write_file,
     write_file_binary,
+    // Tools
+    list_available_tools,
+    get_tool_schema,
+    invoke_tool,
+    list_toolsets,
+    // Chat interrupt
+    interrupt_session,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -246,9 +260,16 @@ pub fn run() {
             update_platform_config,
             get_wechat_qrcode,
             check_wechat_qrcode_status,
+            get_platform_chats,
+            send_platform_message,
+            get_platform_messages,
+            mark_platform_chat_read,
             get_memories,
             save_memory,
             get_memories_path,
+            search_memories,
+            delete_memory_section,
+            append_memory,
             check_hermes_health,
             send_chat_message,
             stream_chat_message,
@@ -290,6 +311,13 @@ pub fn run() {
             get_mcp_logs,
             get_mcp_stats,
             update_mcp_server,
+            // Tools
+            list_available_tools,
+            get_tool_schema,
+            invoke_tool,
+            list_toolsets,
+            // Chat interrupt
+            interrupt_session,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

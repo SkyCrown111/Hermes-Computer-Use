@@ -4,8 +4,7 @@ import { MessageContent } from './MessageContent';
 import { parseToolJson } from './parseToolJson';
 import type { SessionSearchResult } from './constants';
 import type { ChatMessage } from '../../stores/chatStore';
-import { ZapIcon, BotIcon, AlertIcon, ThinkingIcon, MarkdownRenderer } from '../../components';
-import { ThinkingBlock, ToolsBlock, PermissionCard, ClarifyCard, SecretCard } from './index';
+import { ZapIcon, AlertIcon } from '../../components';
 
 // ---- Types ----
 
@@ -15,20 +14,6 @@ interface PermissionApproval {
   description: string;
   allow_permanent: boolean;
   choices?: ('once' | 'session' | 'always' | 'deny')[];
-}
-
-interface ClarifyQuestion {
-  id: string;
-  question: string;
-  choices: string[];
-  is_open_ended: boolean;
-}
-
-interface SecretRequest {
-  id: string;
-  var_name: string;
-  prompt: string;
-  metadata: Record<string, unknown>;
 }
 
 interface ToolCallInfo {
@@ -45,14 +30,8 @@ export interface MessageListProps {
   visibleMessages: ChatMessage[];
   shouldVirtualize: boolean;
   isStreaming: boolean;
-  isThinking: boolean;
-  thinkingText: string;
-  reasoningText: string;
-  streamingText: string;
   streamingTools: ToolCallInfo[];
   pendingPermission: PermissionApproval | null;
-  pendingClarify: ClarifyQuestion | null;
-  pendingSecret: SecretRequest | null;
   apiAvailable: boolean | null;
   showMessageSearch: boolean;
   messageSearchQuery: string;
@@ -76,9 +55,6 @@ export interface MessageListProps {
   onSaveEdit: (messageId: string) => void;
   onEditContentChange: (content: string) => void;
   onApprovalResponse: (choice: 'once' | 'session' | 'always' | 'deny') => void;
-  onClarifyResponse: (answer: string) => void;
-  onSecretResponse: (value: string) => void;
-  onSecretSkip: () => void;
   t: (key: string) => string;
 }
 
@@ -89,14 +65,6 @@ const MessageListComponent: React.FC<MessageListProps> = ({
   visibleMessages,
   shouldVirtualize,
   isStreaming,
-  isThinking,
-  thinkingText,
-  reasoningText,
-  streamingText,
-  streamingTools,
-  pendingPermission,
-  pendingClarify,
-  pendingSecret,
   apiAvailable,
   showMessageSearch,
   messageSearchQuery,
@@ -119,10 +87,6 @@ const MessageListComponent: React.FC<MessageListProps> = ({
   onCancelEdit,
   onSaveEdit,
   onEditContentChange,
-  onApprovalResponse,
-  onClarifyResponse,
-  onSecretResponse,
-  onSecretSkip,
   t,
 }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -132,13 +96,11 @@ const MessageListComponent: React.FC<MessageListProps> = ({
   const isWindowFocusingRef = useRef(false);
 
   // Virtual scrolling: only activate for large lists when NOT streaming
-  // Use stable configuration to prevent recalculation on window focus
   const virtualizerOptions = useMemo(() => ({
     count: shouldVirtualize ? visibleMessages.length : 0,
     getScrollElement: () => scrollContainerRef.current,
     estimateSize: () => 120,
     overscan: 5,
-    // Enable smooth scrolling and prevent jank on focus
     scrollPaddingStart: 0,
     scrollPaddingEnd: 0,
   }), [shouldVirtualize, visibleMessages.length]);
@@ -149,7 +111,6 @@ const MessageListComponent: React.FC<MessageListProps> = ({
   useEffect(() => {
     const handleFocus = () => {
       isWindowFocusingRef.current = true;
-      // Delay to allow browser to complete focus handling
       requestAnimationFrame(() => {
         isWindowFocusingRef.current = false;
       });
@@ -279,7 +240,6 @@ const MessageListComponent: React.FC<MessageListProps> = ({
                   onCancelEdit={onCancelEdit}
                   onSaveEdit={onSaveEdit}
                   onEditContentChange={onEditContentChange}
-                  onApprovalResponse={onApprovalResponse}
                   t={t}
                 />
               );
@@ -289,33 +249,27 @@ const MessageListComponent: React.FC<MessageListProps> = ({
           messages.map((msg, idx) => {
             // Check if message has any visible content
             const { cleanContent } = msg.content ? parseToolJson(msg.content) : { cleanContent: '' };
-            const hasVisibleContent = cleanContent || msg.reasoning || (msg.tools && msg.tools.length > 0) || msg.thinking;
-
-            // Skip rendering if no visible content
+            const hasVisibleContent = cleanContent || (msg.tools && msg.tools.length > 0);
             if (!hasVisibleContent) return null;
 
-            // Find the previous visible message to determine grouping
             let prevVisibleIdx = idx - 1;
             while (prevVisibleIdx >= 0) {
               const prevMsg = messages[prevVisibleIdx];
               const prevClean = prevMsg.content ? parseToolJson(prevMsg.content).cleanContent : '';
-              if (prevClean || prevMsg.reasoning || (prevMsg.tools && prevMsg.tools.length > 0) || prevMsg.thinking) {
+              if (prevClean || prevMsg.reasoning || (prevMsg.tools && prevMsg.tools.length > 0)) {
                 break;
               }
               prevVisibleIdx--;
             }
 
             const isFirstInGroup = prevVisibleIdx < 0 || messages[prevVisibleIdx].role !== msg.role;
-            const isStreamingMsg = idx === messages.length - 1 && isStreaming;
 
             return (
               <MessageContent
                 key={idx}
                 message={msg}
                 isFirstInGroup={isFirstInGroup}
-                isStreamingMsg={isStreamingMsg}
                 messageSearchQuery={messageSearchQuery}
-                pendingPermission={isStreamingMsg ? pendingPermission : null}
                 editMessageId={editMessageId}
                 editMessageContent={editMessageContent}
                 selectedSearchResults={selectedSearchResults}
@@ -330,68 +284,21 @@ const MessageListComponent: React.FC<MessageListProps> = ({
                 onCancelEdit={onCancelEdit}
                 onSaveEdit={onSaveEdit}
                 onEditContentChange={onEditContentChange}
-                onApprovalResponse={onApprovalResponse}
                 t={t}
               />
             );
           })
         )}
 
-        {/* Streaming state display - shows real-time thinking/streaming */}
+        {/* CLI-style processing indicator */}
         {isStreaming && (
-          <div className="chat-message assistant streaming">
-            <div className="message-avatar">
-              <BotIcon size={16} />
-            </div>
-            <div className="message-content">
-              {/* Thinking indicator - show if thinking OR if no content yet */}
-              {(isThinking || (!reasoningText && !streamingTools?.length && !streamingText)) && (
-                <div className="thinking-indicator">
-                  <div className="thinking-dots">
-                    <span></span>
-                    <span></span>
-                    <span></span>
-                  </div>
-                  <span className="thinking-text">
-                    <ThinkingIcon size={14} /> {thinkingText || t('chat.thinking')}
-                  </span>
-                </div>
-              )}
-              {/* Reasoning display - actual AI reasoning content */}
-              {reasoningText && (
-                <ThinkingBlock content={reasoningText} isActive={true} />
-              )}
-              {/* Tool calls display - show during streaming */}
-              {streamingTools && streamingTools.length > 0 && (
-                <ToolsBlock tools={streamingTools} isStreaming={true} />
-              )}
-              {/* Streaming content */}
-              {streamingText && (
-                <div className="message-text"><MarkdownRenderer content={streamingText} searchQuery={messageSearchQuery} /></div>
-              )}
-              {/* Pending approval */}
-              {pendingPermission && (
-                <PermissionCard
-                  approval={pendingPermission}
-                  onRespond={onApprovalResponse}
-                />
-              )}
-              {/* Pending clarify question */}
-              {pendingClarify && (
-                <ClarifyCard
-                  clarify={pendingClarify}
-                  onRespond={onClarifyResponse}
-                />
-              )}
-              {/* Pending secret request */}
-              {pendingSecret && (
-                <SecretCard
-                  secret={pendingSecret}
-                  onRespond={onSecretResponse}
-                  onSkip={onSecretSkip}
-                />
-              )}
-            </div>
+          <div className="cli-processing">
+            <span className="cli-processing-dots">
+              <span></span>
+              <span></span>
+              <span></span>
+            </span>
+            <span className="cli-processing-text">processing</span>
           </div>
         )}
 
@@ -401,6 +308,5 @@ const MessageListComponent: React.FC<MessageListProps> = ({
   );
 };
 
-// Memoize the component to prevent re-renders when parent updates but props haven't changed
-// This is critical for performance in chat apps where messages update frequently
+// Memoize to prevent re-renders when parent updates but props haven't changed
 export const MessageList = memo(MessageListComponent);

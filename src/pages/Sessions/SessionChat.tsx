@@ -5,14 +5,23 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { streamChatRealtime, checkHermesApiHealth, respondApproval, abortChat } from '../../services/hermesChat';
 import { useTranslation } from '../../hooks/useTranslation';
-import { ChatInput, MessageContent, ThinkingBlock, ToolsBlock } from '../../components/chat';
+import { ChatInput, MessageContent } from '../../components/chat';
 import type { ChatInputHandle, AttachedFile, SessionSearchResult } from '../../components/chat';
 import type { ChatMessage, ToolCallInfo } from '../../stores/chatStore';
-import { MarkdownRenderer, BotIcon, ThinkingIcon, XIcon } from '../../components';
+import { XIcon } from '../../components';
 import { logger } from '../../lib/logger';
 import { getErrorMessage } from '../../lib/errorUtils';
 import type { Session, SessionMessage } from '../../types';
 import './SessionChat.css';
+
+/** Normalize content to prevent garbled rendering in historical messages */
+function normalizeContent(content: string): string {
+  if (!content) return '';
+  let clean = content;
+  clean = clean.replace(/\\n/g, '\n');
+  clean = clean.replace(/\r\n/g, '\n');
+  return clean.trim();
+}
 
 // ---- Helpers ----
 
@@ -44,7 +53,7 @@ export const SessionChat: React.FC<SessionChatProps> = ({
   // ---- Streaming State ----
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
-  const [streamingReasoning, setStreamingReasoning] = useState('');
+  const [_streamingReasoning, setStreamingReasoning] = useState('');
   const [streamingTools, setStreamingTools] = useState<ToolCallInfo[]>([]);
   const [apiAvailable, setApiAvailable] = useState<boolean | null>(null);
 
@@ -65,8 +74,15 @@ export const SessionChat: React.FC<SessionChatProps> = ({
       .map(m => ({
         id: nextId(),
         role: m.role as 'user' | 'assistant',
-        content: m.content,
+        content: normalizeContent(m.content),
         timestamp: m.timestamp,
+        // Preserve tool calls from session history
+        tools: m.tool_calls?.map(tc => ({
+          name: tc.name,
+          event_type: 'tool.completed',
+          preview: tc.args ? JSON.stringify(tc.args).slice(0, 100) : '',
+          args: tc.args,
+        })),
       }));
     setMessages(converted);
   }, [initialMessages]);
@@ -136,18 +152,14 @@ export const SessionChat: React.FC<SessionChatProps> = ({
           setIsStreaming(false);
 
           const finalContent = content || streamingContentRef.current;
-          const finalReasoning = streamingReasoningRef.current;
-          const finalTools = streamingToolsRef.current.length > 0
-            ? [...streamingToolsRef.current]
-            : undefined;
 
           const assistantMsg: ChatMessage = {
             id: nextId(),
             role: 'assistant',
             content: finalContent,
-            reasoning: finalReasoning || undefined,
-            tools: finalTools,
             timestamp: new Date().toISOString(),
+            // Preserve tool calls from streaming
+            tools: streamingToolsRef.current.length > 0 ? [...streamingToolsRef.current] : undefined,
             inputTokens: (usage as any)?.prompt_tokens ?? (usage as any)?.input_tokens,
             outputTokens: (usage as any)?.completion_tokens ?? (usage as any)?.output_tokens,
             totalTokens: (usage as any)?.total_tokens,
@@ -278,7 +290,6 @@ export const SessionChat: React.FC<SessionChatProps> = ({
 
   // ---- Stub callbacks (features not applicable in SessionChat) ----
 
-  const noop = () => {};
   const noopToggle = (_msgId: string, _sessionId: string) => {};
   const noopToggleAll = (_msgId: string, _sessionIds: string[]) => {};
   const noopBatchDelete = (_msgId: string) => {};
@@ -327,7 +338,6 @@ export const SessionChat: React.FC<SessionChatProps> = ({
               message={msg}
               isFirstInGroup={isFirstInGroup(msg, idx)}
               messageSearchQuery=""
-              pendingPermission={null}
               editMessageId={editMessageId}
               editMessageContent={editMessageContent}
               selectedSearchResults={{}}
@@ -342,46 +352,38 @@ export const SessionChat: React.FC<SessionChatProps> = ({
               onCancelEdit={cancelEditMessage}
               onSaveEdit={saveEditMessage}
               onEditContentChange={setEditMessageContent}
-              onApprovalResponse={noop}
               t={t}
             />
           ))}
 
-          {/* Streaming display - real-time reasoning + tools + content */}
+          {/* Live streaming display — tool calls + content in real time */}
           {isStreaming && (
             <div className="chat-message assistant streaming">
-              <div className="message-avatar">
-                <BotIcon size={16} />
-              </div>
+              <div className="message-avatar">{'\u{1F916}'}</div>
               <div className="message-content">
-                {/* Thinking dots while waiting for first content */}
-                {!streamingReasoning && !streamingContent && (
-                  <div className="thinking-indicator">
-                    <div className="thinking-dots">
-                      <span></span>
-                      <span></span>
-                      <span></span>
-                    </div>
-                    <span className="thinking-text">
-                      <ThinkingIcon size={14} /> {t('chat.thinking')}
-                    </span>
+                {streamingTools.length > 0 && (
+                  <div className="tools-block">
+                    {streamingTools.map((tool, i) => (
+                      <div key={i} className="tool-item">
+                        <span className="tool-name">{'\u2699\uFE0F'} {tool.name || 'tool'}</span>
+                        {tool.preview && <span className="tool-status">{tool.preview}</span>}
+                      </div>
+                    ))}
                   </div>
                 )}
-
-                {/* Reasoning block (collapsible) */}
-                {streamingReasoning && (
-                  <ThinkingBlock content={streamingReasoning} isActive={true} />
-                )}
-
-                {/* Tool calls */}
-                {streamingTools.length > 0 && (
-                  <ToolsBlock tools={streamingTools} isStreaming={true} />
-                )}
-
-                {/* Streamed content with Markdown */}
-                {streamingContent && (
-                  <div className="message-text">
-                    <MarkdownRenderer content={streamingContent} searchQuery="" />
+                {streamingContent ? (
+                  <div className="message-text streaming-text">
+                    {streamingContent}
+                    <span className="streaming-cursor">{'\u258C'}</span>
+                  </div>
+                ) : (
+                  <div className="cli-processing">
+                    <span className="cli-processing-dots">
+                      <span></span>
+                      <span></span>
+                      <span></span>
+                    </span>
+                    <span className="cli-processing-text">processing</span>
                   </div>
                 )}
               </div>

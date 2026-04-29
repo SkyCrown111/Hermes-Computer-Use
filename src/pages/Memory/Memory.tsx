@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Card, Button, BrainIcon, UserIcon, BookIcon, SearchIcon, EmptyIcon, AlertIcon, HourglassIcon, CheckIcon } from '../../components';
+import { Card, Button, BrainIcon, UserIcon, BookIcon, SearchIcon, EmptyIcon, AlertIcon, HourglassIcon, CheckIcon, RefreshIcon } from '../../components';
 import { useMemoryStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
 import { toast } from '../../stores/toastStore';
@@ -504,6 +504,9 @@ export const Memory: React.FC = () => {
           <div className="error-message">
             <AlertIcon size={16} />
             <span>{error}</span>
+            <Button variant="ghost" size="sm" onClick={fetchMemory}>
+              <RefreshIcon size={14} /> {t('common.refresh')}
+            </Button>
             <Button variant="ghost" size="sm" onClick={clearError}>{t('memory.close')}</Button>
           </div>
         )}

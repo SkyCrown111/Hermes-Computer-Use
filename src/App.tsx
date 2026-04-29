@@ -47,7 +47,7 @@ const PageFallback: React.FC = () => {
 
 function App() {
   const { activeItem, chatContext, restoreTabs } = useNavigationStore();
-  const { mode } = useThemeStore();
+  const { mode, displayPreferences } = useThemeStore();
   const fetchSessions = useSessionStore((s) => s.fetchSessions);
 
   // Register global keyboard shortcuts
@@ -55,10 +55,15 @@ function App() {
 
   logger.component('App', 'Active item:', activeItem, 'Chat context:', chatContext);
 
-  // Apply theme to document
+  // Apply theme and display preferences to document
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', mode);
-  }, [mode]);
+    const root = document.documentElement;
+    root.setAttribute('data-theme', mode);
+    // Apply compact mode
+    root.classList.toggle('compact-mode', displayPreferences.compactMode);
+    // Apply sidebar position
+    root.setAttribute('data-sidebar-position', displayPreferences.sidebarPosition);
+  }, [mode, displayPreferences.compactMode, displayPreferences.sidebarPosition]);
 
   // Restore tabs and fetch sessions on mount
   useEffect(() => {

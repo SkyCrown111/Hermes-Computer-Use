@@ -791,3 +791,52 @@ pub fn abort_chat() -> Result<(), String> {
 
     Ok(())
 }
+
+/// Interrupt a specific session by ID
+/// This is an alias for abort_chat but with session_id parameter for API consistency
+#[tauri::command]
+pub fn interrupt_session(session_id: String) -> Result<(), String> {
+    println!("[ChatInterrupt] Interrupting session: {}", session_id);
+    
+    // For now, we use the global abort since we track a single process
+    // In the future, this could be extended to support multiple sessions
+    let mut processes = RUNNING_PROCESSES
+        .lock()
+        .map_err(|e| format!("Failed to lock processes: {}", e))?;
+
+    if let Some(pid) = processes.take() {
+        println!("[ChatInterrupt] Killing process with PID: {} for session: {}", pid, session_id);
+
+        // On Windows, kill the process tree
+        #[cfg(windows)]
+        {
+            let output = create_command("taskkill")
+                .args(["/F", "/T", "/PID", &pid.to_string()])
+                .output()
+                .map_err(|e| format!("Failed to kill process: {}", e))?;
+
+            if output.status.success() {
+                println!("[ChatInterrupt] Process killed successfully");
+            }
+        }
+
+        // On Linux/macOS, kill the process
+        #[cfg(not(windows))]
+        {
+            let output = std::process::Command::new("kill")
+                .args(["-9", &pid.to_string()])
+                .output()
+                .map_err(|e| format!("Failed to kill process: {}", e))?;
+
+            if output.status.success() {
+                println!("[ChatInterrupt] Process killed successfully");
+            }
+        }
+
+        println!("[ChatInterrupt] Session {} interrupted successfully", session_id);
+    } else {
+        println!("[ChatInterrupt] No running process for session {}", session_id);
+    }
+
+    Ok(())
+}

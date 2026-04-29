@@ -175,20 +175,39 @@ export const useNavigationStore = create<NavigationState>((set, get) => ({
       // Get persisted messages to check if new_ tabs have content
       const persistedMessages = restoreMessages();
 
-      // Filter tabs: keep real session IDs, but only keep new_ tabs if they have messages
-      const validTabs: OpenTab[] = data.openTabs
-        .filter(t => {
-          // Always keep real session IDs (not starting with new_)
-          if (!t.id.startsWith('new_')) return true;
-          // Only keep new_ tabs if they have persisted messages
-          const msgs = persistedMessages[t.id];
-          return msgs && msgs.length > 0;
-        })
-        .map(t => ({
-          id: t.id,
-          title: t.title,
-          type: t.type || 'session',
-        }));
+      // Import sessionApi to validate session existence
+      const { getSession } = await import('../services/sessionApi');
+
+      // Filter tabs: keep real session IDs that exist in DB, but only keep new_ tabs if they have messages
+      const validTabsPromises: Promise<OpenTab | null>[] = data.openTabs
+        .map(async (t) => {
+          // Always keep new_ tabs if they have persisted messages
+          if (t.id.startsWith('new_')) {
+            const msgs = persistedMessages[t.id];
+            if (msgs && msgs.length > 0) {
+              return { id: t.id, title: t.title, type: t.type || 'session' as const };
+            }
+            return null;
+          }
+          
+          // For real session IDs, verify they exist in the database
+          try {
+            const sessionData = await getSession(t.id);
+            // getSession returns SessionMessagesResponse with session_id and messages
+            // If it returns null or throws, the session doesn't exist
+            if (sessionData && sessionData.session_id) {
+              return { id: t.id, title: t.title, type: t.type || 'session' as const };
+            }
+            logger.debug('[NavigationStore] Session no longer exists, removing tab:', t.id);
+            return null;
+          } catch {
+            logger.debug('[NavigationStore] Session validation failed, removing tab:', t.id);
+            return null;
+          }
+        });
+
+      const validTabsResults = await Promise.all(validTabsPromises);
+      const validTabs: OpenTab[] = validTabsResults.filter((t): t is OpenTab => t !== null);
 
       if (validTabs.length === 0) {
         // No valid tabs, clear localStorage and go to dashboard
@@ -207,6 +226,9 @@ export const useNavigationStore = create<NavigationState>((set, get) => ({
         activeItem: 'chat',
         chatContext: activeTab ? { sessionId: activeTab.id, sessionTitle: activeTab.title } : null,
       });
+
+      // Save the cleaned tabs
+      get().saveTabs();
 
       logger.debug('[NavigationStore] Restored tabs:', validTabs.length, 'active:', activeId);
       logger.debug('[NavigationStore] Tab IDs:', validTabs.map(t => t.id));

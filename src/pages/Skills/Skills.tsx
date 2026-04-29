@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Card, Button, Input, ConfirmModal } from '../../components';
-import { PlusIcon, XIcon, EditIcon, TrashIcon, SearchIcon, WarningIcon, FolderIcon, TargetIcon, PlayIcon, ClockIcon, CopyIcon, CheckIcon } from '../../components';
+import { PlusIcon, XIcon, EditIcon, TrashIcon, SearchIcon, WarningIcon, FolderIcon, TargetIcon, PlayIcon, ClockIcon, CopyIcon, CheckIcon, RefreshIcon } from '../../components';
 import { useSkillsStore, useNavigationStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
 import { logger } from '../../lib/logger';
@@ -369,6 +369,9 @@ export const Skills: React.FC = () => {
         <div className="error-message">
           <span><WarningIcon size={16} /></span>
           <span>{error}</span>
+          <Button variant="ghost" size="sm" onClick={() => fetchSkills()}>
+            <RefreshIcon size={14} /> {t('common.refresh')}
+          </Button>
         </div>
       )}
 
@@ -457,8 +460,8 @@ export const Skills: React.FC = () => {
             ))
           ) : (
             <div className="empty-state">
-              <span className="empty-icon">📭</span>
-              <p>{t('common.noData')}</p>
+              <span className="empty-icon">🔧</span>
+              <p>{lang === 'zh' ? '暂无技能，点击上方「添加 Skill」创建第一个 Skill' : 'No skills yet. Click "Add Skill" to create your first one'}</p>
             </div>
           )}
         </div>

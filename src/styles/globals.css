@@ -351,6 +351,22 @@ select option {
   50% { opacity: 0.3; }
 }
 
+/* Common page-level animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
 .animate-shimmer { animation: shimmer 1.5s ease-in-out infinite; }
 .animate-spin { animation: spin 1s linear infinite; }
 .animate-pulse-dot { animation: pulse-dot 1.5s ease-in-out infinite; }

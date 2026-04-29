@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Button, Input, Textarea, PlusIcon, ClockIcon, TargetIcon, ExportIcon, AlertIcon, EmptyIcon, ConfirmModal, ChevronDownIcon, ChevronUpIcon, XIcon } from '../../components';
+import { Card, Button, Input, Textarea, PlusIcon, ClockIcon, TargetIcon, ExportIcon, AlertIcon, EmptyIcon, ConfirmModal, ChevronDownIcon, ChevronUpIcon, XIcon, RefreshIcon } from '../../components';
 import { useCronJobsStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
 import { toast } from '../../stores/toastStore';
@@ -255,6 +255,9 @@ export const CronJobs: React.FC = () => {
           <div className="error-message">
             <AlertIcon size={16} />
             <span>{error}</span>
+            <Button variant="ghost" size="sm" onClick={fetchJobs}>
+              <RefreshIcon size={14} /> {t('common.refresh')}
+            </Button>
           </div>
         )}
 

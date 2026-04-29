@@ -1,33 +1,20 @@
 import React, { memo, useMemo } from 'react';
-import { ThinkingBlock } from './ThinkingBlock';
-import { ToolsBlock } from './ToolsBlock';
-import { PermissionCard } from './PermissionCard';
 import { ToolErrorCard } from './ToolErrorCard';
 import { SessionSearchCard } from './SessionSearchCard';
 import { parseToolJson } from './parseToolJson';
 import type { SessionSearchResult } from './constants';
 import type { ChatMessage } from '../../stores/chatStore';
 import { MarkdownRenderer } from '../ui/MarkdownRenderer';
-import { UserIcon, BotIcon, TokenIcon, ThinkingIcon } from '../ui/Icons';
+import { UserIcon, BotIcon } from '../ui/Icons';
 import { useNavigationStore } from '../../stores/navigationStore';
 
 // ---- Types ----
 
-interface PermissionApproval {
-  id: string;
-  command: string;
-  description: string;
-  allow_permanent: boolean;
-  choices?: ('once' | 'session' | 'always' | 'deny')[];
-}
-
 export interface MessageContentProps {
   message: ChatMessage;
   isFirstInGroup: boolean;
-  isStreamingMsg?: boolean;
   style?: React.CSSProperties;
   messageSearchQuery?: string;
-  pendingPermission?: PermissionApproval | null;
   editMessageId: string | null;
   editMessageContent: string;
   selectedSearchResults: Record<string, string[]>;
@@ -42,19 +29,18 @@ export interface MessageContentProps {
   onCancelEdit: () => void;
   onSaveEdit: (messageId: string) => void;
   onEditContentChange: (content: string) => void;
-  onApprovalResponse: (choice: 'once' | 'session' | 'always' | 'deny') => void;
   t: (key: string) => string;
 }
+
+// ---- Helpers ----
 
 // ---- Component ----
 
 const MessageContentComponent: React.FC<MessageContentProps> = ({
   message,
   isFirstInGroup,
-  isStreamingMsg = false,
   style,
   messageSearchQuery = '',
-  pendingPermission,
   editMessageId,
   editMessageContent,
   selectedSearchResults,
@@ -69,23 +55,23 @@ const MessageContentComponent: React.FC<MessageContentProps> = ({
   onCancelEdit,
   onSaveEdit,
   onEditContentChange,
-  onApprovalResponse,
   t,
 }) => {
   const msg = message;
   const role = msg.role;
-  // Memoize parseToolJson result to avoid re-parsing on every render
-  // parseToolJson has internal caching, but useMemo ensures we don't even call it
-  // if the message content hasn't changed
+
   const { cleanContent, errors, sessionSearchResults } = useMemo(
     () => parseToolJson(msg.content),
     [msg.content]
   );
 
+  // Format metadata
+  const hasTokens = msg.inputTokens !== undefined || msg.outputTokens !== undefined;
+
   return (
     <div
       id={`chat-msg-${msg.id}`}
-      className={`chat-message ${role} ${isStreamingMsg ? 'streaming' : ''} ${!isFirstInGroup ? 'grouped' : ''}`}
+      className={`chat-message ${role} ${!isFirstInGroup ? 'grouped' : ''}`}
       style={style}
     >
       {isFirstInGroup && (
@@ -94,42 +80,7 @@ const MessageContentComponent: React.FC<MessageContentProps> = ({
         </div>
       )}
       <div className="message-content">
-        {/* Thinking indicator - only during streaming */}
-        {role === 'assistant' && isStreamingMsg && msg.thinking && (
-          <div className="thinking-indicator">
-            <div className="thinking-dots">
-              <span></span>
-              <span></span>
-              <span></span>
-            </div>
-            <span className="thinking-text"><ThinkingIcon size={14} /> {msg.thinking}</span>
-            {msg.totalTokens && (
-              <span className="thinking-tokens">
-                <TokenIcon size={12} /> {msg.totalTokens.toLocaleString()}
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* Reasoning display - collapsible thinking block */}
-        {role === 'assistant' && msg.reasoning && (
-          <ThinkingBlock content={msg.reasoning} isActive={isStreamingMsg} />
-        )}
-
-        {/* Tool calls display - collapsible block */}
-        {role === 'assistant' && msg.tools && msg.tools.length > 0 && (
-          <ToolsBlock tools={msg.tools} isStreaming={isStreamingMsg} />
-        )}
-
-        {/* Pending approval - only during streaming */}
-        {role === 'assistant' && isStreamingMsg && pendingPermission && (
-          <PermissionCard
-            approval={pendingPermission}
-            onRespond={onApprovalResponse}
-          />
-        )}
-
-        {/* Message content (parsed) */}
+        {/* Message content */}
         {msg.content && (
           <>
             {cleanContent && (
@@ -220,8 +171,8 @@ const MessageContentComponent: React.FC<MessageContentProps> = ({
           </div>
         )}
 
-        {/* Action buttons - hidden during streaming or editing */}
-        {!isStreamingMsg && editMessageId !== msg.id && (
+        {/* Action buttons - hidden during editing */}
+        {editMessageId !== msg.id && (
           <div className="message-actions">
             {msg.role === 'user' && (
               <button className="message-action-btn" onClick={() => onStartEdit(msg.id, msg.content)} title={t('message.edit')}>
@@ -241,10 +192,23 @@ const MessageContentComponent: React.FC<MessageContentProps> = ({
             </button>
           </div>
         )}
+
+        {/* Message metadata footer - CLI style */}
+        {role === 'assistant' && hasTokens && (
+          <div className="message-meta">
+            {hasTokens && (
+              <span className="message-meta-tokens">
+                {msg.inputTokens !== undefined && <span>↑{msg.inputTokens}</span>}
+                {msg.outputTokens !== undefined && <span>↓{msg.outputTokens}</span>}
+                {msg.totalTokens !== undefined && <span>Σ{msg.totalTokens}</span>}
+              </span>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
 };
 
-// Memoize to prevent re-renders when parent updates but props haven't changed
+// Memoize to prevent re-renders
 export const MessageContent = memo(MessageContentComponent);

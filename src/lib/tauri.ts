@@ -114,20 +114,7 @@ function getMockData(cmd: string, args?: Record<string, unknown>): unknown {
       };
     case 'get_session':
       return {
-        session: {
-          id: 'mock-session',
-          platform: 'cli',
-          chat_id: '',
-          chat_name: 'Mock Session',
-          started_at: new Date().toISOString(),
-          last_activity_at: new Date().toISOString(),
-          message_count: 0,
-          model: 'unknown',
-          input_tokens: 0,
-          output_tokens: 0,
-          estimated_cost_usd: 0,
-          status: 'completed',
-        },
+        session_id: 'mock-session',
         messages: [],
       };
     case 'list_skills':

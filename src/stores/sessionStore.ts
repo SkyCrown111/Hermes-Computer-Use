@@ -6,6 +6,7 @@ import type { Session, SessionMessage } from '../types';
 import type { Checkpoint } from '../types/checkpoint';
 import { sessionApi } from '../services';
 import { useNavigationStore } from './navigationStore';
+import { useChatStore } from './chatStore';
 import { logger } from '../lib/logger';
 
 interface SessionState {
@@ -41,6 +42,9 @@ interface SessionState {
 
   // 刷新键 - 递增此值触发刷新
   refreshKey: number;
+
+  // 请求计数器 - 防并发竞态
+  _fetchReqId: number;
 
   // Actions - 会话列表
   fetchSessions: (platform?: string, limit?: number, offset?: number) => Promise<void>;
@@ -114,13 +118,19 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   // 初始状态 - 刷新键
   refreshKey: 0,
 
+  // 初始状态 - 请求计数器
+  _fetchReqId: 0,
+
   // 获取会话列表
   fetchSessions: async (_platform?: string, _limit?: number, _offset?: number) => {
     const platform = _platform ?? get().platform;
     const limit = _limit ?? get().limit;
     const offset = _offset ?? get().offset;
 
-    set({ isLoading: true, error: null, platform: platform ?? null, limit, offset });
+    // 请求计数器：防止并发请求的竞态条件
+    const { _fetchReqId } = get();
+    const thisReqId = _fetchReqId + 1;
+    set({ _fetchReqId: thisReqId, isLoading: true, error: null, platform: platform ?? null, limit, offset });
 
     try {
       const response = await sessionApi.listSessions({ platform: platform || undefined, limit, offset });
@@ -138,6 +148,12 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       );
 
       logger.debug('[SessionStore] Optimistic sessions to preserve:', optimisticSessions.length);
+
+      // 如果此时 _fetchReqId 已变化，说明有更新的请求，丢弃此结果
+      if (get()._fetchReqId !== thisReqId) {
+        logger.debug('[SessionStore] Discarding stale fetch result (reqId mismatch)');
+        return;
+      }
 
       // Merge: optimistic sessions first, then server sessions
       const mergedSessions = [...optimisticSessions];
@@ -229,13 +245,19 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         index === self.findIndex(s => s.id === session.id)
       );
 
+      // 最后一次检查是否已被更新请求覆盖
+      if (get()._fetchReqId !== thisReqId) {
+        logger.debug('[SessionStore] Discarding stale fetch result before set (reqId mismatch)');
+        return;
+      }
+
       if (deduplicatedSessions.length !== mergedSessions.length) {
         logger.debug('[SessionStore] Removed duplicates:', mergedSessions.length - deduplicatedSessions.length);
       }
 
       set({
         sessions: deduplicatedSessions,
-        total: response.total,
+        total: response.total + optimisticSessions.length,
         isLoading: false,
         optimisticSessionIds: newOptimisticIds,
       });
@@ -328,13 +350,35 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   // 获取单个会话详情 - 返回消息数组
   fetchSession: async (id: string): Promise<SessionMessage[]> => {
-    // 先检查缓存
+    // 先检查缓存 — 命中则立即返回，后台静默刷新
     const cached = get().getCachedMessages(id);
     if (cached && cached.length > 0) {
       logger.debug('[SessionStore] Using cached messages for:', id);
+
+      // 从会话列表中找到 session 信息
+      const sessionFromList = get().sessions.find(s => s.id === id);
+      set({
+        currentSession: sessionFromList || get().currentSession,
+        messages: cached,
+        isLoading: false,
+        isLoadingMessages: false,
+      });
+
+      // 后台刷新缓存（静默，不显示 loading）
+      try {
+        const response = await sessionApi.getSession(id);
+        if (response && response.messages) {
+          get().cacheMessages(id, response.messages);
+          set({ messages: response.messages });
+        }
+      } catch {
+        // 静默失败，继续用缓存
+      }
+
+      return cached;
     }
 
-    set({ isLoading: true, error: null });
+    set({ isLoading: true, isLoadingMessages: true, error: null });
 
     try {
       logger.debug('[SessionStore] Fetching session:', id);
@@ -342,7 +386,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       logger.debug('[SessionStore] Session response:', response);
 
       if (!response) {
-        set({ isLoading: false, currentSession: null, messages: [] });
+        set({ isLoading: false, isLoadingMessages: false, currentSession: null, messages: [] });
         return [];
       }
 
@@ -370,14 +414,15 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       set({
         currentSession,
         messages,
-        isLoading: false
+        isLoading: false,
+        isLoadingMessages: false
       });
 
       return messages;
     } catch (err) {
       logger.error('[SessionStore] Error:', err);
       const errorMsg = err instanceof Error ? err.message : String(err);
-      set({ error: errorMsg || 'Unknown error', isLoading: false, currentSession: null, messages: [] });
+      set({ error: errorMsg || 'Unknown error', isLoading: false, isLoadingMessages: false, currentSession: null, messages: [] });
       return [];
     }
   },
@@ -462,6 +507,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
     try {
       await sessionApi.deleteSession(id);
+
+      // 清除 chatStore 中的会话状态（防止流式状态悬挂）
+      useChatStore.getState().clearSession(id);
 
       // 从列表中移除
       const { sessions, messageCache } = get();
@@ -693,20 +741,27 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       const response = await sessionApi.searchSessions({ q: query, platform, days });
 
       // 搜索结果转换为会话列表格式
-      const sessions: Session[] = response.results.map((result) => ({
-        id: result.session_id,
-        platform: result.platform as Session['platform'],
-        chat_id: '',
-        chat_name: '',
-        started_at: result.matched_at,
-        last_activity_at: result.matched_at,
-        message_count: 0,
-        model: '',
-        input_tokens: 0,
-        output_tokens: 0,
-        estimated_cost_usd: 0,
-        status: 'completed',
-      }));
+      // 保留已有会话的信息（chat_name, model 等）
+      const { sessions: existingSessions } = get();
+      const existingMap = new Map(existingSessions.map(s => [s.id, s]));
+
+      const sessions: Session[] = response.results.map((result) => {
+        const existing = existingMap.get(result.session_id);
+        return {
+          id: result.session_id,
+          platform: result.platform as Session['platform'],
+          chat_id: existing?.chat_id || '',
+          chat_name: existing?.chat_name || '',
+          started_at: existing?.started_at || result.matched_at,
+          last_activity_at: result.matched_at,
+          message_count: existing?.message_count || 0,
+          model: existing?.model || '',
+          input_tokens: existing?.input_tokens || 0,
+          output_tokens: existing?.output_tokens || 0,
+          estimated_cost_usd: existing?.estimated_cost_usd || 0,
+          status: existing?.status || 'completed',
+        };
+      });
 
       set({ sessions, total: response.total, isLoading: false });
     } catch (err) {

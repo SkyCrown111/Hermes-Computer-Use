@@ -30,6 +30,16 @@ export async function getSkillDetail(name: string, category: string): Promise<Sk
   }
 }
 
+// 获取单个 Skill（简化版）
+export async function getSkill(name: string): Promise<Skill | null> {
+  try {
+    return await apiClient.invoke<Skill>('get_skill', { name });
+  } catch (error) {
+    logger.error(`[SkillsApi] getSkill failed: ${getErrorDetail(error)}`);
+    return null;
+  }
+}
+
 export async function getSkillCategories(): Promise<SkillCategoriesResponse> {
   try {
     const categories = await apiClient.invoke<SkillCategoriesResponse['categories']>('get_skill_categories');
@@ -73,7 +83,7 @@ export async function deleteSkill(name: string, category: string): Promise<ApiOk
 
 export async function getToolsets(): Promise<Toolset[]> {
   try {
-    return await apiClient.invoke<Toolset[]>('get_toolsets');
+    return await apiClient.invoke<Toolset[]>('list_toolsets');
   } catch (error) {
     logger.error(`[SkillsApi] getToolsets failed: ${getErrorDetail(error)}`);
     return [];

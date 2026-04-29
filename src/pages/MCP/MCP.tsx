@@ -266,6 +266,9 @@ export function MCP() {
         <div className="mcp-error glass-card">
           <AlertIcon size={16} />
           <span>{error}</span>
+          <button className="btn btn-secondary btn-sm" onClick={() => { fetchServers(); fetchStats(); }}>
+            Refresh
+          </button>
           <button className="btn btn-secondary btn-sm" onClick={clearError}>
             {t('common.close')}
           </button>

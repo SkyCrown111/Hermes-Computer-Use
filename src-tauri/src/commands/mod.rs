@@ -14,6 +14,7 @@ pub mod platforms;
 pub mod sessions;
 pub mod skills;
 pub mod system;
+pub mod tools;
 pub mod utils;
 
 // Re-export all commands for easy registration
@@ -28,3 +29,5 @@ pub use platforms::*;
 pub use sessions::*;
 pub use skills::*;
 pub use system::*;
+pub use tools::*;
+

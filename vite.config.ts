@@ -12,4 +12,15 @@ export default defineConfig({
       ignored: ['**/src-tauri/**'],
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-markdown': ['react-markdown', 'rehype-highlight', 'remark-gfm'],
+          'vendor-virtual': ['@tanstack/react-virtual'],
+          'vendor-utils': ['jszip', 'zustand'],
+        },
+      },
+    },
+  },
 });

@@ -230,3 +230,50 @@
     flex-wrap: wrap;
   }
 }
+
+/* ============================================
+   Compact Mode
+   ============================================ */
+.compact-mode .layout-header {
+  min-height: 48px;
+  padding: var(--space-2) var(--space-4);
+}
+
+.compact-mode .layout-content {
+  padding: var(--space-3);
+  height: calc(100vh - 48px - 28px);
+}
+
+.compact-mode .layout-title {
+  font-size: var(--text-lg);
+}
+
+.compact-mode .chat-message {
+  margin-bottom: var(--space-1);
+}
+
+.compact-mode .message-text {
+  padding: var(--space-2);
+  font-size: 12px;
+}
+
+.compact-mode .chat-input-container {
+  border-radius: var(--radius-md);
+}
+
+/* ============================================
+   Sidebar Position: Right
+   ============================================ */
+.layout[data-sidebar-position="right"] .layout-main {
+  margin-left: 0;
+}
+
+.layout[data-sidebar-position="right"] .layout-main {
+  margin-right: auto;
+}
+
+/* Prevent sidebar components from shrinking when positioned on the right */
+.layout[data-sidebar-position="right"] .sidebar,
+.layout[data-sidebar-position="right"] .session-sidebar {
+  flex-shrink: 0;
+}
