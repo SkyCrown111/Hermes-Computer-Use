@@ -85,6 +85,8 @@ export const ChatPage: React.FC<ChatPageProps> = ({
     addMessage,
     updateMessage,
     setStreaming,
+    setStreamingText,
+    appendStreamingText,
     clearStreamingTools,
     clearPendingPermission,
   } = useChatStore();
@@ -364,6 +366,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({
       logger.debug('[ChatPage] Stopping current stream to send new message');
       isStoppedRef.current = true;
       setStreaming(effectiveSessionId, false);
+      setStreamingText(effectiveSessionId, '');
       // Clear streaming tools to prevent duplication
       clearStreamingTools(effectiveSessionId);
       // Abort the backend process
@@ -386,6 +389,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({
 
     isStoppedRef.current = false;
     clearStreamingTools(requestSessionId);
+    setStreamingText(requestSessionId, '');
 
     // Add user message to chatStore
     addMessage(requestSessionId, {
@@ -416,7 +420,13 @@ export const ChatPage: React.FC<ChatPageProps> = ({
         requestSessionId,
         initialHistoryForApi,
         {
-          // CLI-style: no streaming chunks, just wait for completion
+          // Real-time streaming chunks
+          onChunk: (_chunk, accumulated) => {
+            if (isStoppedRef.current || !isMountedRef.current) return;
+            const targetSessionId = getStreamSessionId();
+            setStreamingText(targetSessionId, accumulated);
+          },
+          // Real-time tool calls
           onTool: (tool) => {
             if (isStoppedRef.current || !isMountedRef.current) return;
             // Add tool to streaming tools in chatStore for real-time display
@@ -436,7 +446,10 @@ export const ChatPage: React.FC<ChatPageProps> = ({
             const currentSession = useChatStore.getState().sessions[targetSessionId];
             const streamingTools = currentSession?.streamingTools || [];
 
+            // Clear streaming state
             setStreaming(targetSessionId, false);
+            setStreamingText(targetSessionId, '');
+            clearStreamingTools(targetSessionId);
 
             // Add complete assistant message (no streaming/rthinking)
             const currentMessages = currentSession?.messages;
@@ -467,7 +480,10 @@ export const ChatPage: React.FC<ChatPageProps> = ({
           },
           onError: (error) => {
             if (isStoppedRef.current || !isMountedRef.current) return;
-            setStreaming(getStreamSessionId(), false);
+            const targetSessionId = getStreamSessionId();
+            setStreaming(targetSessionId, false);
+            setStreamingText(targetSessionId, '');
+            clearStreamingTools(targetSessionId);
 
             let errorMessage = 'Unknown error';
             if (error instanceof Error) {
@@ -478,7 +494,6 @@ export const ChatPage: React.FC<ChatPageProps> = ({
               try { errorMessage = JSON.stringify(error); } catch { errorMessage = String(error); }
             }
 
-            const targetSessionId = getStreamSessionId();
             const currentMessages = useChatStore.getState().sessions[targetSessionId]?.messages;
             const lastMessage = currentMessages?.[currentMessages.length - 1];
             if (lastMessage) {
@@ -544,8 +559,21 @@ export const ChatPage: React.FC<ChatPageProps> = ({
     // Get current streaming state BEFORE clearing
     const currentSession = useChatStore.getState().sessions[targetSessionId];
     const streamingTools = currentSession?.streamingTools || [];
+    const streamingText = currentSession?.streamingText || '';
+
+    // Save streaming text to message if exists
+    if (streamingText) {
+      const currentMessages = currentSession?.messages;
+      const lastMessage = currentMessages?.[currentMessages.length - 1];
+      if (lastMessage && lastMessage.role === 'assistant') {
+        updateMessage(targetSessionId, lastMessage.id, {
+          content: streamingText,
+        });
+      }
+    }
 
     setStreaming(targetSessionId, false);
+    setStreamingText(targetSessionId, '');
 
     // Get the last message from the current store state (not closure)
     const currentMessages = currentSession?.messages;
@@ -674,6 +702,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({
         visibleMessages={visibleMessages}
         shouldVirtualize={shouldVirtualize}
         isStreaming={sessionState.isStreaming}
+        streamingText={sessionState.streamingText}
         streamingTools={sessionState.streamingTools}
         pendingPermission={sessionState.pendingPermission}
         apiAvailable={apiAvailable}
