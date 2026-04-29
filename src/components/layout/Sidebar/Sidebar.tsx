@@ -132,9 +132,15 @@ function PlusIcon() {
 }
 
 export const Sidebar: React.FC = () => {
-  const { activeItem, setActiveItem, openChat } = useNavigationStore();
+  const { activeItem, setActiveItem, openTab } = useNavigationStore();
   const { sidebarCollapsed, toggleSidebar, mobileSidebarOpen, setMobileSidebarOpen } = useThemeStore();
   const { t } = useTranslation();
+
+  // Handle new chat creation
+  const handleNewChat = () => {
+    const newId = `new_${Date.now()}`;
+    openTab(newId, t('sidebar.newChat'), 'new');
+  };
 
   // Navigation items with translated labels
   const navItems: NavItem[] = [
@@ -181,7 +187,7 @@ export const Sidebar: React.FC = () => {
       <div className="sidebar-new-chat">
         <button
           className="new-chat-btn"
-          onClick={() => openChat()}
+          onClick={handleNewChat}
           title={t('nav.newChat')}
           aria-label={t('nav.newChat')}
         >

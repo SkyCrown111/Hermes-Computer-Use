@@ -1,9 +1,10 @@
 import React, { memo, useMemo } from 'react';
 import { ToolErrorCard } from './ToolErrorCard';
 import { SessionSearchCard } from './SessionSearchCard';
+import { ToolsBlock } from './ToolsBlock';
 import { parseToolJson } from './parseToolJson';
 import type { SessionSearchResult } from './constants';
-import type { ChatMessage } from '../../stores/chatStore';
+import type { ChatMessage, ToolCallInfo } from '../../stores/chatStore';
 import { MarkdownRenderer } from '../ui/MarkdownRenderer';
 import { UserIcon, BotIcon } from '../ui/Icons';
 import { useNavigationStore } from '../../stores/navigationStore';
@@ -80,6 +81,11 @@ const MessageContentComponent: React.FC<MessageContentProps> = ({
         </div>
       )}
       <div className="message-content">
+        {/* Tool calls - displayed above the message text */}
+        {msg.tools && msg.tools.length > 0 && (
+          <ToolsBlock tools={msg.tools} isStreaming={false} />
+        )}
+
         {/* Message content */}
         {msg.content && (
           <>

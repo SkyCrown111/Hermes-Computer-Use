@@ -65,6 +65,7 @@ const MessageListComponent: React.FC<MessageListProps> = ({
   visibleMessages,
   shouldVirtualize,
   isStreaming,
+  streamingTools,
   apiAvailable,
   showMessageSearch,
   messageSearchQuery,
@@ -288,6 +289,19 @@ const MessageListComponent: React.FC<MessageListProps> = ({
               />
             );
           })
+        )}
+
+        {/* Streaming tools - displayed during active streaming */}
+        {isStreaming && streamingTools.length > 0 && (
+          <div className="streaming-tools">
+            {streamingTools.map((tool, i) => (
+              <div key={i} className="streaming-tool-item">
+                <span className="streaming-tool-icon">⚙️</span>
+                <span className="streaming-tool-name">{tool.name || 'tool'}</span>
+                {tool.preview && <span className="streaming-tool-preview">{tool.preview}</span>}
+              </div>
+            ))}
+          </div>
         )}
 
         {/* CLI-style processing indicator */}

@@ -446,6 +446,58 @@
 }
 
 /* ========================================
+   Streaming tools display
+   ======================================== */
+.streaming-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.streaming-tool-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--color-surface-container);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  animation: toolSlideIn 0.2s ease-out;
+}
+
+.streaming-tool-icon {
+  font-size: 14px;
+}
+
+.streaming-tool-name {
+  color: var(--color-text-primary);
+  font-weight: 500;
+}
+
+.streaming-tool-preview {
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+}
+
+@keyframes toolSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ========================================
    Message metadata footer
    ======================================== */
 .message-meta {

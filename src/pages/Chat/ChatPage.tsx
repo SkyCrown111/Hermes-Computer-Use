@@ -417,6 +417,12 @@ export const ChatPage: React.FC<ChatPageProps> = ({
         initialHistoryForApi,
         {
           // CLI-style: no streaming chunks, just wait for completion
+          onTool: (tool) => {
+            if (isStoppedRef.current || !isMountedRef.current) return;
+            // Add tool to streaming tools in chatStore for real-time display
+            const targetSessionId = getStreamSessionId();
+            useChatStore.getState().addStreamingTool(targetSessionId, tool as any);
+          },
           onComplete: (content, newSessionId, usage) => {
             if (isStoppedRef.current || !isMountedRef.current) return;
 
@@ -426,15 +432,20 @@ export const ChatPage: React.FC<ChatPageProps> = ({
               streamSessionId = newSessionId;
             }
 
+            // Get streaming tools BEFORE clearing streaming state
+            const currentSession = useChatStore.getState().sessions[targetSessionId];
+            const streamingTools = currentSession?.streamingTools || [];
+
             setStreaming(targetSessionId, false);
 
             // Add complete assistant message (no streaming/rthinking)
-            const currentMessages = useChatStore.getState().sessions[targetSessionId]?.messages;
+            const currentMessages = currentSession?.messages;
             const lastMessage = currentMessages?.[currentMessages.length - 1];
 
             if (lastMessage && lastMessage.role === 'assistant') {
               updateMessage(targetSessionId, lastMessage.id, {
                 content: content,
+                tools: streamingTools.length > 0 ? streamingTools : undefined,
                 inputTokens: (usage as any)?.prompt_tokens ?? (usage as any)?.input_tokens,
                 outputTokens: (usage as any)?.completion_tokens ?? (usage as any)?.output_tokens,
                 totalTokens: (usage as any)?.total_tokens,
@@ -443,6 +454,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({
               addMessage(targetSessionId, {
                 role: 'assistant',
                 content: content,
+                tools: streamingTools.length > 0 ? streamingTools : undefined,
               });
             }
 
