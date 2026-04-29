@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { statusApi } from '../../../services/statusApi';
 import { useNavigationStore, useChatStore, useSessionStore } from '../../../stores';
+import { logger } from '../../../lib/logger';
 import type { SystemStatus } from '../../../types/status';
 import { toast } from '../../../stores/toastStore';
 import { TokenIcon, CpuIcon } from '../../ui/Icons';
@@ -39,8 +40,8 @@ export const StatusBar: React.FC = () => {
       try {
         const status = await statusApi.getSystemStatus();
         setSystemStatus(status);
-      } catch {
-        // Silently fail — status bar shows last known state
+      } catch (error) {
+        logger.debug('[StatusBar] Status polling failed, using last known state:', error);
       }
     };
 

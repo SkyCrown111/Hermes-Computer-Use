@@ -1,4 +1,5 @@
 import { apiClient, getErrorDetail } from './apiClient';
+import { logger } from '../lib/logger';
 import type {
   Session,
   SessionListResponse,
@@ -9,7 +10,6 @@ import type {
   SessionExportParams,
 } from '../types/session';
 import type { ApiOkResponse } from '../types/common';
-import { logger } from '../lib/logger';
 
 export async function listSessions(params?: SessionListParams): Promise<SessionListResponse> {
   try {
@@ -76,7 +76,8 @@ export async function exportSessions(params: SessionExportParams): Promise<unkno
 export async function getSessionsPath(): Promise<string> {
   try {
     return await apiClient.invoke<string>('get_sessions_path');
-  } catch {
+  } catch (error) {
+    logger.debug('[Sessions] getSessionsPath failed, using default:', getErrorDetail(error));
     return '~/.hermes/sessions';
   }
 }

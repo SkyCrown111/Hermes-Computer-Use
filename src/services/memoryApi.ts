@@ -29,7 +29,8 @@ export const memoryApi = {
     try {
       const data = await apiClient.invoke<MemoryData>('get_memories');
       return type === 'user_profile' ? data.user_profile : data.memory;
-    } catch {
+    } catch (error) {
+      logger.debug(`[Memory] getMemoryFile(${type}) failed, returning empty:`, getErrorDetail(error));
       return emptyMemoryFile(type);
     }
   },
@@ -78,7 +79,8 @@ export const memoryApi = {
       }
 
       return results;
-    } catch {
+    } catch (error) {
+      logger.debug('[Memory] searchMemory failed, returning empty:', getErrorDetail(error));
       return [];
     }
   },
@@ -95,7 +97,8 @@ export const memoryApi = {
           charCount: s.charCount,
         })),
       };
-    } catch {
+    } catch (error) {
+      logger.debug('[Memory] getSections failed, returning empty:', getErrorDetail(error));
       return { sections: [] };
     }
   },
@@ -106,7 +109,8 @@ export const memoryApi = {
       const file = type === 'user_profile' ? data.user_profile : data.memory;
       const newContent = file.content + '\n\n' + content;
       return await apiClient.invoke<MemorySaveResponse>('save_memory', { file_type: type, content: newContent });
-    } catch {
+    } catch (error) {
+      logger.debug('[Memory] appendMemory failed:', getErrorDetail(error));
       return { ok: false, char_count: 0, char_limit: 100000 };
     }
   },
@@ -115,7 +119,8 @@ export const memoryApi = {
     try {
       await apiClient.invoke<MemorySaveResponse>('save_memory', { file_type: type, content: '' });
       return { ok: true };
-    } catch {
+    } catch (error) {
+      logger.debug('[Memory] clearMemory failed:', getErrorDetail(error));
       return { ok: false };
     }
   },
@@ -123,7 +128,8 @@ export const memoryApi = {
   getMemoriesPath: async (): Promise<string> => {
     try {
       return await apiClient.invoke<string>('get_memories_path');
-    } catch {
+    } catch (error) {
+      logger.debug('[Memory] getMemoriesPath failed, using default:', getErrorDetail(error));
       return '~/.hermes/memories';
     }
   },

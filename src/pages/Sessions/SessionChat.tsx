@@ -144,7 +144,7 @@ export const SessionChat: React.FC<SessionChatProps> = ({
         },
         onTool: (tool) => {
           if (isStoppedRef.current) return;
-          streamingToolsRef.current = [...streamingToolsRef.current, tool as any];
+          streamingToolsRef.current = [...streamingToolsRef.current, tool];
           setStreamingTools([...streamingToolsRef.current]);
         },
         onComplete: (content, _newSessionId, usage) => {
@@ -160,9 +160,9 @@ export const SessionChat: React.FC<SessionChatProps> = ({
             timestamp: new Date().toISOString(),
             // Preserve tool calls from streaming
             tools: streamingToolsRef.current.length > 0 ? [...streamingToolsRef.current] : undefined,
-            inputTokens: (usage as any)?.prompt_tokens ?? (usage as any)?.input_tokens,
-            outputTokens: (usage as any)?.completion_tokens ?? (usage as any)?.output_tokens,
-            totalTokens: (usage as any)?.total_tokens,
+            inputTokens: usage?.prompt_tokens ?? usage?.input_tokens,
+            outputTokens: usage?.completion_tokens ?? usage?.output_tokens,
+            totalTokens: usage?.total_tokens,
           };
           setMessages(prev => [...prev, assistantMsg]);
 
@@ -194,7 +194,7 @@ export const SessionChat: React.FC<SessionChatProps> = ({
         onApproval: (approval) => {
           if (isStoppedRef.current) return;
           // Auto-deny for SessionChat (no permission UI)
-          respondApproval((approval as any).id, false).catch(() => {});
+          respondApproval(approval.id, false).catch((err) => logger.error('[SessionChat] Auto-deny approval failed:', err));
         },
       });
     } catch (error) {

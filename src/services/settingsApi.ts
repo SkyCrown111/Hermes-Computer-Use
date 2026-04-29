@@ -1,4 +1,5 @@
 import { apiClient, getErrorDetail } from './apiClient';
+import { logger } from '../lib/logger';
 import type {
   HermesConfig,
   ConfigSection,
@@ -9,7 +10,6 @@ import type {
   ExportConfigData,
 } from '../types/config';
 import type { ApiOkResponse } from '../types/common';
-import { logger } from '../lib/logger';
 
 export async function loadConfig(): Promise<HermesConfig> {
   try {
@@ -74,7 +74,8 @@ export async function exportConfig(): Promise<ExportConfigData> {
 export async function getDataDir(): Promise<string> {
   try {
     return await apiClient.invoke<string>('get_data_dir');
-  } catch {
+  } catch (error) {
+    logger.debug('[Settings] getDataDir failed, using default:', getErrorDetail(error));
     return '~/.hermes';
   }
 }
@@ -82,7 +83,8 @@ export async function getDataDir(): Promise<string> {
 export async function checkDataDirExists(): Promise<boolean> {
   try {
     return await apiClient.invoke<boolean>('check_data_dir_exists');
-  } catch {
+  } catch (error) {
+    logger.debug('[Settings] checkDataDirExists failed:', getErrorDetail(error));
     return false;
   }
 }

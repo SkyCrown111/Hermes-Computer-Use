@@ -421,7 +421,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({
             if (isStoppedRef.current || !isMountedRef.current) return;
             // Add tool to streaming tools in chatStore for real-time display
             const targetSessionId = getStreamSessionId();
-            useChatStore.getState().addStreamingTool(targetSessionId, tool as any);
+            useChatStore.getState().addStreamingTool(targetSessionId, tool);
           },
           onComplete: (content, newSessionId, usage) => {
             if (isStoppedRef.current || !isMountedRef.current) return;
@@ -446,9 +446,9 @@ export const ChatPage: React.FC<ChatPageProps> = ({
               updateMessage(targetSessionId, lastMessage.id, {
                 content: content,
                 tools: streamingTools.length > 0 ? streamingTools : undefined,
-                inputTokens: (usage as any)?.prompt_tokens ?? (usage as any)?.input_tokens,
-                outputTokens: (usage as any)?.completion_tokens ?? (usage as any)?.output_tokens,
-                totalTokens: (usage as any)?.total_tokens,
+                inputTokens: usage?.prompt_tokens ?? usage?.input_tokens,
+                outputTokens: usage?.completion_tokens ?? usage?.output_tokens,
+                totalTokens: usage?.total_tokens,
               });
             } else {
               addMessage(targetSessionId, {
@@ -490,7 +490,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({
           onApproval: (approval) => {
             if (!isMountedRef.current) return;
             // Auto-deny in CLI mode
-            respondApproval((approval as any).id, false).catch(() => {});
+            respondApproval(approval.id, false).catch((err) => logger.error('[ChatPage] Auto-deny approval failed:', err));
           },
           onSessionCreated: (newSessionId) => {
             if (!isMountedRef.current) return;

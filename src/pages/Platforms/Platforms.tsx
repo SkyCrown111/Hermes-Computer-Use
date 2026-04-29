@@ -4,6 +4,7 @@ import { usePlatformStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
 import { toast } from '../../stores/toastStore';
 import { platformApi } from '../../services/platformApi';
+import { logger } from '../../lib/logger';
 import type { Platform, PlatformType } from '../../types/platform';
 import './Platforms.css';
 
@@ -190,8 +191,8 @@ export function Platforms() {
             setQrcodeStatus('scanned');
             clearInterval(pollRef.current ?? undefined);
           }
-        } catch {
-          // ignore polling errors
+        } catch (error) {
+          logger.debug('[Platforms] WeChat QR code polling failed:', error);
         }
       }, 3000);
     }

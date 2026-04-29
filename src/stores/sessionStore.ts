@@ -371,8 +371,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           get().cacheMessages(id, response.messages);
           set({ messages: response.messages });
         }
-      } catch {
-        // 静默失败，继续用缓存
+      } catch (error) {
+        logger.debug('[SessionStore] Background cache refresh failed, using cached data:', error);
       }
 
       return cached;
