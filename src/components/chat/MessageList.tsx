@@ -32,8 +32,7 @@ export interface MessageListProps {
   visibleMessages: ChatMessage[];
   shouldVirtualize: boolean;
   isStreaming: boolean;
-  streamingText?: string;
-  reasoningText?: string;
+  streamingText: string;
   streamingTools: ToolCallInfo[];
   pendingPermission: PermissionApproval | null;
   apiAvailable: boolean | null;
@@ -358,6 +357,28 @@ const MessageListComponent: React.FC<MessageListProps> = ({
                 </div>
               )}
             </div>
+        {/* Streaming text content - displayed during active streaming */}
+        {isStreaming && streamingText && (
+          <div className="chat-message assistant streaming">
+            <div className="message-avatar">🤖</div>
+            <div className="message-content">
+              <div className="message-text streaming-text">
+                {streamingText}
+                <span className="streaming-cursor">▐</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* CLI-style processing indicator */}
+        {isStreaming && !streamingText && (
+          <div className="cli-processing">
+            <span className="cli-processing-dots">
+              <span></span>
+              <span></span>
+              <span></span>
+            </span>
+            <span className="cli-processing-text">processing</span>
           </div>
         )}
 

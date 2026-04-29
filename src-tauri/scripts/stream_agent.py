@@ -609,7 +609,20 @@ def main() -> None:
         import traceback
         traceback.print_exc()
         sys.exit(1)
+    finally:
+        # Force flush all output before exit
+        sys.stdout.flush()
+        sys.stderr.flush()
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except SystemExit:
+        pass
+    except Exception as e:
+        # Catch any unhandled exceptions during cleanup
+        print(f'FATAL: {e}', file=sys.stderr)
+    finally:
+        sys.stdout.flush()
+        sys.stderr.flush()
