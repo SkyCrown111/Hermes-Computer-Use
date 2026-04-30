@@ -1,9 +1,9 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { Card, Button, SettingsIcon, ZapIcon, TerminalIcon, SaveIcon, RefreshIcon, AlertIcon, FileTextIcon, CheckIcon, XIcon } from '../../components';
 import { useSettingsStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
 import { toast } from '../../stores/toastStore';
-import { logger } from '../../lib/logger';
+
 import {
   ModelConfigForm,
   AgentConfigForm,
@@ -81,61 +81,56 @@ const YamlEditor: React.FC<{
 
 export const Settings: React.FC = () => {
   const { t } = useTranslation();
-  const sectionTitles = getSectionTitles(t);
-  const {
-    modelConfig,
-    agentConfig,
-    terminalConfig,
-    compressionConfig,
-    checkpointConfig,
-    memoryConfig,
-    rawYaml,
-    isLoadingModel,
-    isLoadingAgent,
-    isLoadingTerminal,
-    isLoadingCompression,
-    isLoadingCheckpoint,
-    isLoadingMemory,
-    isLoadingRaw,
-    editMode,
-    error,
-    successMessage,
-    isSaving,
-    fetchAllConfigs,
-    fetchRawYaml,
-    updateModelConfig,
-    updateAgentConfig,
-    updateTerminalConfig,
-    updateCompressionConfig,
-    updateCheckpointConfig,
-    updateMemoryConfig,
-    updateAuxiliaryTaskConfig,
-    deleteAuxiliaryTaskConfig,
-    updateRawYaml,
-    setEditMode,
-    setRawYaml,
-    clearError,
-    clearSuccessMessage,
-    exportConfig,
-    importConfig,
-    auxiliaryConfig,
-    isLoadingAuxiliary,
-    // Providers config
-    providersConfig,
-    isLoadingProviders,
-    addCustomProvider,
-    updateCustomProvider,
-    deleteCustomProvider,
-    addFallbackProvider,
-    deleteFallbackProvider,
-    updateCredentialPoolStrategy,
-    // Display config
-    isLoadingDisplay,
-    // Approval config
-    approvalConfig,
-    isLoadingApproval,
-    updateApprovalConfig,
-  } = useSettingsStore();
+  const sectionTitles = useMemo(() => getSectionTitles(t), [t]);
+  const modelConfig = useSettingsStore(s => s.modelConfig);
+  const agentConfig = useSettingsStore(s => s.agentConfig);
+  const terminalConfig = useSettingsStore(s => s.terminalConfig);
+  const compressionConfig = useSettingsStore(s => s.compressionConfig);
+  const checkpointConfig = useSettingsStore(s => s.checkpointConfig);
+  const memoryConfig = useSettingsStore(s => s.memoryConfig);
+  const rawYaml = useSettingsStore(s => s.rawYaml);
+  const isLoadingModel = useSettingsStore(s => s.isLoadingModel);
+  const isLoadingAgent = useSettingsStore(s => s.isLoadingAgent);
+  const isLoadingTerminal = useSettingsStore(s => s.isLoadingTerminal);
+  const isLoadingCompression = useSettingsStore(s => s.isLoadingCompression);
+  const isLoadingCheckpoint = useSettingsStore(s => s.isLoadingCheckpoint);
+  const isLoadingMemory = useSettingsStore(s => s.isLoadingMemory);
+  const isLoadingRaw = useSettingsStore(s => s.isLoadingRaw);
+  const editMode = useSettingsStore(s => s.editMode);
+  const error = useSettingsStore(s => s.error);
+  const successMessage = useSettingsStore(s => s.successMessage);
+  const isSaving = useSettingsStore(s => s.isSaving);
+  const fetchAllConfigs = useSettingsStore(s => s.fetchAllConfigs);
+  const fetchRawYaml = useSettingsStore(s => s.fetchRawYaml);
+  const updateModelConfig = useSettingsStore(s => s.updateModelConfig);
+  const updateAgentConfig = useSettingsStore(s => s.updateAgentConfig);
+  const updateTerminalConfig = useSettingsStore(s => s.updateTerminalConfig);
+  const updateCompressionConfig = useSettingsStore(s => s.updateCompressionConfig);
+  const updateCheckpointConfig = useSettingsStore(s => s.updateCheckpointConfig);
+  const updateMemoryConfig = useSettingsStore(s => s.updateMemoryConfig);
+  const updateAuxiliaryTaskConfig = useSettingsStore(s => s.updateAuxiliaryTaskConfig);
+  const deleteAuxiliaryTaskConfig = useSettingsStore(s => s.deleteAuxiliaryTaskConfig);
+  const updateRawYaml = useSettingsStore(s => s.updateRawYaml);
+  const setEditMode = useSettingsStore(s => s.setEditMode);
+  const setRawYaml = useSettingsStore(s => s.setRawYaml);
+  const clearError = useSettingsStore(s => s.clearError);
+  const clearSuccessMessage = useSettingsStore(s => s.clearSuccessMessage);
+  const exportConfig = useSettingsStore(s => s.exportConfig);
+  const importConfig = useSettingsStore(s => s.importConfig);
+  const auxiliaryConfig = useSettingsStore(s => s.auxiliaryConfig);
+  const isLoadingAuxiliary = useSettingsStore(s => s.isLoadingAuxiliary);
+  const providersConfig = useSettingsStore(s => s.providersConfig);
+  const isLoadingProviders = useSettingsStore(s => s.isLoadingProviders);
+  const addCustomProvider = useSettingsStore(s => s.addCustomProvider);
+  const updateCustomProvider = useSettingsStore(s => s.updateCustomProvider);
+  const deleteCustomProvider = useSettingsStore(s => s.deleteCustomProvider);
+  const addFallbackProvider = useSettingsStore(s => s.addFallbackProvider);
+  const deleteFallbackProvider = useSettingsStore(s => s.deleteFallbackProvider);
+  const updateCredentialPoolStrategy = useSettingsStore(s => s.updateCredentialPoolStrategy);
+  const isLoadingDisplay = useSettingsStore(s => s.isLoadingDisplay);
+  const approvalConfig = useSettingsStore(s => s.approvalConfig);
+  const isLoadingApproval = useSettingsStore(s => s.isLoadingApproval);
+  const updateApprovalConfig = useSettingsStore(s => s.updateApprovalConfig);
 
   const [activeSection, setActiveSection] = useState<ConfigSection>('model');
   const [showImportModal, setShowImportModal] = useState(false);
@@ -147,11 +142,6 @@ export const Settings: React.FC = () => {
   useEffect(() => {
     fetchAllConfigs();
   }, [fetchAllConfigs]);
-
-  // Debug: log when modelConfig changes
-  useEffect(() => {
-    logger.debug('[Settings] modelConfig from store:', modelConfig);
-  }, [modelConfig]);
 
   useEffect(() => {
     if (editMode === 'yaml') {
@@ -183,7 +173,7 @@ export const Settings: React.FC = () => {
   }, [hasUnsavedChanges]);
 
   // 导出配置
-  const handleExport = async () => {
+  const handleExport = useCallback(async () => {
     const jsonStr = await exportConfig();
     const blob = new Blob([jsonStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -194,17 +184,17 @@ export const Settings: React.FC = () => {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  };
+  }, [exportConfig]);
 
   // 导入配置
-  const handleImport = async () => {
+  const handleImport = useCallback(async () => {
     await importConfig(importText);
     setShowImportModal(false);
     setImportText('');
-  };
+  }, [importConfig, importText]);
 
   // 从文件导入
-  const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileImport = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
@@ -214,18 +204,18 @@ export const Settings: React.FC = () => {
       };
       reader.readAsText(file);
     }
-  };
+  }, []);
 
   // Handle YAML save with dirty state reset
-  const handleYamlSave = async (yaml: string) => {
+  const handleYamlSave = useCallback(async (yaml: string) => {
     await updateRawYaml(yaml);
     originalYamlRef.current = yaml;
     setHasUnsavedChanges(false);
     toast.success(t('settings.saved.config'));
-  };
+  }, [updateRawYaml, t]);
 
   // 渲染表单内容
-  const renderFormContent = () => {
+  const renderFormContent = useMemo(() => () => {
     switch (activeSection) {
       case 'model':
         return (
@@ -321,7 +311,7 @@ export const Settings: React.FC = () => {
       default:
         return null;
     }
-  };
+  }, [activeSection, modelConfig, agentConfig, terminalConfig, compressionConfig, checkpointConfig, memoryConfig, auxiliaryConfig, providersConfig, approvalConfig, updateModelConfig, updateAgentConfig, updateTerminalConfig, updateCompressionConfig, updateCheckpointConfig, updateMemoryConfig, updateAuxiliaryTaskConfig, deleteAuxiliaryTaskConfig, addCustomProvider, updateCustomProvider, deleteCustomProvider, addFallbackProvider, deleteFallbackProvider, updateCredentialPoolStrategy, updateApprovalConfig, isSaving, t]);
 
   // 检查是否正在加载
   const isLoading =

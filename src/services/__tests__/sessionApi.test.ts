@@ -99,7 +99,7 @@ describe('SessionApi', () => {
       expect(result).not.toBeNull();
       expect(result!.session_id).toBe('session-1');
       expect(result!.messages).toHaveLength(2);
-      expect(safeInvoke).toHaveBeenCalledWith('get_session', { session_id: 'session-1' });
+      expect(safeInvoke).toHaveBeenCalledWith('get_session', { id: 'session-1' });
     });
 
     it('should return null on invoke failure', async () => {
@@ -122,7 +122,7 @@ describe('SessionApi', () => {
       vi.mocked(safeInvoke).mockResolvedValue(undefined);
 
       await deleteSession('session-1');
-      expect(safeInvoke).toHaveBeenCalledWith('delete_session', { session_id: 'session-1' });
+      expect(safeInvoke).toHaveBeenCalledWith('delete_session', { id: 'session-1' });
     });
   });
 
@@ -155,7 +155,7 @@ describe('SessionApi', () => {
       vi.mocked(safeInvoke).mockResolvedValue(undefined);
 
       await updateSessionTitle('session-1', 'New Title');
-      expect(safeInvoke).toHaveBeenCalledWith('update_session_title', { session_id: 'session-1', title: 'New Title' });
+      expect(safeInvoke).toHaveBeenCalledWith('update_session_title', { id: 'session-1', title: 'New Title' });
     });
   });
 });

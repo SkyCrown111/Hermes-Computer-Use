@@ -1,6 +1,6 @@
 import { useRef, useCallback } from 'react';
 import { streamChatRealtime, respondApproval, abortChat } from '../services/hermesChat';
-import type { StreamCallbacks, StreamToolEvent, StreamUsageEvent, StreamApprovalEvent } from '../services/hermesChat';
+import type { StreamCallbacks, StreamToolEvent, StreamUsageEvent, StreamApprovalEvent, ChatHistoryEntry } from '../services/hermesChat';
 import { getErrorMessage } from '../lib/errorUtils';
 import { logger } from '../lib/logger';
 
@@ -52,7 +52,7 @@ export function useStreamChat(options: StreamChatOptions) {
     isStoppedRef.current = true;
   }, []);
 
-  const send = useCallback(async (message: string, history?: Array<unknown>) => {
+  const send = useCallback(async (message: string, history?: ChatHistoryEntry[]) => {
     isStoppedRef.current = false;
     resetStreamingState();
     onStatusChange?.('streaming');

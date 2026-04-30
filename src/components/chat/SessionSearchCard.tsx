@@ -21,7 +21,7 @@ const SessionSearchCardComponent: React.FC<SessionSearchCardProps> = ({ result, 
   };
 
   return (
-    <div className={`session-search-card ${selected ? 'selected' : ''}`} onClick={onClick}>
+    <div className={`session-search-card ${selected ? 'selected' : ''}`} onClick={onClick} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}>
       <div className="session-search-card-header">
         {onToggle && (
           <label className="session-search-checkbox" onClick={(e) => e.stopPropagation()}>

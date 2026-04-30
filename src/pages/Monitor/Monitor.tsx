@@ -3,6 +3,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { Card, Button, RefreshIcon, EmptyIcon, GlobeIcon, ChartIcon, TrendingUpIcon, AlertIcon, FileTextIcon, DownloadIcon } from '../../components';
 import { useMonitorStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
+import { logger } from '../../lib/logger';
 import type { LogFile, LogLevel, LogLine } from '../../types/monitor';
 import './Monitor.css';
 
@@ -73,6 +74,20 @@ const platformIcons: Record<string, string> = {
   web: 'WEB',
 };
 
+// Calculate performance metrics average
+const getAverageMetric = (metrics?: { value: number }[]): number => {
+  if (!metrics || metrics.length === 0) return 0;
+  return metrics.reduce((sum, m) => sum + m.value, 0) / metrics.length;
+};
+
+// Calculate network throughput
+const getNetworkThroughput = (metrics?: { value: number }[]): { current: number; avg: number } => {
+  if (!metrics || metrics.length === 0) return { current: 0, avg: 0 };
+  const current = metrics[metrics.length - 1]?.value || 0;
+  const avg = metrics.reduce((sum, m) => sum + m.value, 0) / metrics.length;
+  return { current, avg };
+};
+
 // Time range to milliseconds
 const timeRangeToMs = (range: TimeRange): number | null => {
   switch (range) {
@@ -93,30 +108,28 @@ const parseTimestamp = (line: LogLine): Date | null => {
 
 export const Monitor: React.FC = () => {
   const { t } = useTranslation();
-  const {
-    logs,
-    currentFile,
-    isLoadingLogs,
-    filterLevel,
-    filterComponent,
-    searchQuery,
-    gatewayStatus,
-    isLoadingGateway,
-    performanceMetrics,
-    availableComponents,
-    autoRefresh,
-    refreshInterval,
-    error,
-    fetchLogs,
-    setFilterLevel,
-    setFilterComponent,
-    setSearchQuery,
-    fetchGatewayStatus,
-    fetchPerformanceMetrics,
-    fetchComponents,
-    setAutoRefresh,
-    clearLogs,
-  } = useMonitorStore();
+  const logs = useMonitorStore(s => s.logs);
+  const currentFile = useMonitorStore(s => s.currentFile);
+  const isLoadingLogs = useMonitorStore(s => s.isLoadingLogs);
+  const filterLevel = useMonitorStore(s => s.filterLevel);
+  const filterComponent = useMonitorStore(s => s.filterComponent);
+  const searchQuery = useMonitorStore(s => s.searchQuery);
+  const gatewayStatus = useMonitorStore(s => s.gatewayStatus);
+  const isLoadingGateway = useMonitorStore(s => s.isLoadingGateway);
+  const performanceMetrics = useMonitorStore(s => s.performanceMetrics);
+  const availableComponents = useMonitorStore(s => s.availableComponents);
+  const autoRefresh = useMonitorStore(s => s.autoRefresh);
+  const refreshInterval = useMonitorStore(s => s.refreshInterval);
+  const error = useMonitorStore(s => s.error);
+  const fetchLogs = useMonitorStore(s => s.fetchLogs);
+  const setFilterLevel = useMonitorStore(s => s.setFilterLevel);
+  const setFilterComponent = useMonitorStore(s => s.setFilterComponent);
+  const setSearchQuery = useMonitorStore(s => s.setSearchQuery);
+  const fetchGatewayStatus = useMonitorStore(s => s.fetchGatewayStatus);
+  const fetchPerformanceMetrics = useMonitorStore(s => s.fetchPerformanceMetrics);
+  const fetchComponents = useMonitorStore(s => s.fetchComponents);
+  const setAutoRefresh = useMonitorStore(s => s.setAutoRefresh);
+  const clearLogs = useMonitorStore(s => s.clearLogs);
 
   const logContentRef = useRef<HTMLDivElement>(null);
   const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -129,7 +142,7 @@ export const Monitor: React.FC = () => {
     fetchGatewayStatus();
     fetchPerformanceMetrics();
     fetchComponents();
-  }, []);
+  }, [fetchLogs, fetchGatewayStatus, fetchPerformanceMetrics, fetchComponents]);
 
   // Page Visibility API - pause refresh when page is hidden
   useEffect(() => {
@@ -226,23 +239,23 @@ export const Monitor: React.FC = () => {
   }, [gatewayStatus, logStats.errorRate, performanceMetrics]);
 
   // Switch log file
-  const handleFileChange = (file: LogFile) => {
+  const handleFileChange = useCallback((file: LogFile) => {
     fetchLogs({ file });
-  };
+  }, [fetchLogs]);
 
   // Refresh logs
-  const handleRefresh = () => {
+  const handleRefresh = useCallback(() => {
     fetchLogs();
     fetchGatewayStatus();
     fetchPerformanceMetrics();
-  };
+  }, [fetchLogs, fetchGatewayStatus, fetchPerformanceMetrics]);
 
   // Scroll to bottom
-  const scrollToBottom = () => {
+  const scrollToBottom = useCallback(() => {
     if (logContentRef.current) {
       logContentRef.current.scrollTop = logContentRef.current.scrollHeight;
     }
-  };
+  }, []);
 
   // Export logs
   const handleExportLogs = useCallback(() => {
@@ -284,23 +297,9 @@ export const Monitor: React.FC = () => {
     try {
       await navigator.clipboard.writeText(content);
     } catch (err) {
-      console.error('Failed to copy to clipboard:', err);
+      logger.error('[Monitor] Failed to copy to clipboard:', err);
     }
   }, [filteredLogs]);
-
-  // Calculate performance metrics average
-  const getAverageMetric = (metrics?: { value: number }[]): number => {
-    if (!metrics || metrics.length === 0) return 0;
-    return metrics.reduce((sum, m) => sum + m.value, 0) / metrics.length;
-  };
-
-  // Calculate network throughput
-  const getNetworkThroughput = (metrics?: { value: number }[]): { current: number; avg: number } => {
-    if (!metrics || metrics.length === 0) return { current: 0, avg: 0 };
-    const current = metrics[metrics.length - 1]?.value || 0;
-    const avg = metrics.reduce((sum, m) => sum + m.value, 0) / metrics.length;
-    return { current, avg };
-  };
 
   const avgCpu = performanceMetrics ? getAverageMetric(performanceMetrics.cpu) : 0;
   const avgMemory = performanceMetrics ? getAverageMetric(performanceMetrics.memory) : 0;

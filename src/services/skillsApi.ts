@@ -1,5 +1,6 @@
 import { apiClient, getErrorDetail } from './apiClient';
 import { logger } from '../lib/logger';
+import { DEFAULT_PATHS } from './constants';
 import type {
   Skill,
   SkillDetail,
@@ -95,6 +96,6 @@ export async function getSkillsPath(): Promise<string> {
     return await apiClient.invoke<string>('get_skills_path');
   } catch (error) {
     logger.debug('[Skills] getSkillsPath failed, using default:', getErrorDetail(error));
-    return '~/.hermes/skills';
+    return DEFAULT_PATHS.skills;
   }
 }

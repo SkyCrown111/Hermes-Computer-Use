@@ -123,14 +123,16 @@ export const useMonitorStore = create<MonitorState>((set, get) => ({
     }
   },
 
-  // 设置级别筛选
+  // 设置级别筛选 (skip if value unchanged)
   setFilterLevel: (level) => {
+    if (get().filterLevel === level) return;
     set({ filterLevel: level });
     get().fetchLogs();
   },
 
-  // 设置组件筛选
+  // 设置组件筛选 (skip if value unchanged)
   setFilterComponent: (component) => {
+    if (get().filterComponent === component) return;
     set({ filterComponent: component });
     get().fetchLogs();
   },

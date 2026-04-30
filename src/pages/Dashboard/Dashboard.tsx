@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Card, Button, RocketIcon, ChatIcon, TargetIcon, ClockIcon, ChartIcon, ZapIcon, MonitorIcon, TrendingUpIcon, AlertIcon, LightbulbIcon } from '../../components';
 import { useDashboardStore, useNavigationStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
@@ -67,45 +67,40 @@ const OnboardingGuide: React.FC<{ onRetry: () => void; t: (key: string) => strin
   );
 };
 
+// Get progress bar color class
+const getProgressClass = (percent: number): string => {
+  if (percent < 60) return 'progress-fill-normal';
+  if (percent < 85) return 'progress-fill-warning';
+  return 'progress-fill-danger';
+};
+
 export const Dashboard: React.FC = () => {
-  const { setActiveItem, openTab } = useNavigationStore();
+  const setActiveItem = useNavigationStore(s => s.setActiveItem);
+  const openTab = useNavigationStore(s => s.openTab);
   const { t } = useTranslation();
-  const {
-    systemStatus,
-    usageAnalytics,
-    skills,
-    todayTasks,
-    isLoadingStatus,
-    isLoadingAnalytics,
-    isLoadingSkills,
-    isLoadingTasks,
-    error,
-    fetchAll,
-  } = useDashboardStore();
+  const systemStatus = useDashboardStore(s => s.systemStatus);
+  const usageAnalytics = useDashboardStore(s => s.usageAnalytics);
+  const skills = useDashboardStore(s => s.skills);
+  const todayTasks = useDashboardStore(s => s.todayTasks);
+  const isLoadingStatus = useDashboardStore(s => s.isLoadingStatus);
+  const isLoadingAnalytics = useDashboardStore(s => s.isLoadingAnalytics);
+  const isLoadingSkills = useDashboardStore(s => s.isLoadingSkills);
+  const isLoadingTasks = useDashboardStore(s => s.isLoadingTasks);
+  const error = useDashboardStore(s => s.error);
+  const fetchAll = useDashboardStore(s => s.fetchAll);
 
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [isChecking, setIsChecking] = useState(true);
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
   const [isRestartingGateway, setIsRestartingGateway] = useState(false);
 
-  useEffect(() => {
-    logger.component('Dashboard', 'useEffect triggered, checking status...');
-    checkHermesStatus();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const checkHermesStatus = async () => {
+  const checkHermesStatus = useCallback(async () => {
     setIsChecking(true);
     try {
-      // 检查数据目录是否存在
-      logger.component('Dashboard', 'Checking if data dir exists...');
       const exists = await checkDataDirExists();
-      logger.component('Dashboard', 'Data dir exists:', exists);
       if (!exists) {
-        logger.component('Dashboard', 'Showing onboarding...');
         setShowOnboarding(true);
       } else {
-        logger.component('Dashboard', 'Fetching all data...');
         setShowOnboarding(false);
         fetchAll();
       }
@@ -115,9 +110,13 @@ export const Dashboard: React.FC = () => {
     } finally {
       setIsChecking(false);
     }
-  };
+  }, [fetchAll]);
 
-  const handleCheckUpdates = async () => {
+  useEffect(() => {
+    checkHermesStatus();
+  }, [checkHermesStatus]);
+
+  const handleCheckUpdates = useCallback(async () => {
     setIsCheckingUpdates(true);
     try {
       const result = await checkForUpdates();
@@ -131,9 +130,9 @@ export const Dashboard: React.FC = () => {
     } finally {
       setIsCheckingUpdates(false);
     }
-  };
+  }, [t]);
 
-  const handleRestartGateway = async () => {
+  const handleRestartGateway = useCallback(async () => {
     setIsRestartingGateway(true);
     try {
       await restartGateway();
@@ -143,7 +142,7 @@ export const Dashboard: React.FC = () => {
     } finally {
       setIsRestartingGateway(false);
     }
-  };
+  }, [t]);
 
   // 正在检测状态
   if (isChecking) {
@@ -173,17 +172,16 @@ export const Dashboard: React.FC = () => {
     scheduledTasks: todayTasks.length,
     tokenUsage: usageAnalytics?.totals.total_input ?? 0,
   };
-  logger.component('Dashboard', 'stats:', stats);
 
   // 获取最近会话（从统计中获取）
   const recentSessions = usageAnalytics?.daily.slice(-5).reverse() ?? [];
 
-  // 获取进度条颜色类
-  const getProgressClass = (percent: number): string => {
-    if (percent < 60) return 'progress-fill-normal';
-    if (percent < 85) return 'progress-fill-warning';
-    return 'progress-fill-danger';
-  };
+  // Memoize new session handler
+  const handleNewSession = useCallback(() => {
+    const sessionId = `new_${Date.now()}`;
+    openTab(sessionId, t('dashboard.newSession'), 'new');
+    setActiveItem('chat');
+  }, [openTab, setActiveItem, t]);
 
   return (
     <div className="dashboard">
@@ -262,12 +260,7 @@ export const Dashboard: React.FC = () => {
           {/* Quick Actions */}
           <Card title={t('dashboard.quickActions')} icon={<ZapIcon size={18} />} className="quick-actions">
             <div className="action-grid">
-              <Button variant="primary" onClick={() => {
-                // Create a new chat session and navigate to it
-                const sessionId = `new_${Date.now()}`;
-                openTab(sessionId, t('dashboard.newSession'), 'new');
-                setActiveItem('chat');
-              }}>{t('dashboard.newSession')}</Button>
+              <Button variant="primary" onClick={handleNewSession}>{t('dashboard.newSession')}</Button>
               <Button variant="secondary" onClick={() => setActiveItem('skills')}>{t('dashboard.executeSkill')}</Button>
               <Button variant="secondary" onClick={() => setActiveItem('tasks')}>{t('dashboard.createTask')}</Button>
               <Button variant="secondary" onClick={() => setActiveItem('settings')}>{t('dashboard.openSettings')}</Button>

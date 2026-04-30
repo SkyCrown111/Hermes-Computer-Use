@@ -1,9 +1,8 @@
 /**
  * Tools API - Direct tool invocation
  */
-import { invoke } from '@tauri-apps/api/core';
-import { HermesApiError, isTauri } from '../lib/tauri';
-import { getErrorDetail } from './apiClient';
+import { isTauri } from '../lib/tauri';
+import { apiClient } from './apiClient';
 import { logger } from '../lib/logger';
 
 // Tool information
@@ -31,14 +30,6 @@ export interface ToolsetInfo {
   includes: string[];
 }
 
-function wrapToolCall<T>(command: string, args: Record<string, unknown>, errorCode: string): Promise<T> {
-  return invoke<T>(command, args).catch(error => {
-    const detail = getErrorDetail(error);
-    logger.error(`[ToolsApi] ${command} failed: ${detail}`);
-    throw new HermesApiError(errorCode, detail);
-  });
-}
-
 /**
  * List all available tools from Hermes Agent
  */
@@ -52,7 +43,7 @@ export async function listAvailableTools(): Promise<ToolInfo[]> {
     ];
   }
 
-  return wrapToolCall<ToolInfo[]>('list_available_tools', {}, 'tools_list_error');
+  return apiClient.invoke<ToolInfo[]>('list_available_tools');
 }
 
 /**
@@ -63,7 +54,7 @@ export async function getToolSchema(toolName: string): Promise<Record<string, un
     return { schema: {}, description: 'Mock schema' };
   }
 
-  return wrapToolCall<Record<string, unknown>>('get_tool_schema', { toolName }, 'tool_schema_error');
+  return apiClient.invoke<Record<string, unknown>>('get_tool_schema', { toolName });
 }
 
 /**
@@ -83,11 +74,11 @@ export async function invokeTool(
     };
   }
 
-  return wrapToolCall<ToolResult>('invoke_tool', {
+  return apiClient.invoke<ToolResult>('invoke_tool', {
     toolName,
     args,
     sessionId,
-  }, 'tool_invoke_error');
+  });
 }
 
 /**
@@ -102,5 +93,5 @@ export async function listToolsets(): Promise<ToolsetInfo[]> {
     ];
   }
 
-  return wrapToolCall<ToolsetInfo[]>('list_toolsets', {}, 'toolsets_list_error');
+  return apiClient.invoke<ToolsetInfo[]>('list_toolsets');
 }

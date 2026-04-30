@@ -242,12 +242,16 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           {/* Slash Commands Dropdown */}
           {showCommands && (
             <div className="slash-commands-dropdown">
-              <div className="slash-commands-list">
+              <div className="slash-commands-list" role="listbox">
                 {filteredCommands.map((cmd, index) => (
                   <div
                     key={cmd.command}
                     className={`slash-command-item ${index === selectedCommandIndex ? 'selected' : ''}`}
+                    role="option"
+                    aria-selected={index === selectedCommandIndex}
+                    tabIndex={-1}
                     onClick={() => insertCommand(cmd.command)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); insertCommand(cmd.command); } }}
                   >
                     <span className="slash-command-name">{cmd.command}</span>
                     <span className="slash-command-desc">{cmd.description}</span>

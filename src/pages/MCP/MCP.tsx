@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { ConfirmModal, AlertIcon, CheckIcon, WarningIcon } from '../../components';
 import { useMcpStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
@@ -53,36 +53,35 @@ function ResourceIcon() {
 export function MCP() {
   const { t } = useTranslation();
 
-  const {
-    servers,
-    stats,
-    selectedServer,
-    tools,
-    resources,
-    isLoading,
-    error,
-    isAddModalOpen,
-    isEditModalOpen,
-    isToolsModalOpen,
-    isResourcesModalOpen,
-    fetchServers,
-    fetchStats,
-    addServer,
-    updateServer,
-    removeServer,
-    startServer,
-    stopServer,
-    testConnection,
-    openAddModal,
-    closeAddModal,
-    openEditModal,
-    closeEditModal,
-    openToolsModal,
-    closeToolsModal,
-    openResourcesModal,
-    closeResourcesModal,
-    clearError,
-  } = useMcpStore();
+  // Individual Zustand selectors to avoid unnecessary re-renders
+  const servers = useMcpStore(s => s.servers);
+  const stats = useMcpStore(s => s.stats);
+  const selectedServer = useMcpStore(s => s.selectedServer);
+  const tools = useMcpStore(s => s.tools);
+  const resources = useMcpStore(s => s.resources);
+  const isLoading = useMcpStore(s => s.isLoading);
+  const error = useMcpStore(s => s.error);
+  const isAddModalOpen = useMcpStore(s => s.isAddModalOpen);
+  const isEditModalOpen = useMcpStore(s => s.isEditModalOpen);
+  const isToolsModalOpen = useMcpStore(s => s.isToolsModalOpen);
+  const isResourcesModalOpen = useMcpStore(s => s.isResourcesModalOpen);
+  const fetchServers = useMcpStore(s => s.fetchServers);
+  const fetchStats = useMcpStore(s => s.fetchStats);
+  const addServer = useMcpStore(s => s.addServer);
+  const updateServer = useMcpStore(s => s.updateServer);
+  const removeServer = useMcpStore(s => s.removeServer);
+  const startServer = useMcpStore(s => s.startServer);
+  const stopServer = useMcpStore(s => s.stopServer);
+  const testConnection = useMcpStore(s => s.testConnection);
+  const openAddModal = useMcpStore(s => s.openAddModal);
+  const closeAddModal = useMcpStore(s => s.closeAddModal);
+  const openEditModal = useMcpStore(s => s.openEditModal);
+  const closeEditModal = useMcpStore(s => s.closeEditModal);
+  const openToolsModal = useMcpStore(s => s.openToolsModal);
+  const closeToolsModal = useMcpStore(s => s.closeToolsModal);
+  const openResourcesModal = useMcpStore(s => s.openResourcesModal);
+  const closeResourcesModal = useMcpStore(s => s.closeResourcesModal);
+  const clearError = useMcpStore(s => s.clearError);
 
   // Form state for add/edit
   const [formData, setFormData] = useState<AddMcpServerRequest>({
@@ -130,7 +129,7 @@ export function MCP() {
   }, [isEditModalOpen, selectedServer]);
 
   // Handle form submit
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name || !formData.command) {
       toast.error(t('mcp.nameRequired'));
@@ -175,10 +174,10 @@ export function MCP() {
         toast.success(t('mcp.serverAdded'));
       }
     }
-  };
+  }, [formData, argsText, envText, isEditModalOpen, selectedServer, addServer, updateServer, t]);
 
   // Handle test connection
-  const handleTestConnection = async () => {
+  const handleTestConnection = useCallback(async () => {
     if (!formData.command) {
       toast.error(t('mcp.commandRequired'));
       return;
@@ -212,10 +211,10 @@ export function MCP() {
     } else {
       toast.error(t('mcp.testFailed'));
     }
-  };
+  }, [formData, argsText, envText, testConnection, t]);
 
   // Handle delete server
-  const handleDeleteServer = async () => {
+  const handleDeleteServer = useCallback(async () => {
     if (deleteConfirm) {
       const success = await removeServer(deleteConfirm.name);
       if (success) {
@@ -223,7 +222,7 @@ export function MCP() {
       }
       setDeleteConfirm(null);
     }
-  };
+  }, [deleteConfirm, removeServer, t]);
 
   return (
     <div className="mcp-page">
@@ -267,7 +266,7 @@ export function MCP() {
           <AlertIcon size={16} />
           <span>{error}</span>
           <button className="btn btn-secondary btn-sm" onClick={() => { fetchServers(); fetchStats(); }}>
-            Refresh
+            {t('common.refresh')}
           </button>
           <button className="btn btn-secondary btn-sm" onClick={clearError}>
             {t('common.close')}

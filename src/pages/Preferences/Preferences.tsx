@@ -73,18 +73,16 @@ const getShortcutGroups = (t: (key: string) => string) => [
 ];
 
 export const Preferences: React.FC = () => {
-  const {
-    mode,
-    language,
-    setLanguage,
-    setTheme,
-    displayPreferences,
-    setCompactMode,
-    setSidebarPosition,
-    setNotificationsEnabled,
-    setNotificationSound,
-    setNotificationDesktop,
-  } = useThemeStore();
+  const mode = useThemeStore(s => s.mode);
+  const language = useThemeStore(s => s.language);
+  const setLanguage = useThemeStore(s => s.setLanguage);
+  const setTheme = useThemeStore(s => s.setTheme);
+  const displayPreferences = useThemeStore(s => s.displayPreferences);
+  const setCompactMode = useThemeStore(s => s.setCompactMode);
+  const setSidebarPosition = useThemeStore(s => s.setSidebarPosition);
+  const setNotificationsEnabled = useThemeStore(s => s.setNotificationsEnabled);
+  const setNotificationSound = useThemeStore(s => s.setNotificationSound);
+  const setNotificationDesktop = useThemeStore(s => s.setNotificationDesktop);
   const { t } = useTranslation();
   const [version, setVersion] = useState('0.1.0');
   const [showShortcuts, setShowShortcuts] = useState(false);

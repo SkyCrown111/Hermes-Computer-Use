@@ -10,14 +10,6 @@ import { ZapIcon, AlertIcon, BotIcon } from '../../components';
 
 // ---- Types ----
 
-interface PermissionApproval {
-  id: string;
-  command: string;
-  description: string;
-  allow_permanent: boolean;
-  choices?: ('once' | 'session' | 'always' | 'deny')[];
-}
-
 interface ToolCallInfo {
   name: string;
   event_type: string;
@@ -35,7 +27,6 @@ export interface MessageListProps {
   streamingText?: string;
   reasoningText?: string;
   streamingTools: ToolCallInfo[];
-  pendingPermission: PermissionApproval | null;
   apiAvailable: boolean | null;
   showMessageSearch: boolean;
   messageSearchQuery: string;
@@ -58,7 +49,6 @@ export interface MessageListProps {
   onCancelEdit: () => void;
   onSaveEdit: (messageId: string) => void;
   onEditContentChange: (content: string) => void;
-  onApprovalResponse: (choice: 'once' | 'session' | 'always' | 'deny') => void;
   t: (key: string) => string;
 }
 

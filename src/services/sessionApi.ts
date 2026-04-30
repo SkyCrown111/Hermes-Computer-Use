@@ -1,5 +1,6 @@
 import { apiClient, getErrorDetail } from './apiClient';
 import { logger } from '../lib/logger';
+import { DEFAULT_PATHS } from './constants';
 import type {
   Session,
   SessionListResponse,
@@ -65,8 +66,16 @@ export async function searchSessions(params: SessionSearchParams): Promise<Sessi
   }
 }
 
-export async function exportSessions(params: SessionExportParams): Promise<unknown> {
-  return apiClient.invoke('export_session', {
+export interface SessionExportResult {
+  ok: boolean;
+  format: string;
+  content?: string;
+  path?: string;
+  message?: string;
+}
+
+export async function exportSessions(params: SessionExportParams): Promise<SessionExportResult> {
+  return apiClient.invoke<SessionExportResult>('export_session', {
     format: params.format,
     session_id: params.session_id,
     platform: params.platform,
@@ -78,7 +87,7 @@ export async function getSessionsPath(): Promise<string> {
     return await apiClient.invoke<string>('get_sessions_path');
   } catch (error) {
     logger.debug('[Sessions] getSessionsPath failed, using default:', getErrorDetail(error));
-    return '~/.hermes/sessions';
+    return DEFAULT_PATHS.sessions;
   }
 }
 

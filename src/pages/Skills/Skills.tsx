@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { Card, Button, Input, ConfirmModal } from '../../components';
 import { PlusIcon, XIcon, EditIcon, TrashIcon, SearchIcon, WarningIcon, FolderIcon, TargetIcon, PlayIcon, ClockIcon, CopyIcon, CheckIcon, RefreshIcon } from '../../components';
 import { useSkillsStore, useNavigationStore } from '../../stores';
@@ -45,33 +45,33 @@ const formatRelativeTime = (dateStr: string, lang: 'zh' | 'en'): string => {
 
 export const Skills: React.FC = () => {
   const { t, lang } = useTranslation();
-  const { openTab, setActiveItem } = useNavigationStore();
+  // Individual Zustand selectors to avoid unnecessary re-renders
+  const openTab = useNavigationStore(s => s.openTab);
+  const setActiveItem = useNavigationStore(s => s.setActiveItem);
 
-  const {
-    skills,
-    isLoadingSkills,
-    categories,
-    isLoadingCategories,
-    selectedCategory,
-    searchQuery,
-    selectedSkill,
-    isLoadingDetail,
-    executionHistory,
-    isLoadingHistory,
-    error,
-    fetchSkills,
-    fetchCategories,
-    fetchSkillDetail,
-    fetchExecutionHistory,
-    toggleSkill,
-    createSkill,
-    updateSkill,
-    deleteSkill,
-    executeSkill,
-    setSearchQuery,
-    setSelectedCategory,
-    clearSelectedSkill,
-  } = useSkillsStore();
+  const skills = useSkillsStore(s => s.skills);
+  const isLoadingSkills = useSkillsStore(s => s.isLoadingSkills);
+  const categories = useSkillsStore(s => s.categories);
+  const isLoadingCategories = useSkillsStore(s => s.isLoadingCategories);
+  const selectedCategory = useSkillsStore(s => s.selectedCategory);
+  const searchQuery = useSkillsStore(s => s.searchQuery);
+  const selectedSkill = useSkillsStore(s => s.selectedSkill);
+  const isLoadingDetail = useSkillsStore(s => s.isLoadingDetail);
+  const executionHistory = useSkillsStore(s => s.executionHistory);
+  const isLoadingHistory = useSkillsStore(s => s.isLoadingHistory);
+  const error = useSkillsStore(s => s.error);
+  const fetchSkills = useSkillsStore(s => s.fetchSkills);
+  const fetchCategories = useSkillsStore(s => s.fetchCategories);
+  const fetchSkillDetail = useSkillsStore(s => s.fetchSkillDetail);
+  const fetchExecutionHistory = useSkillsStore(s => s.fetchExecutionHistory);
+  const toggleSkill = useSkillsStore(s => s.toggleSkill);
+  const createSkill = useSkillsStore(s => s.createSkill);
+  const updateSkill = useSkillsStore(s => s.updateSkill);
+  const deleteSkill = useSkillsStore(s => s.deleteSkill);
+  const executeSkill = useSkillsStore(s => s.executeSkill);
+  const setSearchQuery = useSkillsStore(s => s.setSearchQuery);
+  const setSelectedCategory = useSkillsStore(s => s.setSelectedCategory);
+  const clearSelectedSkill = useSkillsStore(s => s.clearSelectedSkill);
 
   // Add Skill modal state
   const [showAddModal, setShowAddModal] = useState(false);
@@ -128,7 +128,7 @@ export const Skills: React.FC = () => {
   }, [selectedSkill, fetchExecutionHistory]);
 
   // Execute skill - starts a new chat session with skill context
-  const handleExecuteSkill = async (skill: typeof selectedSkill) => {
+  const handleExecuteSkill = useCallback(async (skill: typeof selectedSkill) => {
     if (!skill) return;
 
     // Create a new session
@@ -142,19 +142,17 @@ export const Skills: React.FC = () => {
 
     // Close the detail panel
     clearSelectedSkill();
-
-    logger.debug('[Skills] Executing skill:', skill.name, 'Session:', sessionId);
-  };
+  }, [openTab, setActiveItem, clearSelectedSkill]);
 
   // Open execution modal
-  const openExecutionModal = () => {
+  const openExecutionModal = useCallback(() => {
     setExecutionInput('');
     setExecutionParams([]);
     setShowExecutionModal(true);
-  };
+  }, []);
 
   // Handle execution with parameters
-  const handleExecuteWithParams = async () => {
+  const handleExecuteWithParams = useCallback(async () => {
     if (!selectedSkill) return;
 
     setIsExecuting(true);
@@ -186,10 +184,10 @@ export const Skills: React.FC = () => {
     } finally {
       setIsExecuting(false);
     }
-  };
+  }, [selectedSkill, executionInput, executionParams, executeSkill, openTab, setActiveItem, clearSelectedSkill, t]);
 
   // Handle edit skill
-  const handleEditSkill = (skill: typeof selectedSkill) => {
+  const handleEditSkill = useCallback((skill: typeof selectedSkill) => {
     if (!skill) return;
     setEditingSkill({
       originalName: skill.name,
@@ -200,10 +198,10 @@ export const Skills: React.FC = () => {
       content: skill.content,
     });
     setShowEditModal(true);
-  };
+  }, []);
 
   // Handle delete skill
-  const handleDeleteSkill = async () => {
+  const handleDeleteSkill = useCallback(async () => {
     if (!deleteConfirm) return;
     const success = await deleteSkill(deleteConfirm.category, deleteConfirm.name);
     if (success) {
@@ -212,10 +210,10 @@ export const Skills: React.FC = () => {
       toast.error(lang === 'zh' ? '删除失败' : 'Delete failed');
     }
     setDeleteConfirm(null);
-  };
+  }, [deleteConfirm, deleteSkill, lang]);
 
   // Save edited skill
-  const handleSaveEdit = async () => {
+  const handleSaveEdit = useCallback(async () => {
     const success = await updateSkill(
       editingSkill.originalCategory,
       editingSkill.originalName,
@@ -232,10 +230,10 @@ export const Skills: React.FC = () => {
     } else {
       toast.error(lang === 'zh' ? '更新失败' : 'Update failed');
     }
-  };
+  }, [editingSkill, updateSkill, lang]);
 
   // Copy skill content to clipboard
-  const handleCopyContent = async () => {
+  const handleCopyContent = useCallback(async () => {
     if (!selectedSkill) return;
     try {
       await navigator.clipboard.writeText(selectedSkill.content);
@@ -245,12 +243,7 @@ export const Skills: React.FC = () => {
     } catch (err) {
       logger.error('[Skills] Failed to copy:', err);
     }
-  };
-
-  // Debug log for categories
-  useEffect(() => {
-    logger.debug('[Skills] categories:', categories);
-  }, [categories]);
+  }, [selectedSkill, t]);
 
   // Filtered skills with improved search
   const filteredSkills = useMemo(() => {
@@ -446,7 +439,6 @@ export const Skills: React.FC = () => {
                             const sessionId = `skill_${skill.name}_${Date.now()}`;
                             openTab(sessionId, skill.name, 'new');
                             setActiveItem('chat');
-                            logger.debug('[Skills] Quick execute skill:', skill.name);
                           }}
                         >
                           <PlayIcon size={14} />

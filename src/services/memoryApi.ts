@@ -1,6 +1,29 @@
 import { apiClient, getErrorDetail } from './apiClient';
 import { logger } from '../lib/logger';
+import { DEFAULT_PATHS } from './constants';
 import type { MemoryData, MemorySaveRequest, MemorySaveResponse, MemorySearchResult, MemoryFile, MemoryFileType } from '../types/memory';
+
+/** Result of a direct memory search. */
+export interface MemoryDirectSearchResult {
+  file: string;
+  line_number: number;
+  line_content: string;
+  context_before: string[];
+  context_after: string[];
+}
+
+/** Result of deleting a memory section. */
+export interface MemoryDeleteSectionResult {
+  ok: boolean;
+  deleted_section: string;
+  remaining_chars: number;
+}
+
+/** Result of appending to memory. */
+export interface MemoryAppendResult {
+  ok: boolean;
+  char_count: number;
+}
 
 function emptyMemoryFile(type: MemoryFileType): MemoryFile {
   return {
@@ -130,18 +153,12 @@ export const memoryApi = {
       return await apiClient.invoke<string>('get_memories_path');
     } catch (error) {
       logger.debug('[Memory] getMemoriesPath failed, using default:', getErrorDetail(error));
-      return '~/.hermes/memories';
+      return DEFAULT_PATHS.memories;
     }
   },
 
   // New API methods for enhanced memory operations
-  searchMemoriesDirect: async (query: string, caseSensitive: boolean = false): Promise<{
-    file: string;
-    line_number: number;
-    line_content: string;
-    context_before: string[];
-    context_after: string[];
-  }[]> => {
+  searchMemoriesDirect: async (query: string, caseSensitive: boolean = false): Promise<MemoryDirectSearchResult[]> => {
     try {
       return await apiClient.invoke('search_memories', { query, caseSensitive });
     } catch (error) {
@@ -150,7 +167,7 @@ export const memoryApi = {
     }
   },
 
-  deleteMemorySection: async (type: MemoryFileType, sectionId: string): Promise<{ ok: boolean; deleted_section: string; remaining_chars: number }> => {
+  deleteMemorySection: async (type: MemoryFileType, sectionId: string): Promise<MemoryDeleteSectionResult> => {
     try {
       return await apiClient.invoke('delete_memory_section', { file_type: type, section_id: sectionId });
     } catch (error) {
@@ -159,7 +176,7 @@ export const memoryApi = {
     }
   },
 
-  appendMemoryDirect: async (type: MemoryFileType, content: string, sectionTitle?: string): Promise<{ ok: boolean; char_count: number }> => {
+  appendMemoryDirect: async (type: MemoryFileType, content: string, sectionTitle?: string): Promise<MemoryAppendResult> => {
     try {
       return await apiClient.invoke('append_memory', { file_type: type, content, section_title: sectionTitle });
     } catch (error) {

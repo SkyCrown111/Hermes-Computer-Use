@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { Card, Button, Input, Textarea, PlusIcon, ClockIcon, TargetIcon, ExportIcon, AlertIcon, EmptyIcon, ConfirmModal, ChevronDownIcon, ChevronUpIcon, XIcon, RefreshIcon } from '../../components';
 import { useCronJobsStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
@@ -47,25 +47,24 @@ const formatDuration = (seconds: number): string => {
 
 export const CronJobs: React.FC = () => {
   const { t } = useTranslation();
-  const {
-    jobs,
-    isLoadingJobs,
-    jobOutputs,
-    isLoadingOutputs,
-    isEditing,
-    editingJob,
-    error,
-    fetchJobs,
-    fetchJobOutputs,
-    createJob,
-    updateJob,
-    deleteJob,
-    pauseJob,
-    resumeJob,
-    triggerJob,
-    setEditingJob,
-    clearSelectedJob,
-  } = useCronJobsStore();
+  // Individual Zustand selectors to avoid unnecessary re-renders
+  const jobs = useCronJobsStore(s => s.jobs);
+  const isLoadingJobs = useCronJobsStore(s => s.isLoadingJobs);
+  const jobOutputs = useCronJobsStore(s => s.jobOutputs);
+  const isLoadingOutputs = useCronJobsStore(s => s.isLoadingOutputs);
+  const isEditing = useCronJobsStore(s => s.isEditing);
+  const editingJob = useCronJobsStore(s => s.editingJob);
+  const error = useCronJobsStore(s => s.error);
+  const fetchJobs = useCronJobsStore(s => s.fetchJobs);
+  const fetchJobOutputs = useCronJobsStore(s => s.fetchJobOutputs);
+  const createJob = useCronJobsStore(s => s.createJob);
+  const updateJob = useCronJobsStore(s => s.updateJob);
+  const deleteJob = useCronJobsStore(s => s.deleteJob);
+  const pauseJob = useCronJobsStore(s => s.pauseJob);
+  const resumeJob = useCronJobsStore(s => s.resumeJob);
+  const triggerJob = useCronJobsStore(s => s.triggerJob);
+  const setEditingJob = useCronJobsStore(s => s.setEditingJob);
+  const clearSelectedJob = useCronJobsStore(s => s.clearSelectedJob);
 
   // 表单状态
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -82,26 +81,26 @@ export const CronJobs: React.FC = () => {
   const [expandedOutputs, setExpandedOutputs] = useState<Set<number>>(new Set());
 
   // 切换输出展开状态
-  const toggleOutputExpand = (index: number) => {
+  const toggleOutputExpand = useCallback((index: number) => {
     setExpandedOutputs(prev => {
       const next = new Set(prev);
       if (next.has(index)) next.delete(index);
       else next.add(index);
       return next;
     });
-  };
+  }, []);
 
   useEffect(() => {
     fetchJobs();
   }, [fetchJobs]);
 
   // 查看任务详情
-  const handleViewJob = async (job: CronJob) => {
+  const handleViewJob = useCallback(async (job: CronJob) => {
     fetchJobOutputs(job.id, 20);
-  };
+  }, [fetchJobOutputs]);
 
   // 创建任务
-  const handleCreateJob = async () => {
+  const handleCreateJob = useCallback(async () => {
     if (!formData.name || !formData.prompt || !formData.schedule) return;
 
     // Validate schedule
@@ -114,7 +113,7 @@ export const CronJobs: React.FC = () => {
 
     const result = await createJob(formData);
     if (result) {
-      toast.success('Task created successfully');
+      toast.success(t('nav.home') === 'Home' ? 'Task created successfully' : '任务创建成功');
       setShowCreateForm(false);
       setFormData({
         name: '',
@@ -124,10 +123,10 @@ export const CronJobs: React.FC = () => {
       });
       setScheduleError(null);
     }
-  };
+  }, [formData, createJob, t]);
 
   // 更新任务
-  const handleUpdateJob = async () => {
+  const handleUpdateJob = useCallback(async () => {
     if (!editingJob) return;
 
     // Validate schedule
@@ -140,36 +139,36 @@ export const CronJobs: React.FC = () => {
 
     const result = await updateJob(editingJob.id, formData);
     if (result) {
-      toast.success('Task updated successfully');
+      toast.success(t('nav.home') === 'Home' ? 'Task updated successfully' : '任务更新成功');
       setScheduleError(null);
     }
-  };
+  }, [editingJob, formData, updateJob, t]);
 
   // 删除任务
   const [deleteConfirmJob, setDeleteConfirmJob] = useState<string | null>(null);
 
-  const handleDeleteJob = async (jobId: string) => {
+  const handleDeleteJob = useCallback(async (jobId: string) => {
     setDeleteConfirmJob(jobId);
-  };
+  }, []);
 
-  const confirmDeleteJob = async () => {
+  const confirmDeleteJob = useCallback(async () => {
     if (deleteConfirmJob) {
       await deleteJob(deleteConfirmJob);
       setDeleteConfirmJob(null);
     }
-  };
+  }, [deleteConfirmJob, deleteJob]);
 
   // 手动触发
-  const handleTrigger = async (jobId: string) => {
+  const handleTrigger = useCallback(async (jobId: string) => {
     const success = await triggerJob(jobId);
     if (success) {
       // 刷新列表
       fetchJobs();
     }
-  };
+  }, [triggerJob, fetchJobs]);
 
   // 开始编辑
-  const startEditing = (job: CronJob) => {
+  const startEditing = useCallback((job: CronJob) => {
     setEditingJob(job);
     setFormData({
       name: job.name,
@@ -179,10 +178,10 @@ export const CronJobs: React.FC = () => {
       deliver: job.deliver,
     });
     setScheduleError(null);
-  };
+  }, [setEditingJob]);
 
   // 添加技能
-  const addSkill = () => {
+  const addSkill = useCallback(() => {
     if (skillInput.trim() && !formData.skills?.includes(skillInput.trim())) {
       setFormData({
         ...formData,
@@ -190,23 +189,23 @@ export const CronJobs: React.FC = () => {
       });
       setSkillInput('');
     }
-  };
+  }, [skillInput, formData]);
 
   // 移除技能
-  const removeSkill = (skill: string) => {
+  const removeSkill = useCallback((skill: string) => {
     setFormData({
       ...formData,
       skills: formData.skills?.filter((s: string) => s !== skill) || [],
     });
-  };
+  }, [formData]);
 
   // 统计数据
-  const stats = {
+  const stats = useMemo(() => ({
     total: jobs.length,
     enabled: jobs.filter((j) => j.enabled).length,
     disabled: jobs.filter((j) => !j.enabled).length,
     pending: jobs.filter((j) => j.enabled && j.next_run_at).length,
-  };
+  }), [jobs]);
 
   return (
     <div className="cron-jobs-page">
@@ -561,9 +560,9 @@ export const CronJobs: React.FC = () => {
                               onClick={() => toggleOutputExpand(index)}
                             >
                               {isExpanded ? (
-                                <><ChevronUpIcon size={14} /> 收起</>
+                                <><ChevronUpIcon size={14} /> {t('common.collapse') || (t('nav.home') === 'Home' ? 'Collapse' : '收起')}</>
                               ) : (
-                                <><ChevronDownIcon size={14} /> 展开全部</>
+                                <><ChevronDownIcon size={14} /> {t('common.expandAll') || (t('nav.home') === 'Home' ? 'Expand All' : '展开全部')}</>
                               )}
                             </Button>
                           )}

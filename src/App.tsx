@@ -3,7 +3,6 @@ import { useEffect, Suspense, lazy } from 'react';
 import { useNavigationStore, useThemeStore, useSessionStore } from './stores';
 import { initializeChatStore } from './stores/chatStore';
 import { Layout, ToastContainer, ErrorBoundary, CommandPalette, GlobalSearch } from './components';
-import { logger } from './lib/logger';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useTranslation } from './hooks/useTranslation';
 
@@ -46,14 +45,15 @@ const PageFallback: React.FC = () => {
 };
 
 function App() {
-  const { activeItem, chatContext, restoreTabs } = useNavigationStore();
-  const { mode, displayPreferences } = useThemeStore();
+  const activeItem = useNavigationStore(s => s.activeItem);
+  const chatContext = useNavigationStore(s => s.chatContext);
+  const restoreTabs = useNavigationStore(s => s.restoreTabs);
+  const mode = useThemeStore(s => s.mode);
+  const displayPreferences = useThemeStore(s => s.displayPreferences);
   const fetchSessions = useSessionStore((s) => s.fetchSessions);
 
   // Register global keyboard shortcuts
   useKeyboardShortcuts();
-
-  logger.component('App', 'Active item:', activeItem, 'Chat context:', chatContext);
 
   // Apply theme and display preferences to document
   useEffect(() => {
@@ -79,7 +79,6 @@ function App() {
 
   // Simple page routing based on navigation state
   const renderPage = () => {
-    logger.component('App', 'Rendering page for:', activeItem);
     const page = (() => {
       switch (activeItem) {
         case 'sessions':
