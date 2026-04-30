@@ -163,13 +163,20 @@ interface ChatStore {
 }
 
 // 辅助函数：更新指定会话的状态
+// 如果 session 不存在且 createIfMissing 为 false，则返回原 sessions
 function updateSessionIn(
   sessions: Record<string, PerSessionState>,
   sessionId: string,
-  updater: (s: PerSessionState) => Partial<PerSessionState>
+  updater: (s: PerSessionState) => Partial<PerSessionState>,
+  createIfMissing: boolean = true
 ): Record<string, PerSessionState> {
-  const session = sessions[sessionId] ?? createDefaultSessionState();
-  return { ...sessions, [sessionId]: { ...session, ...updater(session) } };
+  const session = sessions[sessionId];
+  if (!session && !createIfMissing) {
+    // Session doesn't exist and we shouldn't create it - return unchanged
+    return sessions;
+  }
+  const targetSession = session ?? createDefaultSessionState();
+  return { ...sessions, [sessionId]: { ...targetSession, ...updater(targetSession) } };
 }
 
 export const useChatStore = create<ChatStore>((set, get) => ({
@@ -217,91 +224,131 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   setStreaming: (sessionId, isStreaming) => {
-    set((s) => ({
-      sessions: updateSessionIn(s.sessions, sessionId, (session) => ({
-        isStreaming,
-        isThinking: isStreaming ? false : session.isThinking,
-      })),
-    }));
+    set((s) => {
+      // Don't create a new session if it doesn't exist (e.g., after migration)
+      const session = s.sessions[sessionId];
+      if (!session) {
+        logger.debug('[ChatStore] setStreaming - session not found:', sessionId, 'skipping');
+        return s;
+      }
+      return {
+        sessions: updateSessionIn(s.sessions, sessionId, (session) => ({
+          isStreaming,
+          isThinking: isStreaming ? false : session.isThinking,
+        }), false),
+      };
+    });
   },
 
   setStreamingText: (sessionId, text) => {
-    set((s) => ({
-      sessions: updateSessionIn(s.sessions, sessionId, () => ({
-        streamingText: text,
-      })),
-    }));
+    set((s) => {
+      const session = s.sessions[sessionId];
+      if (!session) return s;
+      return {
+        sessions: updateSessionIn(s.sessions, sessionId, () => ({
+          streamingText: text,
+        }), false),
+      };
+    });
   },
 
   appendStreamingText: (sessionId, text) => {
-    set((s) => ({
-      sessions: updateSessionIn(s.sessions, sessionId, (session) => ({
-        streamingText: session.streamingText + text,
-      })),
-    }));
+    set((s) => {
+      const session = s.sessions[sessionId];
+      if (!session) return s;
+      return {
+        sessions: updateSessionIn(s.sessions, sessionId, (session) => ({
+          streamingText: session.streamingText + text,
+        }), false),
+      };
+    });
   },
 
   setThinking: (sessionId, isThinking, text) => {
-    set((s) => ({
-      sessions: updateSessionIn(s.sessions, sessionId, () => ({
-        isThinking,
-        thinkingText: text ?? '',
-      })),
-    }));
+    set((s) => {
+      const session = s.sessions[sessionId];
+      if (!session) return s;
+      return {
+        sessions: updateSessionIn(s.sessions, sessionId, () => ({
+          isThinking,
+          thinkingText: text ?? '',
+        }), false),
+      };
+    });
   },
 
   setReasoningText: (sessionId, text) => {
-    set((s) => ({
-      sessions: updateSessionIn(s.sessions, sessionId, () => ({
-        reasoningText: text,
-      })),
-    }));
+    set((s) => {
+      const session = s.sessions[sessionId];
+      if (!session) return s;
+      return {
+        sessions: updateSessionIn(s.sessions, sessionId, () => ({
+          reasoningText: text,
+        }), false),
+      };
+    });
   },
 
   appendReasoningText: (sessionId, text) => {
-    set((s) => ({
-      sessions: updateSessionIn(s.sessions, sessionId, (session) => ({
-        reasoningText: session.reasoningText + text,
-      })),
-    }));
+    set((s) => {
+      const session = s.sessions[sessionId];
+      if (!session) return s;
+      return {
+        sessions: updateSessionIn(s.sessions, sessionId, (session) => ({
+          reasoningText: session.reasoningText + text,
+        }), false),
+      };
+    });
   },
 
   clearReasoningText: (sessionId) => {
-    set((s) => ({
-      sessions: updateSessionIn(s.sessions, sessionId, () => ({
-        reasoningText: '',
-      })),
-    }));
+    set((s) => {
+      const session = s.sessions[sessionId];
+      if (!session) return s;
+      return {
+        sessions: updateSessionIn(s.sessions, sessionId, () => ({
+          reasoningText: '',
+        }), false),
+      };
+    });
   },
 
   addStreamingTool: (sessionId, tool) => {
-    set((s) => ({
-      sessions: updateSessionIn(s.sessions, sessionId, (session) => {
-        // Deduplicate: check if tool with same name and args already exists
-        const toolKey = `${tool.name}-${JSON.stringify(tool.args)}`;
-        const existingIndex = session.streamingTools.findIndex(
-          t => `${t.name}-${JSON.stringify(t.args)}` === toolKey
-        );
+    set((s) => {
+      const session = s.sessions[sessionId];
+      if (!session) return s;
+      return {
+        sessions: updateSessionIn(s.sessions, sessionId, (session) => {
+          // Deduplicate: check if tool with same name and args already exists
+          const toolKey = `${tool.name}-${JSON.stringify(tool.args)}`;
+          const existingIndex = session.streamingTools.findIndex(
+            t => `${t.name}-${JSON.stringify(t.args)}` === toolKey
+          );
 
-        if (existingIndex >= 0) {
-          // Update existing tool (e.g., add duration to completed tool)
-          const updatedTools = [...session.streamingTools];
-          updatedTools[existingIndex] = { ...updatedTools[existingIndex], ...tool };
-          return { streamingTools: updatedTools };
-        }
+          if (existingIndex >= 0) {
+            // Update existing tool (e.g., add duration to completed tool)
+            const updatedTools = [...session.streamingTools];
+            updatedTools[existingIndex] = { ...updatedTools[existingIndex], ...tool };
+            return { streamingTools: updatedTools };
+          }
 
-        // Add new tool
-        return { streamingTools: [...session.streamingTools, tool] };
-      }),
-    }));
+          // Add new tool
+          return { streamingTools: [...session.streamingTools, tool] };
+        }, false),
+      };
+    });
   },
 
   clearStreamingTools: (sessionId) => {
-    set((s) => ({
-      sessions: updateSessionIn(s.sessions, sessionId, () => ({
-        streamingTools: [],
-      })),
-    }));
+    set((s) => {
+      const session = s.sessions[sessionId];
+      if (!session) return s;
+      return {
+        sessions: updateSessionIn(s.sessions, sessionId, () => ({
+          streamingTools: [],
+        }), false),
+      };
+    });
   },
 
   addToolCall: (sessionId, tool) => {
@@ -459,6 +506,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     logger.debug('[ChatStore] Migrating session from', oldId, 'to', newId);
     logger.debug('[ChatStore] Old session messages:', oldSession.messages.length);
     logger.debug('[ChatStore] Old session streamingText:', oldSession.streamingText?.length || 0);
+    logger.debug('[ChatStore] Old session isStreaming:', oldSession.isStreaming);
+
+    // Register the migration so resolveSessionId can map old ID to new ID
+    registerSessionMigration(oldId, newId);
 
     set((s) => {
       // Remove old session and add new one
@@ -491,16 +542,29 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         },
       };
     });
+    // Persist after deleting message
+    persistMessages(get().sessions);
   },
 }));
 
 // Store a mapping of old session IDs to new session IDs for callbacks that might still use old IDs
 // This is a workaround for the race condition between onSessionCreated and onComplete
 const sessionIdMap: Record<string, string> = {};
+const MAX_SESSION_MAP_SIZE = 50;
 
 export function registerSessionMigration(oldId: string, newId: string) {
   sessionIdMap[oldId] = newId;
   logger.debug('[ChatStore] Registered session migration:', oldId, '->', newId);
+
+  // Prevent unbounded growth: remove oldest entries if map gets too large
+  const keys = Object.keys(sessionIdMap);
+  if (keys.length > MAX_SESSION_MAP_SIZE) {
+    // Remove oldest entries (first inserted)
+    const toRemove = keys.slice(0, keys.length - MAX_SESSION_MAP_SIZE);
+    for (const key of toRemove) {
+      delete sessionIdMap[key];
+    }
+  }
 }
 
 export function resolveSessionId(id: string): string {
@@ -511,6 +575,10 @@ export function resolveSessionId(id: string): string {
     return resolvedId;
   }
   return id;
+}
+
+export function clearSessionMigration(oldId: string) {
+  delete sessionIdMap[oldId];
 }
 
 // Approximate localStorage limit (most browsers allow ~5MB)
@@ -537,7 +605,27 @@ let persistTimeoutId: ReturnType<typeof setTimeout> | null = null;
 const MAX_PERSIST_RETRIES = 1;
 const PERSIST_DEBOUNCE_MS = 500; // Debounce to batch rapid updates
 
+// Track pending sessions (sessions with messages that haven't been persisted yet)
+// This helps restoreTabs know about new_ sessions even before persistence completes
+const pendingSessionIds: Set<string> = new Set();
+
+// Export for use in navigationStore
+export function hasPendingSession(sessionId: string): boolean {
+  return pendingSessionIds.has(sessionId);
+}
+
+export function clearPendingSession(sessionId: string): void {
+  pendingSessionIds.delete(sessionId);
+}
+
 function persistMessages(sessions: Record<string, PerSessionState>) {
+  // Track sessions that have messages pending persistence
+  for (const [sessionId, state] of Object.entries(sessions)) {
+    if (state.messages.length > 0) {
+      pendingSessionIds.add(sessionId);
+    }
+  }
+
   // Debounce: cancel pending write and schedule new one
   if (persistTimeoutId) {
     clearTimeout(persistTimeoutId);

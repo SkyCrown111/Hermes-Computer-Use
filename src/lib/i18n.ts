@@ -288,6 +288,15 @@ const translations: Translations = {
   'skills.stats.enabled': { zh: '已启用', en: 'Enabled' },
   'skills.stats.disabled': { zh: '已禁用', en: 'Disabled' },
   'skills.stats.recentlyUsed': { zh: '最近使用', en: 'Recently Used' },
+  'skills.deleted': { zh: '已删除', en: 'deleted' },
+  'skills.deleteFailed': { zh: '删除失败', en: 'Delete failed' },
+  'skills.updated': { zh: '已更新', en: 'updated' },
+  'skills.updateFailed': { zh: '更新失败', en: 'Update failed' },
+  'skills.created': { zh: '已创建', en: 'created' },
+  'skills.createFailed': { zh: '创建失败', en: 'Create failed' },
+  'skills.noTags': { zh: '无标签', en: 'No tags' },
+  'skills.noSkills': { zh: '暂无技能，点击上方「添加 Skill」创建第一个 Skill', en: 'No skills yet. Click "Add Skill" to create your first one' },
+  'skills.runWithParams': { zh: '带参数执行', en: 'Run with params' },
 
   // Platforms Page
   'platforms.title': { zh: '平台接入', en: 'Platforms' },
@@ -304,6 +313,12 @@ const translations: Translations = {
   'platforms.disable': { zh: '禁用', en: 'Disable' },
   'platforms.disableConfirmTitle': { zh: '禁用平台', en: 'Disable Platform' },
   'platforms.disableConfirm': { zh: '确定要禁用此平台吗？', en: 'Are you sure you want to disable this platform?' },
+  'platforms.testSuccess': { zh: '测试连接成功！', en: 'Test connection successful!' },
+  'platforms.testFailed': { zh: '测试连接失败', en: 'Test connection failed' },
+  'platforms.testFailedTitle': { zh: '测试连接失败', en: 'Test Connection Failed' },
+  'platforms.unknownError': { zh: '未知错误', en: 'Unknown error' },
+  'platforms.troubleshooting': { zh: '故障排除', en: 'Troubleshooting' },
+  'platforms.troubleshootingTips': { zh: '检查 API 凭据是否正确；验证网络连接；确保服务没有限流；检查服务状态页面是否有中断', en: 'Check that your API credentials are correct; Verify network connectivity; Ensure the service is not rate-limiting your requests; Check the service status page for outages' },
 
   // Dashboard
   'dashboard.welcome': { zh: '欢迎使用 Hermes Console', en: 'Welcome to Hermes Console' },
@@ -350,6 +365,7 @@ const translations: Translations = {
   'dashboard.updateCheckFailed': { zh: '检查更新失败', en: 'Failed to check for updates' },
   'dashboard.gatewayRestarted': { zh: 'Gateway 已重启', en: 'Gateway restarted' },
   'dashboard.gatewayRestartFailed': { zh: '重启 Gateway 失败', en: 'Failed to restart gateway' },
+  'dashboard.noTodayTasks': { zh: '今日暂无任务', en: 'No tasks for today' },
 
   // Tasks Page
   'tasks.total': { zh: '总任务', en: 'Total Tasks' },
@@ -391,6 +407,8 @@ const translations: Translations = {
   'tasks.failed': { zh: '失败', en: 'Failed' },
   'tasks.duration': { zh: '耗时', en: 'Duration' },
   'tasks.close': { zh: '关闭', en: 'Close' },
+  'tasks.created': { zh: '任务创建成功', en: 'Task created successfully' },
+  'tasks.updated': { zh: '任务更新成功', en: 'Task updated successfully' },
 
   // Settings Page
   'settings.modelConfig': { zh: '模型配置', en: 'Model Config' },
@@ -811,6 +829,11 @@ const translations: Translations = {
   'files.recentCleared': { zh: '最近文件已清除', en: 'Recent files cleared' },
   'files.clear': { zh: '清除', en: 'Clear' },
   'files.download': { zh: '下载', en: 'Download' },
+  'files.uploadSuccess': { zh: '上传成功', en: 'uploaded successfully' },
+  'files.uploadFailed': { zh: '上传失败', en: 'Upload failed' },
+  'files.downloadSuccess': { zh: '下载成功', en: 'downloaded successfully' },
+  'files.downloadFailed': { zh: '下载失败', en: 'Download failed' },
+  'files.view': { zh: '查看', en: 'View' },
 
   // Common
   'common.save': { zh: '保存', en: 'Save' },
@@ -826,6 +849,16 @@ const translations: Translations = {
   'common.tokens': { zh: 'tokens', en: 'tokens' },
   'common.later': { zh: '稍后', en: 'Later' },
 'common.show': { zh: '显示', en: 'Show' },  'common.hide': { zh: '隐藏', en: 'Hide' },  'common.refresh': { zh: '刷新', en: 'Refresh' },
+  'common.copy': { zh: '复制', en: 'Copy' },
+  'common.copied': { zh: '已复制', en: 'Copied' },
+  'common.close': { zh: '关闭', en: 'Close' },
+  'common.collapse': { zh: '收起', en: 'Collapse' },
+  'common.expandAll': { zh: '展开全部', en: 'Expand All' },
+  'common.saving': { zh: '保存中...', en: 'Saving...' },
+  'common.saved': { zh: '已保存', en: 'Saved' },
+  'common.success': { zh: '成功', en: 'Success' },
+  'common.failed': { zh: '失败', en: 'Failed' },
+  'common.unknownError': { zh: '未知错误', en: 'Unknown error' },
 
   // Errors
   'error.fetchSystemStatus': { zh: '获取系统状态失败', en: 'Failed to fetch system status' },

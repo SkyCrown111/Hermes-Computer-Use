@@ -131,22 +131,6 @@
   align-self: flex-start;
 }
 
-.message-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-full);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  flex-shrink: 0;
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.chat-message.user .message-avatar {
-  background: var(--color-surface-container-high);
-}
-
 .message-bubble {
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-lg);
@@ -758,12 +742,6 @@
 
   .chat-message {
     max-width: 95%;
-  }
-
-  .message-avatar {
-    width: 28px;
-    height: 28px;
-    font-size: 14px;
   }
 
   .message-bubble {

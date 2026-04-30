@@ -305,9 +305,6 @@ const MessageListComponent: React.FC<MessageListProps> = ({
         {/* Streaming message — live display during generation */}
         {isStreaming && (streamingText || reasoningText || streamingTools.length > 0) && (
           <div className="chat-message assistant streaming-message">
-            <div className="message-avatar">
-              <BotIcon size={16} />
-            </div>
             <div className="message-body">
               {/* Streaming tools */}
               {streamingTools.length > 0 && (

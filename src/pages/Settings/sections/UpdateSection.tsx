@@ -1,13 +1,23 @@
 import React, { useEffect, useState } from 'react';
-import { Button, RefreshIcon, CheckIcon, AlertIcon } from '../../../components';
+import { Button, RefreshIcon, CheckIcon, AlertIcon, TrashIcon } from '../../../components';
 import { checkForUpdates, installPendingUpdate, type UpdateInfo } from '../../../services/updateApi';
 import { logger } from '../../../lib/logger';
 import { relaunch } from '@tauri-apps/plugin-process';
+import { invoke } from '@tauri-apps/api/core';
+
+interface CleanupResult {
+  success: boolean;
+  messagesChecked: number;
+  messagesUpdated: number;
+  charsRemoved: number;
+}
 
 const UpdateSection: React.FC<{ t: (key: string) => string }> = ({ t }) => {
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [isChecking, setIsChecking] = useState(false);
   const [showRestartPrompt, setShowRestartPrompt] = useState(false);
+  const [isCleaningUp, setIsCleaningUp] = useState(false);
+  const [cleanupResult, setCleanupResult] = useState<CleanupResult | null>(null);
 
   const handleCheck = async () => {
     setIsChecking(true);
@@ -44,6 +54,26 @@ const UpdateSection: React.FC<{ t: (key: string) => string }> = ({ t }) => {
       logger.error('[Settings] Failed to restart app:', err);
       // Fallback to page reload if restart fails
       window.location.reload();
+    }
+  };
+
+  const handleCleanupDatabase = async () => {
+    setIsCleaningUp(true);
+    setCleanupResult(null);
+    try {
+      const result = await invoke<CleanupResult>('cleanup_database_messages');
+      setCleanupResult(result);
+      logger.info('[Settings] Database cleanup completed:', result);
+    } catch (err) {
+      logger.error('[Settings] Database cleanup failed:', err);
+      setCleanupResult({
+        success: false,
+        messagesChecked: 0,
+        messagesUpdated: 0,
+        charsRemoved: 0,
+      });
+    } finally {
+      setIsCleaningUp(false);
     }
   };
 
@@ -183,6 +213,60 @@ const UpdateSection: React.FC<{ t: (key: string) => string }> = ({ t }) => {
           <Button variant="primary" onClick={handleRestart}>
             {t('settings.restartNow')}
           </Button>
+        )}
+      </div>
+
+      {/* Database Maintenance Section */}
+      <div className="database-maintenance-section">
+        <h3 className="maintenance-title">{t('settings.databaseMaintenance') || '数据库维护'}</h3>
+        <p className="maintenance-desc">
+          {t('settings.databaseMaintenanceDesc') || '清理历史消息中的格式错误和乱码内容，修复显示问题。'}
+        </p>
+
+        <div className="maintenance-actions">
+          <Button
+            variant="secondary"
+            onClick={handleCleanupDatabase}
+            disabled={isCleaningUp}
+          >
+            {isCleaningUp ? (
+              <>
+                <div className="update-spinner" style={{ width: 14, height: 14, marginRight: 8 }} />
+                {t('settings.cleaning') || '清理中...'}
+              </>
+            ) : (
+              <>
+                <TrashIcon size={14} />
+                {t('settings.cleanupMessages') || '清理消息数据'}
+              </>
+            )}
+          </Button>
+        </div>
+
+        {cleanupResult && (
+          <div className={`cleanup-result ${cleanupResult.success ? 'success' : 'error'}`}>
+            {cleanupResult.success ? (
+              <>
+                <span className="cleanup-icon"><CheckIcon size={14} /></span>
+                <span>
+                  {t('settings.cleanupSuccess') || '清理完成'}:
+                  {cleanupResult.messagesUpdated > 0 ? (
+                    <>
+                      {t('settings.messagesUpdated') || '已更新'} {cleanupResult.messagesUpdated} {t('settings.messages') || '条消息'},
+                      {t('settings.charsRemoved') || '移除'} {cleanupResult.charsRemoved} {t('settings.chars') || '个字符'}
+                    </>
+                  ) : (
+                    t('settings.noChangesNeeded') || '无需清理'
+                  )}
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="cleanup-icon"><AlertIcon size={14} /></span>
+                <span>{t('settings.cleanupFailed') || '清理失败，请重试'}</span>
+              </>
+            )}
+          </div>
         )}
       </div>
     </div>

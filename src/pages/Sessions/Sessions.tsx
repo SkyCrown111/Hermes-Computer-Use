@@ -128,7 +128,6 @@ const MessageItem: React.FC<MessageItemProps> = React.memo(({ message, t }) => {
 
   return (
     <div className={`message-item message-${message.role}`}>
-      <div className="message-avatar">{getRoleIcon(message.role)}</div>
       <div className="message-content-wrapper">
         <div className="message-role">{getRoleName(message.role, t('nav.home') === 'Home' ? 'en' : 'zh')}</div>
         <div className="message-content">{message.content}</div>

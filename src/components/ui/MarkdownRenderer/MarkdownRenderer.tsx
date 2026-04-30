@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import type { Components } from 'react-markdown';
 import { Lightbox } from '../Lightbox';
+import { useTranslation } from '../../../hooks/useTranslation';
 import './MarkdownRenderer.css';
 
 interface MarkdownRendererProps {
@@ -56,6 +57,7 @@ function HighlightText({ text, query }: { text: string; query: string }) {
 }
 
 export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, searchQuery = '' }) => {
+  const { t } = useTranslation();
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [lightboxImage, setLightboxImage] = useState<{ src: string; alt: string } | null>(null);
 
@@ -114,12 +116,12 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, sea
               {copiedCode === codeString ? (
                 <>
                   <span className="material-symbols-outlined md-code-copy-icon">check</span>
-                  已复制
+                  {t('common.copied') || 'Copied'}
                 </>
               ) : (
                 <>
                   <span className="material-symbols-outlined md-code-copy-icon">content_copy</span>
-                  复制
+                  {t('common.copy') || 'Copy'}
                 </>
               )}
             </button>

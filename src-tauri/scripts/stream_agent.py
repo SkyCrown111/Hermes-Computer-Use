@@ -604,25 +604,43 @@ def main() -> None:
             completion_tokens=output_tokens
         )
 
+        print('DEBUG: Completed successfully, exiting...', file=sys.stderr)
+
+        # Explicitly exit with success code
+        sys.exit(0)
+
+    except KeyboardInterrupt:
+        print('DEBUG: Interrupted by user', file=sys.stderr)
+        emit_error('Interrupted by user')
+        sys.exit(130)
     except Exception as e:
+        print(f'DEBUG: Exception in main: {type(e).__name__}: {e}', file=sys.stderr)
         emit_error(str(e))
         import traceback
-        traceback.print_exc()
+        traceback.print_exc(file=sys.stderr)
         sys.exit(1)
     finally:
         # Force flush all output before exit
         sys.stdout.flush()
         sys.stderr.flush()
+        # Small delay to ensure all output is flushed
+        time.sleep(0.1)
 
 
 if __name__ == '__main__':
     try:
         main()
-    except SystemExit:
-        pass
+    except SystemExit as e:
+        # Re-raise SystemExit to allow proper exit
+        if e.code != 0:
+            print(f'Exit with code: {e.code}', file=sys.stderr)
+        sys.exit(e.code if e.code is not None else 0)
     except Exception as e:
-        # Catch any unhandled exceptions during cleanup
+        # Catch any unhandled exceptions and exit with error
         print(f'FATAL: {e}', file=sys.stderr)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(1)
     finally:
         sys.stdout.flush()
         sys.stderr.flush()

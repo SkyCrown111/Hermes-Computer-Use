@@ -205,9 +205,9 @@ export const Skills: React.FC = () => {
     if (!deleteConfirm) return;
     const success = await deleteSkill(deleteConfirm.category, deleteConfirm.name);
     if (success) {
-      toast.success(`Skill "${deleteConfirm.name}" ${lang === 'zh' ? '已删除' : 'deleted'}`);
+      toast.success(`Skill "${deleteConfirm.name}" ${t('skills.deleted')}`);
     } else {
-      toast.error(lang === 'zh' ? '删除失败' : 'Delete failed');
+      toast.error(t('skills.deleteFailed'));
     }
     setDeleteConfirm(null);
   }, [deleteConfirm, deleteSkill, lang]);
@@ -225,10 +225,10 @@ export const Skills: React.FC = () => {
       }
     );
     if (success) {
-      toast.success(`Skill "${editingSkill.name}" ${lang === 'zh' ? '已更新' : 'updated'}`);
+      toast.success(`Skill "${editingSkill.name}" ${t('skills.updated')}`);
       setShowEditModal(false);
     } else {
-      toast.error(lang === 'zh' ? '更新失败' : 'Update failed');
+      toast.error(t('skills.updateFailed'));
     }
   }, [editingSkill, updateSkill, lang]);
 
@@ -453,7 +453,7 @@ export const Skills: React.FC = () => {
           ) : (
             <div className="empty-state">
               <span className="empty-icon">🔧</span>
-              <p>{lang === 'zh' ? '暂无技能，点击上方「添加 Skill」创建第一个 Skill' : 'No skills yet. Click "Add Skill" to create your first one'}</p>
+              <p>{t('skills.noSkills')}</p>
             </div>
           )}
         </div>
@@ -604,11 +604,11 @@ export const Skills: React.FC = () => {
                       <div className="detail-tags">
                         <h4 className="tags-title">{t('skills.detail.tags')}</h4>
                         <div className="tags-list">
-                          {selectedSkill.metadata.metadata?.hermes?.tags.map((tag) => (
+                          {selectedSkill.metadata.metadata?.hermes?.tags?.map((tag) => (
                             <span key={tag} className="detail-tag">
                               {tag}
                             </span>
-                          )) || <span className="no-tags">{lang === 'zh' ? '无标签' : 'No tags'}</span>}
+                          )) || <span className="no-tags">{t('skills.noTags')}</span>}
                         </div>
                       </div>
 
@@ -648,7 +648,7 @@ export const Skills: React.FC = () => {
                       <EditIcon size={14} /> {t('common.edit')}
                     </Button>
                     <Button variant="secondary" onClick={openExecutionModal}>
-                      <PlayIcon size={14} /> {lang === 'zh' ? '带参数执行' : 'Run with params'}
+                      <PlayIcon size={14} /> {t('skills.runWithParams')}
                     </Button>
                     <Button
                       variant="primary"

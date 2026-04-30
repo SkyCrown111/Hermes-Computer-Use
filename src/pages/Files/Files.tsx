@@ -68,7 +68,7 @@ const getFileIcon = (item: FileInfo): string => {
 
 // Files Page Component
 export const Files: React.FC = () => {
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
   const [activeTab, setActiveTab] = useState<'browser' | 'cache'>('browser');
   // Workspaces loaded from store/config, defaults to home directory
   const [workspaces, setWorkspaces] = useState<Workspace[]>([
@@ -432,11 +432,11 @@ export const Files: React.FC = () => {
           const targetPath = `${currentPath}/${file.name}`.replace('//', '/');
 
           await filesApi.uploadFile(targetPath, base64Content);
-          toast.success(`${file.name} ${t('nav.home') === 'Home' ? 'uploaded successfully' : '上传成功'}`);
+          toast.success(`${file.name} ${t('files.uploadSuccess')}`);
           refreshDirectory();
         } catch (err) {
           logger.error('[Files] Upload failed:', err);
-          toast.error(`${t('nav.home') === 'Home' ? 'Upload failed' : '上传失败'}: ${getErrorMessage(err)}`);
+          toast.error(`${t('files.uploadFailed')}: ${getErrorMessage(err)}`);
         } finally {
           setIsUploading(false);
         }
@@ -444,7 +444,7 @@ export const Files: React.FC = () => {
       reader.readAsDataURL(file);
     } catch (err) {
       logger.error('[Files] Upload failed:', err);
-      toast.error(`${t('nav.home') === 'Home' ? 'Upload failed' : '上传失败'}: ${getErrorMessage(err)}`);
+      toast.error(`${t('files.uploadFailed')}: ${getErrorMessage(err)}`);
       setIsUploading(false);
     }
 
@@ -476,10 +476,10 @@ export const Files: React.FC = () => {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      toast.success(`${result.filename} ${t('nav.home') === 'Home' ? 'downloaded successfully' : '下载成功'}`);
+      toast.success(`${result.filename} ${t('files.downloadSuccess')}`);
     } catch (err) {
       logger.error('[Files] Download failed:', err);
-      toast.error(`${t('nav.home') === 'Home' ? 'Download failed' : '下载失败'}: ${getErrorMessage(err)}`);
+      toast.error(`${t('files.downloadFailed')}: ${getErrorMessage(err)}`);
     } finally {
       setIsDownloading(null);
     }
@@ -836,7 +836,7 @@ export const Files: React.FC = () => {
                                       handleViewFile(file.path);
                                     }}
                                   >
-                                    View
+                                    {t('files.view')}
                                   </button>
                                   <button
                                     className="file-action-btn"

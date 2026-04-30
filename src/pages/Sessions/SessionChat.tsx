@@ -1,34 +1,131 @@
-// Session Chat Interface Component
-// Allows continuing a conversation with Hermes Agent
-// Uses ChatInput + MessageContent from the shared chat component library
-
-import React, { useState, useRef, useEffect } from 'react';
+// Session Chat — Terminal-style chat interface for session detail view
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { streamChatRealtime, checkHermesApiHealth, respondApproval, abortChat } from '../../services/hermesChat';
 import { useTranslation } from '../../hooks/useTranslation';
-import { ChatInput, MessageContent } from '../../components/chat';
-import type { ChatInputHandle, AttachedFile, SessionSearchResult } from '../../components/chat';
+import { ChatInput } from '../../components/chat';
+import type { ChatInputHandle, AttachedFile } from '../../components/chat';
 import type { ChatMessage, ToolCallInfo } from '../../stores/chatStore';
 import { XIcon } from '../../components';
-import { logger } from '../../lib/logger';
-import { getErrorMessage } from '../../lib/errorUtils';
+import { MarkdownRenderer } from '../../components/ui/MarkdownRenderer';
+import { cleanErrorMessage } from '../../lib/errorUtils';
 import type { Session, SessionMessage } from '../../types';
 import './SessionChat.css';
 
-/** Normalize content to prevent garbled rendering in historical messages */
+// ---- Helpers ----
+
 function normalizeContent(content: string): string {
   if (!content) return '';
-  let clean = content;
-  clean = clean.replace(/\\n/g, '\n');
-  clean = clean.replace(/\r\n/g, '\n');
+  let clean = content.replace(/\\n/g, '\n').replace(/\r\n/g, '\n');
+
+  // Remove tool output dumps embedded in content
+  const stripped = clean.trim();
+  if (stripped.startsWith('{') && (
+    stripped.includes('"total_lines"') ||
+    stripped.includes('"file_size"') ||
+    stripped.includes('"bytes_written"') ||
+    stripped.includes('"files_modified"') ||
+    stripped.includes('"_warning"') ||
+    stripped.includes('"is_binary"') ||
+    stripped.includes('"dirs_created"')
+  )) {
+    return '';
+  }
+
+  // Remove JSON tool output lines
+  clean = clean.replace(/^\s*\{"success":\s*(true|false).*\}\s*$/gm, '');
+  clean = clean.replace(/^\s*\{"output":\s*".*$/gm, '');
+  clean = clean.replace(/^\s*\{"bytes_written":\s*\d+.*$/gm, '');
+  clean = clean.replace(/^\s*\{"total_count":.*$/gm, '');
+  clean = clean.replace(/^\s*\{"total_lines":\s*\d+.*$/gm, '');
+  clean = clean.replace(/^\s*\{"file_size":\s*\d+.*$/gm, '');
+  clean = clean.replace(/^\s*\{"content":\s*".*"total_lines".*$/gm, '');
+  clean = clean.replace(/^\s*\{"content":\s*".*"file_size".*$/gm, '');
+  clean = clean.replace(/^\s*\{"content":\s*".*"_warning".*$/gm, '');
+  clean = clean.replace(/^\s*\{"content":\s*".*"is_binary".*$/gm, '');
+  clean = clean.replace(/^\s*\{"session_id":.*"pid".*$/gm, '');
+  clean = clean.replace(/^\s*"total_lines":\s*\d+.*$/gm, '');
+  clean = clean.replace(/^\s*"file_size":\s*\d+.*$/gm, '');
+  clean = clean.replace(/^\s*"truncated":\s*(true|false).*$/gm, '');
+  clean = clean.replace(/^\s*"hint":\s*"[^"]*".*$/gm, '');
+  clean = clean.replace(/^\s*"is_binary":\s*(true|false).*$/gm, '');
+  clean = clean.replace(/^\s*"is_image":\s*(true|false).*$/gm, '');
+  clean = clean.replace(/^\s*"files_modified":\s*\[.*$/gm, '');
+  clean = clean.replace(/^\s*"lint":\s*\{.*$/gm, '');
+  clean = clean.replace(/^\s*"_warning":\s*"[^"]*".*$/gm, '');
+  // File content dumps with line numbers
+  clean = clean.replace(/^\s*\d+\|.*$/gm, '');
+  // Malformed Markdown links
+  clean = clean.replace(/\[[a-zA-Z_][\w.]*\]\(https?:\/\/[\w.]+\)/g, '');
+
   return clean.trim();
 }
-
-// ---- Helpers ----
 
 let msgCounter = 0;
 const nextId = () => `sc-${++msgCounter}-${Date.now()}`;
 
-// ---- Types ----
+// ---- Subcomponents (reuse from ChatPage style) ----
+
+const ToolCallBlock: React.FC<{ tools: ToolCallInfo[]; isStreaming?: boolean }> = ({ tools, isStreaming }) => {
+  const [expanded, setExpanded] = useState(false);
+  if (!tools || tools.length === 0) return null;
+
+  return (
+    <div className="tc-tools">
+      <button className="tc-tools-toggle" onClick={() => setExpanded(!expanded)}>
+        <span className="tc-tools-icon">{isStreaming ? '⚙' : '✓'}</span>
+        <span className="tc-tools-summary">{tools.length} tool call{tools.length > 1 ? 's' : ''}</span>
+        <span className="tc-tools-chevron">{expanded ? '▼' : '▶'}</span>
+      </button>
+      {expanded && (
+        <div className="tc-tools-detail">
+          {tools.map((tool, i) => (
+            <div key={i} className={`tc-tool ${tool.is_error ? 'error' : ''}`}>
+              <span className="tc-tool-name">{tool.name}</span>
+              {tool.preview && <span className="tc-tool-preview">{tool.preview.slice(0, 80)}</span>}
+              {tool.duration !== undefined && <span className="tc-tool-duration">{tool.duration.toFixed(0)}ms</span>}
+              {tool.is_error && <span className="tc-tool-error">FAILED</span>}
+              {!tool.duration && !tool.is_error && isStreaming && <span className="tc-tool-running">running...</span>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const MessageBubble: React.FC<{ message: ChatMessage; onCopy: (content: string) => void }> = React.memo(({ message, onCopy }) => {
+  const [showActions, setShowActions] = useState(false);
+  const content = normalizeContent(message.content);
+
+  return (
+    <div
+      className={`tc-msg tc-msg-${message.role}`}
+      onMouseEnter={() => setShowActions(true)}
+      onMouseLeave={() => setShowActions(false)}
+    >
+      <div className="tc-msg-header">
+        <span className="tc-msg-role">{message.role === 'user' ? 'You' : 'Assistant'}</span>
+        {showActions && (
+          <button className="tc-msg-action" onClick={() => onCopy(content)}>Copy</button>
+        )}
+      </div>
+      <div className="tc-msg-body">
+        {message.role === 'assistant' ? (
+          <div className="tc-msg-text">
+            <MarkdownRenderer content={content} />
+          </div>
+        ) : (
+          <pre className="tc-msg-text">{content}</pre>
+        )}
+        {message.tools && message.tools.length > 0 && (
+          <ToolCallBlock tools={message.tools} />
+        )}
+      </div>
+    </div>
+  );
+});
+
+// ---- Main Component ----
 
 interface SessionChatProps {
   session: Session;
@@ -36,38 +133,24 @@ interface SessionChatProps {
   onClose: () => void;
 }
 
-// ---- Component ----
-
-export const SessionChat: React.FC<SessionChatProps> = ({
-  session,
-  initialMessages,
-  onClose,
-}) => {
+export const SessionChat: React.FC<SessionChatProps> = ({ session, initialMessages, onClose }) => {
   const { t } = useTranslation();
 
-  // ---- Message State ----
+  // State
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [editMessageId, setEditMessageId] = useState<string | null>(null);
-  const [editMessageContent, setEditMessageContent] = useState('');
-
-  // ---- Streaming State ----
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
-  const [_streamingReasoning, setStreamingReasoning] = useState('');
   const [streamingTools, setStreamingTools] = useState<ToolCallInfo[]>([]);
   const [apiAvailable, setApiAvailable] = useState<boolean | null>(null);
 
-  // ---- Refs (avoid stale closures in stream callbacks) ----
+  // Refs
   const isStoppedRef = useRef(false);
   const streamingContentRef = useRef('');
-  const streamingReasoningRef = useRef('');
   const streamingToolsRef = useRef<ToolCallInfo[]>([]);
   const chatInputRef = useRef<ChatInputHandle>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // ---- Effects ----
-
-  // Convert SessionMessage[] to ChatMessage[] on mount
+  // Convert initial messages on mount
   useEffect(() => {
     const converted: ChatMessage[] = initialMessages
       .filter(m => m.role === 'user' || m.role === 'assistant')
@@ -76,7 +159,6 @@ export const SessionChat: React.FC<SessionChatProps> = ({
         role: m.role as 'user' | 'assistant',
         content: normalizeContent(m.content),
         timestamp: m.timestamp,
-        // Preserve tool calls from session history
         tools: m.tool_calls?.map(tc => ({
           name: tc.name,
           event_type: 'tool.completed',
@@ -87,26 +169,37 @@ export const SessionChat: React.FC<SessionChatProps> = ({
     setMessages(converted);
   }, [initialMessages]);
 
-  // Check API availability on mount
+  // Check API health
   useEffect(() => {
-    checkHermesApiHealth().then(available => {
-      setApiAvailable(available);
-    });
+    checkHermesApiHealth().then(available => setApiAvailable(available));
   }, []);
 
-  // Auto-scroll to bottom on new messages or streaming content
+  // Cleanup on unmount
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingContent]);
+    return () => {
+      if (isStreaming) {
+        abortChat(session.id).catch(() => {});
+      }
+    };
+  }, [isStreaming, session.id]);
 
-  // ---- Send / Stop ----
+  // Auto-scroll
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (container) {
+      requestAnimationFrame(() => {
+        container.scrollTop = container.scrollHeight;
+      });
+    }
+  }, [messages, streamingContent, isStreaming]);
 
-  const handleSendMessage = async (text: string, _files?: AttachedFile[]) => {
+  // ---- Handlers ----
+
+  const handleSendMessage = useCallback(async (text: string, _files?: AttachedFile[]) => {
     if (!text.trim() || isStreaming) return;
 
     isStoppedRef.current = false;
 
-    // Add user message immediately
     const userMsg: ChatMessage = {
       id: nextId(),
       role: 'user',
@@ -115,16 +208,12 @@ export const SessionChat: React.FC<SessionChatProps> = ({
     };
     setMessages(prev => [...prev, userMsg]);
 
-    // Reset streaming accumulators
     setIsStreaming(true);
     setStreamingContent('');
-    setStreamingReasoning('');
     setStreamingTools([]);
     streamingContentRef.current = '';
-    streamingReasoningRef.current = '';
     streamingToolsRef.current = [];
 
-    // Build API history from current messages
     const historyForApi = messages.slice(-20).map(m => ({
       role: m.role,
       content: m.content,
@@ -137,64 +226,59 @@ export const SessionChat: React.FC<SessionChatProps> = ({
           streamingContentRef.current = accumulated;
           setStreamingContent(accumulated);
         },
-        onReasoning: (_reasoningText, accumulated) => {
-          if (isStoppedRef.current) return;
-          streamingReasoningRef.current = accumulated;
-          setStreamingReasoning(accumulated);
-        },
+        onReasoning: () => {},
         onTool: (tool) => {
           if (isStoppedRef.current) return;
           streamingToolsRef.current = [...streamingToolsRef.current, tool];
           setStreamingTools([...streamingToolsRef.current]);
         },
-        onComplete: (content, _newSessionId, usage) => {
+        onComplete: (content) => {
           if (isStoppedRef.current) return;
           setIsStreaming(false);
-
-          const finalContent = content || streamingContentRef.current;
-
           const assistantMsg: ChatMessage = {
             id: nextId(),
             role: 'assistant',
-            content: finalContent,
+            content: content || streamingContentRef.current,
             timestamp: new Date().toISOString(),
-            // Preserve tool calls from streaming
             tools: streamingToolsRef.current.length > 0 ? [...streamingToolsRef.current] : undefined,
-            inputTokens: usage?.prompt_tokens ?? usage?.input_tokens,
-            outputTokens: usage?.completion_tokens ?? usage?.output_tokens,
-            totalTokens: usage?.total_tokens,
           };
           setMessages(prev => [...prev, assistantMsg]);
-
-          // Reset streaming state
           streamingContentRef.current = '';
-          streamingReasoningRef.current = '';
           streamingToolsRef.current = [];
           setStreamingContent('');
-          setStreamingReasoning('');
           setStreamingTools([]);
         },
         onError: (error) => {
           if (isStoppedRef.current) return;
           setIsStreaming(false);
-          const errorMsg: ChatMessage = {
-            id: nextId(),
-            role: 'assistant',
-            content: `${t('chat.error')}: ${error instanceof Error ? error.message : String(error)}. ${t('chat.ensureGateway')}`,
-            timestamp: new Date().toISOString(),
-          };
-          setMessages(prev => [...prev, errorMsg]);
+          // Preserve accumulated content on error
+          const accumulated = streamingContentRef.current;
+          const tools = streamingToolsRef.current;
+          if (accumulated.trim()) {
+            const assistantMsg: ChatMessage = {
+              id: nextId(),
+              role: 'assistant',
+              content: accumulated,
+              timestamp: new Date().toISOString(),
+              tools: tools.length > 0 ? [...tools] : undefined,
+            };
+            setMessages(prev => [...prev, assistantMsg]);
+          } else {
+            const errorMsg: ChatMessage = {
+              id: nextId(),
+              role: 'assistant',
+              content: `${t('chat.error')}: ${cleanErrorMessage(error)}. ${t('chat.ensureGateway')}`,
+              timestamp: new Date().toISOString(),
+            };
+            setMessages(prev => [...prev, errorMsg]);
+          }
           streamingContentRef.current = '';
-          streamingReasoningRef.current = '';
           streamingToolsRef.current = [];
           setStreamingContent('');
-          setStreamingReasoning('');
           setStreamingTools([]);
         },
         onApproval: (approval) => {
-          if (isStoppedRef.current) return;
-          // Auto-deny for SessionChat (no permission UI)
-          respondApproval(approval.id, false).catch((err) => logger.error('[SessionChat] Auto-deny approval failed:', err));
+          respondApproval(approval.id, false).catch(() => {});
         },
       });
     } catch (error) {
@@ -202,105 +286,30 @@ export const SessionChat: React.FC<SessionChatProps> = ({
       const errorMsg: ChatMessage = {
         id: nextId(),
         role: 'assistant',
-        content: `${t('chat.error')}: ${getErrorMessage(error)}`,
+        content: `${t('chat.error')}: ${cleanErrorMessage(error)}`,
         timestamp: new Date().toISOString(),
       };
       setMessages(prev => [...prev, errorMsg]);
       streamingContentRef.current = '';
-      streamingReasoningRef.current = '';
       streamingToolsRef.current = [];
       setStreamingContent('');
-      setStreamingReasoning('');
       setStreamingTools([]);
     }
-  };
+  }, [isStreaming, messages, session.id, t]);
 
-  const handleStop = async () => {
+  const handleStop = useCallback(async () => {
     isStoppedRef.current = true;
     setIsStreaming(false);
-    try {
-      await abortChat(session.id);
-    } catch (error) {
-      logger.error('[SessionChat] Failed to abort chat:', error);
-    }
+    try { await abortChat(session.id); } catch {}
     streamingContentRef.current = '';
-    streamingReasoningRef.current = '';
     streamingToolsRef.current = [];
     setStreamingContent('');
-    setStreamingReasoning('');
     setStreamingTools([]);
-  };
+  }, [session.id]);
 
-  // ---- Message Operations ----
-
-  const copyMessage = async (content: string) => {
-    try {
-      await navigator.clipboard.writeText(content);
-    } catch (err) {
-      logger.error('[SessionChat] Failed to copy:', err);
-    }
-  };
-
-  const handleDeleteMessage = (messageId: string) => {
-    setMessages(prev => prev.filter(m => m.id !== messageId));
-  };
-
-  const handleRegenerate = () => {
-    // Find the last user message
-    let lastUserMsgIdx = -1;
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i]?.role === 'assistant') continue;
-      if (messages[i]?.role === 'user') { lastUserMsgIdx = i; break; }
-    }
-    if (lastUserMsgIdx < 0) return;
-    const userMsg = messages[lastUserMsgIdx];
-    if (!userMsg?.content) return;
-
-    // Remove all assistant messages after this user message
-    let assistantIdx = -1;
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i]?.role === 'assistant') { assistantIdx = i; break; }
-    }
-    if (assistantIdx >= 0) {
-      setMessages(prev => prev.slice(0, assistantIdx));
-    }
-
-    // Fill the input to resend
-    chatInputRef.current?.triggerSend(userMsg.content);
-  };
-
-  const startEditMessage = (messageId: string, content: string) => {
-    setEditMessageId(messageId);
-    setEditMessageContent(content);
-  };
-
-  const cancelEditMessage = () => {
-    setEditMessageId(null);
-    setEditMessageContent('');
-  };
-
-  const saveEditMessage = (messageId: string) => {
-    if (!editMessageContent.trim()) return;
-    setMessages(prev => prev.map(m =>
-      m.id === messageId ? { ...m, content: editMessageContent.trim() } : m
-    ));
-    setEditMessageId(null);
-    setEditMessageContent('');
-  };
-
-  // ---- Stub callbacks (features not applicable in SessionChat) ----
-
-  const noopToggle = (_msgId: string, _sessionId: string) => {};
-  const noopToggleAll = (_msgId: string, _sessionIds: string[]) => {};
-  const noopBatchDelete = (_msgId: string) => {};
-  const noopBatchExport = (_msgId: string, _sessions: SessionSearchResult[]) => {};
-
-  // ---- Helpers ----
-
-  const isFirstInGroup = (msg: ChatMessage, idx: number): boolean => {
-    if (idx === 0) return true;
-    return messages[idx - 1]?.role !== msg.role;
-  };
+  const copyMessage = useCallback((content: string) => {
+    navigator.clipboard.writeText(content).catch(() => {});
+  }, []);
 
   // ---- Render ----
 
@@ -308,92 +317,52 @@ export const SessionChat: React.FC<SessionChatProps> = ({
     <div className="session-chat-overlay" onClick={onClose}>
       <div className="session-chat-container" onClick={e => e.stopPropagation()}>
         {/* Header */}
-        <div className="chat-header">
-          <div className="chat-header-info">
-            <h2>{t('sessions.continue')}</h2>
-            <span className="chat-session-id">{session.id.slice(0, 12)}...</span>
-          </div>
-          <div className="chat-header-actions">
-            {apiAvailable === false && (
-              <span className="api-status offline">{t('dashboard.offline')}</span>
-            )}
-            {apiAvailable === true && (
-              <span className="api-status online">{t('dashboard.online')}</span>
-            )}
+        <div className="tc-header">
+          <span className="tc-header-title">{session.chat_name || session.id.slice(0, 12)}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span className={`tc-header-status ${isStreaming ? 'streaming' : ''}`}>
+              {isStreaming ? '● Streaming' : apiAvailable ? '● Ready' : '● Offline'}
+            </span>
             <button className="chat-close-btn" onClick={onClose}><XIcon size={14} /></button>
           </div>
         </div>
 
-        {/* Messages Area */}
-        <div className="chat-messages">
+        {/* Messages */}
+        <div className="tc-messages" ref={scrollContainerRef}>
           {messages.length === 0 && !isStreaming && (
-            <div className="chat-empty">
-              <p>{t('common.noData')}, {t('chat.startConversation').toLowerCase()}</p>
+            <div className="tc-empty">
+              <p>{t('chat.startConversation')}</p>
             </div>
           )}
 
-          {messages.map((msg, idx) => (
-            <MessageContent
-              key={msg.id}
-              message={msg}
-              isFirstInGroup={isFirstInGroup(msg, idx)}
-              messageSearchQuery=""
-              editMessageId={editMessageId}
-              editMessageContent={editMessageContent}
-              selectedSearchResults={{}}
-              onToggleSearchResult={noopToggle}
-              onToggleSelectAll={noopToggleAll}
-              onBatchDelete={noopBatchDelete}
-              onBatchExport={noopBatchExport}
-              onCopyMessage={copyMessage}
-              onDeleteMessage={handleDeleteMessage}
-              onRegenerate={handleRegenerate}
-              onStartEdit={startEditMessage}
-              onCancelEdit={cancelEditMessage}
-              onSaveEdit={saveEditMessage}
-              onEditContentChange={setEditMessageContent}
-              t={t}
-            />
+          {messages.map((msg) => (
+            <MessageBubble key={msg.id} message={msg} onCopy={copyMessage} />
           ))}
 
-          {/* Live streaming display — tool calls + content in real time */}
           {isStreaming && (
-            <div className="chat-message assistant streaming">
-              <div className="message-avatar">{'\u{1F916}'}</div>
-              <div className="message-content">
+            <div className="tc-msg tc-msg-assistant tc-msg-streaming">
+              <div className="tc-msg-header">
+                <span className="tc-msg-role">Assistant</span>
+                <span className="tc-streaming-indicator">typing...</span>
+              </div>
+              <div className="tc-msg-body">
                 {streamingTools.length > 0 && (
-                  <div className="tools-block">
-                    {streamingTools.map((tool, i) => (
-                      <div key={i} className="tool-item">
-                        <span className="tool-name">{'\u2699\uFE0F'} {tool.name || 'tool'}</span>
-                        {tool.preview && <span className="tool-status">{tool.preview}</span>}
-                      </div>
-                    ))}
-                  </div>
+                  <ToolCallBlock tools={streamingTools} isStreaming />
                 )}
-                {streamingContent ? (
-                  <div className="message-text streaming-text">
-                    {streamingContent}
-                    <span className="streaming-cursor">{'\u258C'}</span>
-                  </div>
-                ) : (
-                  <div className="cli-processing">
-                    <span className="cli-processing-dots">
-                      <span></span>
-                      <span></span>
-                      <span></span>
-                    </span>
-                    <span className="cli-processing-text">processing</span>
-                  </div>
-                )}
+                <div className="tc-msg-text">
+                  {streamingContent ? (
+                    <MarkdownRenderer content={streamingContent} />
+                  ) : ' '}
+                  <span className="tc-cursor" />
+                </div>
               </div>
             </div>
           )}
 
-          <div ref={messagesEndRef} />
+          <div />
         </div>
 
-        {/* ChatInput (from shared component library) */}
+        {/* Input */}
         <div className="session-chat-input">
           <ChatInput
             ref={chatInputRef}

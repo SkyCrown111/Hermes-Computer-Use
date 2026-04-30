@@ -1432,3 +1432,55 @@
 .command-tag button:hover {
   opacity: 1;
 }
+
+/* Database Maintenance Section */
+.database-maintenance-section {
+  margin-top: var(--space-6);
+  padding-top: var(--space-5);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.maintenance-title {
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+  margin: 0 0 var(--space-2);
+}
+
+.maintenance-desc {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin: 0 0 var(--space-4);
+}
+
+.maintenance-actions {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.cleanup-result {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+}
+
+.cleanup-result.success {
+  background: rgba(52, 199, 89, 0.15);
+  border: 1px solid rgba(52, 199, 89, 0.3);
+  color: #34c759;
+}
+
+.cleanup-result.error {
+  background: rgba(255, 69, 58, 0.1);
+  border: 1px solid rgba(255, 69, 58, 0.3);
+  color: var(--accent-error);
+}
+
+.cleanup-icon {
+  display: flex;
+  align-items: center;
+}

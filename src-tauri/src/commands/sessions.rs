@@ -73,10 +73,24 @@ fn parse_tool_calls(tool_calls_str: &str) -> Option<Vec<ToolCall>> {
         return None;
     }
 
+    println!("[Sessions] Parsing tool_calls: {}", tool_calls_str);
+
     // Try to parse as array of database-format tool calls
     let db_calls: Vec<DatabaseToolCall> = match serde_json::from_str(tool_calls_str) {
         Ok(calls) => calls,
-        Err(_) => return None,
+        Err(e) => {
+            println!("[Sessions] Failed to parse tool_calls as OpenAI format: {}", e);
+            // Try to parse as simple array of {name, args} objects
+            let simple_calls: Vec<ToolCall> = match serde_json::from_str(tool_calls_str) {
+                Ok(calls) => calls,
+                Err(_) => return None,
+            };
+            if simple_calls.is_empty() {
+                return None;
+            }
+            println!("[Sessions] Parsed {} tool calls in simple format", simple_calls.len());
+            return Some(simple_calls);
+        }
     };
 
     let tool_calls: Vec<ToolCall> = db_calls
@@ -94,6 +108,7 @@ fn parse_tool_calls(tool_calls_str: &str) -> Option<Vec<ToolCall>> {
     if tool_calls.is_empty() {
         None
     } else {
+        println!("[Sessions] Parsed {} tool calls in OpenAI format", tool_calls.len());
         Some(tool_calls)
     }
 }
@@ -108,10 +123,11 @@ pub struct SessionListResponse {
     pub offset: usize,
 }
 
-/// Session detail response
+/// Session detail response - matches frontend SessionMessagesResponse
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SessionDetail {
-    pub session: Session,
+#[serde(rename_all = "camelCase")]
+pub struct SessionMessagesResponse {
+    pub session_id: String,
     pub messages: Vec<SessionMessage>,
 }
 
@@ -367,108 +383,26 @@ pub fn list_sessions(
 
 /// Get a single session by ID with messages
 #[tauri::command]
-pub fn get_session(id: String) -> Result<SessionDetail, String> {
+pub fn get_session(id: String) -> Result<SessionMessagesResponse, String> {
     println!("[Sessions] Getting session: {}", id);
 
-    // Get session info
-    let session_sql = r#"
-        SELECT
-            id, source, model, started_at, ended_at, message_count,
-            input_tokens, output_tokens, cache_read_tokens, reasoning_tokens,
-            estimated_cost_usd, actual_cost_usd, end_reason, title
-        FROM sessions
-        WHERE id = ?
-        "#;
-
-    let session_rows = query_db(session_sql, &[serde_json::json!(id)])?;
-
-    if session_rows.is_empty() {
-        return Err(format!("Session not found: {}", id));
-    }
-
-    let row = &session_rows[0];
-
-    let started_at = row
-        .get("started_at")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(0.0);
-
-    let ended_at = row.get("ended_at").and_then(|v| v.as_f64());
-
-    let session = Session {
-        id: row
-            .get("id")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string(),
-        platform: row
-            .get("source")
-            .and_then(|v| v.as_str())
-            .unwrap_or("cli")
-            .to_string(),
-        chat_id: "".to_string(),
-        chat_name: row
-            .get("title")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string(),
-        chat_type: None,
-        user_id: None,
-        user_name: None,
-        started_at: timestamp_to_iso(started_at),
-        last_activity_at: ended_at
-            .map(timestamp_to_iso)
-            .unwrap_or_else(|| timestamp_to_iso(started_at)),
-        message_count: row
-            .get("message_count")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0) as usize,
-        model: row
-            .get("model")
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown")
-            .to_string(),
-        input_tokens: row
-            .get("input_tokens")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0),
-        output_tokens: row
-            .get("output_tokens")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0),
-        cache_read_tokens: row.get("cache_read_tokens").and_then(|v| v.as_u64()),
-        reasoning_tokens: row.get("reasoning_tokens").and_then(|v| v.as_u64()),
-        estimated_cost_usd: row
-            .get("estimated_cost_usd")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0),
-        actual_cost_usd: row.get("actual_cost_usd").and_then(|v| v.as_f64()),
-        status: if ended_at.is_none() {
-            "active"
-        } else {
-            "completed"
-        }
-        .to_string(),
-    };
-
-    // Get messages
+    // Get messages (limit 500 to handle long sessions)
     let messages_sql = r#"
         SELECT role, content, timestamp, tool_calls, reasoning
         FROM messages
         WHERE session_id = ?
         ORDER BY timestamp ASC
-        LIMIT 200
+        LIMIT 500
         "#;
 
     let message_rows = query_db(messages_sql, &[serde_json::json!(id)])?;
 
     let messages: Vec<SessionMessage> = message_rows
         .iter()
-        .map(|row| {
+        .filter_map(|row| {
             let timestamp = row.get("timestamp").and_then(|v| v.as_f64()).unwrap_or(0.0);
 
             let tool_calls_str = row.get("tool_calls").and_then(|v| v.as_str()).unwrap_or("");
-
             let tool_calls = parse_tool_calls(tool_calls_str);
 
             // Get reasoning content
@@ -478,27 +412,375 @@ pub fn get_session(id: String) -> Result<SessionDetail, String> {
                 .filter(|s| !s.is_empty())
                 .map(|s| s.to_string());
 
-            SessionMessage {
-                role: row
-                    .get("role")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("user")
-                    .to_string(),
-                content: row
-                    .get("content")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string(),
+            // Get and clean content
+            let raw_content = row
+                .get("content")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+
+            // Get raw role - may be corrupted with file content
+            let raw_role = row
+                .get("role")
+                .and_then(|v| v.as_str())
+                .unwrap_or("user")
+                .to_string();
+
+            // Extract the real role from possibly corrupted role field
+            let role = extract_real_role(&raw_role);
+
+            // ONLY keep user and assistant messages
+            // Skip everything else (tool, session_meta, corrupted data)
+            if role != "user" && role != "assistant" {
+                return None;
+            }
+
+            // Also skip if the content looks like tool output (file dumps, JSON)
+            let raw_content_check = raw_content.trim();
+            if raw_content_check.starts_with('{')
+                && (raw_content_check.contains("\"total_lines\"")
+                    || raw_content_check.contains("\"file_size\"")
+                    || raw_content_check.contains("\"bytes_written\"")
+                    || raw_content_check.contains("\"files_modified\"")
+                    || raw_content_check.contains("\"_warning\"")
+                    || raw_content_check.contains("\"is_binary\"")
+                    || raw_content_check.contains("\"diff\"")
+                    || raw_content_check.contains("\"success\"")
+                    || raw_content_check.contains("\"output\"")
+                    || raw_content_check.contains("\"dirs_created\"")
+                    || raw_content_check.contains("\"exit_code\""))
+            {
+                return None;
+            }
+
+            // Clean content
+            let clean_content = clean_message_content(&raw_content);
+
+            // Skip empty messages after cleaning
+            if clean_content.is_empty() {
+                return None;
+            }
+
+            // Skip empty messages
+            if clean_content.is_empty() && tool_calls.is_none() && reasoning.is_none() {
+                return None;
+            }
+
+            Some(SessionMessage {
+                role,
+                content: clean_content,
                 timestamp: timestamp_to_iso(timestamp),
                 tool_calls,
                 reasoning,
-            }
+            })
         })
         .collect();
 
     println!("[Sessions] Session {} has {} messages", id, messages.len());
 
-    Ok(SessionDetail { session, messages })
+    Ok(SessionMessagesResponse {
+        session_id: id,
+        messages,
+    })
+}
+
+/// Extract the real role from a possibly corrupted role field.
+/// Hermes Agent sometimes stores file content, JSON output in the role field.
+fn extract_real_role(raw_role: &str) -> String {
+    // Normal roles
+    let trimmed = raw_role.trim();
+
+    // Exact match for normal roles
+    if trimmed == "user" || trimmed == "assistant" || trimmed == "system" {
+        return trimmed.to_string();
+    }
+
+    // Starts with a valid role
+    if trimmed.starts_with("user") && !trimmed.starts_with("user_") {
+        return "user".to_string();
+    }
+    if trimmed.starts_with("assistant") {
+        return "assistant".to_string();
+    }
+    if trimmed.starts_with("tool") {
+        return "tool".to_string();
+    }
+    if trimmed.starts_with("session_meta") {
+        return "session_meta".to_string();
+    }
+
+    // Contains JSON or file content - this is corrupted data, skip it
+    if trimmed.contains('{') || trimmed.contains('}') || trimmed.contains('|')
+        || trimmed.contains("files_modified") || trimmed.contains("content\":")
+        || trimmed.contains("\"lint\"") || trimmed.contains("\"_warning\"")
+    {
+        // Try to find a real role at the end
+        if trimmed.ends_with(":tool") || trimmed.ends_with(": tool") {
+            return "tool".to_string();
+        }
+        if trimmed.ends_with(":user") || trimmed.ends_with(": user") {
+            return "user".to_string();
+        }
+        if trimmed.ends_with(":assistant") || trimmed.ends_with(": assistant") {
+            return "assistant".to_string();
+        }
+        // Corrupted, skip
+        return "tool".to_string();
+    }
+
+    // Looks like user message content stored in role field
+    // This happens when Hermes Agent stores Chinese text in role
+    if !trimmed.is_empty() && !trimmed.contains('\n') && trimmed.len() < 200 {
+        return "user".to_string();
+    }
+
+    // Default: skip corrupted
+    "tool".to_string()
+}
+
+/// Clean up malformed patterns in message content
+/// Uses generic patterns to catch all similar issues at once
+fn clean_message_content(content: &str) -> String {
+    let mut result = String::new();
+    let chars = content.chars().collect::<Vec<char>>();
+    let mut i = 0;
+
+    while i < chars.len() {
+        // Check for pattern [xxx](http://xxx) or [xxx](https://xxx)
+        if chars[i] == '[' {
+            let mut bracket_end = i + 1;
+            let mut bracket_content = String::new();
+
+            while bracket_end < chars.len() && chars[bracket_end] != ']' {
+                bracket_content.push(chars[bracket_end]);
+                bracket_end += 1;
+            }
+
+            if bracket_end < chars.len() && chars[bracket_end] == ']'
+               && bracket_end + 1 < chars.len() && chars[bracket_end + 1] == '(' {
+                // Found [xxx]( pattern
+                let mut url_end = bracket_end + 2;
+                let mut url_content = String::new();
+
+                while url_end < chars.len() && chars[url_end] != ')' {
+                    url_content.push(chars[url_end]);
+                    url_end += 1;
+                }
+
+                if url_end < chars.len() && chars[url_end] == ')' {
+                    // Check if this is a malformed link using generic patterns
+                    let is_malformed = is_malformed_markdown_link(&bracket_content, &url_content);
+
+                    if is_malformed {
+                        // Skip this entire malformed link
+                        i = url_end + 1;
+                        continue;
+                    }
+                }
+            }
+        }
+
+        result.push(chars[i]);
+        i += 1;
+    }
+
+    // Additional cleanup for common patterns using generic regex-like matching
+    result = cleanup_common_patterns(&result);
+
+    result.trim().to_string()
+}
+
+/// Check if a Markdown link is malformed (variable-like content that shouldn't be a link)
+fn is_malformed_markdown_link(bracket_content: &str, url_content: &str) -> bool {
+    // Pattern 1: [xxx](http://xxx) where bracket matches URL path
+    if url_content.starts_with("http://") || url_content.starts_with("https://") {
+        let url_path = url_content.trim_start_matches("http://").trim_start_matches("https://");
+
+        // Exact match: [msg.id](http://msg.id)
+        if bracket_content == url_path {
+            return true;
+        }
+
+        // Variable-like patterns: starts with common prefixes
+        let prefixes = ["msg.", "e.", "errors.", "sessionSearchResults.", "data.", "result.", "response.", "item.", "row.", "val.", "key.", "obj.", "arr.", "str.", "num.", "idx.", "index.", "count.", "len.", "length."];
+        for prefix in prefixes {
+            if bracket_content.starts_with(prefix) {
+                return true;
+            }
+        }
+
+        // Contains dots (likely a variable path)
+        if bracket_content.contains('.') && !bracket_content.contains(' ') && !bracket_content.contains('/') {
+            return true;
+        }
+
+        // URL path contains the bracket content
+        if url_path.contains(bracket_content) && bracket_content.len() > 3 {
+            return true;
+        }
+    }
+
+    false
+}
+
+/// Clean up common malformed patterns using string operations
+fn cleanup_common_patterns(content: &str) -> String {
+    let mut result = content.to_string();
+
+    // Remove npm error lines
+    let npm_patterns = [
+        "npm error",
+        "npm  error",
+        "npm   error",
+    ];
+    for pattern in npm_patterns {
+        result = remove_lines_containing(&result, pattern);
+    }
+
+    // Remove file listing artifacts
+    result = remove_lines_starting_with(&result, "-rwxrwxrwx");
+    result = remove_lines_starting_with(&result, "drwxrwxrwx");
+    result = remove_lines_starting_with(&result, "total ");
+
+    // Remove Chinese debug messages
+    result = remove_lines_containing(&result, "生成");
+    result = remove_lines_containing(&result, "架构图");
+    result = remove_lines_containing(&result, "继续检查状态");
+
+    // Remove tool execution messages
+    result = remove_lines_starting_with(&result, "Tool result:");
+    result = remove_lines_starting_with(&result, "Running tool:");
+    result = remove_lines_starting_with(&result, "Executing:");
+
+    // Remove JSON tool output patterns (common from Hermes Agent)
+    result = remove_json_patterns(&result);
+
+    // Clean up extra whitespace
+    while result.contains("\n\n\n") {
+        result = result.replace("\n\n\n", "\n\n");
+    }
+
+    result
+}
+
+/// Remove JSON patterns that are tool outputs, not user content
+fn remove_json_patterns(content: &str) -> String {
+    let lines: Vec<&str> = content.lines().collect();
+    let mut result = Vec::new();
+
+    for line in lines {
+        let trimmed = line.trim();
+
+        // Skip lines that are pure JSON tool outputs
+        if is_json_tool_output(trimmed) {
+            continue;
+        }
+
+        // Skip lines that are JSON fragments
+        if is_json_fragment(trimmed) {
+            continue;
+        }
+
+        result.push(line);
+    }
+
+    result.join("\n")
+}
+
+/// Check if a line is a JSON tool output that should be removed
+fn is_json_tool_output(line: &str) -> bool {
+    // Complete JSON objects that are tool outputs
+    if line.starts_with("{\"success\":") && line.ends_with("}") {
+        return true;
+    }
+    if line.starts_with("{\"output\":") && line.ends_with("}") {
+        return true;
+    }
+    if line.starts_with("{\"bytes_written\":") && line.ends_with("}") {
+        return true;
+    }
+    if line.starts_with("{\"total_count\":") {
+        return true;
+    }
+    if line.starts_with("{\"content\":") && line.contains("\"total_lines\"") {
+        return true;
+    }
+    if line.starts_with("{\"session_id\":") && line.contains("\"pid\"") {
+        return true;
+    }
+
+    // Lines that are just JSON array continuations
+    if line.starts_with(", {\"name\":") || line.starts_with(",{\"name\":") {
+        return true;
+    }
+    if line.starts_with(", {\"session_id\":") || line.starts_with(",{\"session_id\":") {
+        return true;
+    }
+
+    // File content dumps - lines with line number prefixes like " 501|"
+    if line.contains("|") && line.trim().chars().next().map(|c| c.is_numeric()).unwrap_or(false) {
+        // Check if it looks like a file dump (number|number|content pattern)
+        let parts: Vec<&str> = line.splitn(3, '|').collect();
+        if parts.len() >= 2 && parts[0].trim().parse::<u32>().is_ok() {
+            return true;
+        }
+    }
+
+    false
+}
+
+/// Check if a line is a JSON fragment that should be removed
+fn is_json_fragment(line: &str) -> bool {
+    // Lines like ": 0, \"error\": null}"
+    if line.starts_with(": ") && line.contains("\"error\":") {
+        return true;
+    }
+
+    // Lines that are just closing braces with error
+    if line == "}" || line.starts_with(": 0, \"error\"") || line.starts_with(": 1, \"error\"") {
+        return true;
+    }
+
+    // Truncated JSON lines
+    if line == "{\"total_count\"" || line == "{\"output\"" {
+        return true;
+    }
+
+    // Lines with just JSON field fragments
+    if line.starts_with("\"error\":") && line.ends_with("}") {
+        return true;
+    }
+
+    // JSON metadata lines (from file read outputs)
+    if line.contains("\"total_lines\":") || line.contains("\"file_size\":") {
+        return true;
+    }
+    if line.contains("\"truncated\":") || line.contains("\"hint\":") {
+        return true;
+    }
+    if line.contains("\"is_binary\":") || line.contains("\"is_image\":") {
+        return true;
+    }
+
+    false
+}
+
+/// Remove lines containing a specific pattern
+fn remove_lines_containing(content: &str, pattern: &str) -> String {
+    content
+        .lines()
+        .filter(|line| !line.contains(pattern))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Remove lines starting with a specific pattern
+fn remove_lines_starting_with(content: &str, pattern: &str) -> String {
+    content
+        .lines()
+        .filter(|line| !line.trim().starts_with(pattern))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Delete a session
@@ -1213,4 +1495,114 @@ print("ok")
 
     println!("[Checkpoints] Deleted checkpoint: {}", checkpoint_id);
     Ok(())
+}
+
+/// Cleanup result
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CleanupResult {
+    pub success: bool,
+    pub messages_checked: usize,
+    pub messages_updated: usize,
+    pub chars_removed: usize,
+}
+
+/// Clean up all malformed content in the database
+/// This runs the cleanup script to fix all historical messages
+#[tauri::command]
+pub fn cleanup_database_messages() -> Result<CleanupResult, String> {
+    println!("[Sessions] Running database cleanup...");
+
+    // Create the cleanup script in WSL
+    let script_content = r#"
+import sqlite3, re, os, json
+
+def clean_message_content(content):
+    if not content:
+        return content
+    result = content
+    # Pattern 1: Generic malformed Markdown links [xxx](http://xxx)
+    result = re.sub(r'\[[a-zA-Z_][\w.]*\]\(https?://[\w.]+\)', '', result)
+    # Pattern 2: Variable-like patterns with dots
+    result = re.sub(r'\[(?:msg|e|errors|sessionSearchResults|data|result|response|item|row|val|key|obj|arr|str|num|idx|index|count|len|length)[\w.]*\]\(https?://[\w.]+\)', '', result, flags=re.IGNORECASE)
+    # Pattern 3: npm error lines
+    result = re.sub(r'^npm error.*$', '', result, flags=re.MULTILINE)
+    result = re.sub(r'^npm\s+error.*$', '', result, flags=re.MULTILINE)
+    # Pattern 4: File listing artifacts
+    result = re.sub(r'^-rwxrwxrwx.*$', '', result, flags=re.MULTILINE)
+    result = re.sub(r'^drwxrwxrwx.*$', '', result, flags=re.MULTILINE)
+    result = re.sub(r'^total\s+\d+.*$', '', result, flags=re.MULTILINE)
+    # Pattern 5: Tool execution messages
+    result = re.sub(r'^Tool result:.*$', '', result, flags=re.MULTILINE)
+    result = re.sub(r'^Running tool:.*$', '', result, flags=re.MULTILINE)
+    result = re.sub(r'^Executing:.*$', '', result, flags=re.MULTILINE)
+    # Pattern 6: JSON fragments
+    result = re.sub(r'\{"output":\s*"[\s\S]*?",\s*"exit_code"', '', result)
+    result = re.sub(r'\{"bytes_written":\s*\d+[\s\S]*?\}', '', result)
+    result = re.sub(r'\{[\s\S]*?"output"[\s\S]*?\}', '', result)
+    # Clean up whitespace
+    result = re.sub(r'\n{3,}', '\n\n', result)
+    return result.strip()
+
+db_path = os.path.expanduser("~/.hermes/state.db")
+if not os.path.exists(db_path):
+    print(json.dumps({"error": "Database not found"}))
+    exit(1)
+
+conn = sqlite3.connect(db_path)
+conn.row_factory = sqlite3.Row
+cursor = conn.cursor()
+
+cursor.execute("SELECT id, content FROM messages ORDER BY timestamp ASC")
+messages = cursor.fetchall()
+
+updated_count = 0
+chars_removed = 0
+
+for msg in messages:
+    original = msg["content"] or ""
+    cleaned = clean_message_content(original)
+    if cleaned != original:
+        chars_removed += len(original) - len(cleaned)
+        updated_count += 1
+        cursor.execute("UPDATE messages SET content = ? WHERE id = ?", (cleaned, msg["id"]))
+
+conn.commit()
+conn.close()
+
+print(json.dumps({
+    "success": True,
+    "messages_checked": len(messages),
+    "messages_updated": updated_count,
+    "chars_removed": chars_removed
+}))
+"#;
+
+    // Execute the cleanup script
+    let output = create_command("wsl")
+        .args(["bash", "-c", &format!("python3 -c '{}'", script_content.replace('\n', " ").replace('\'', "'\\''"))])
+        .output()
+        .map_err(|e| format!("Failed to run cleanup: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Cleanup failed: {}", stderr));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let result: serde_json::Value =
+        serde_json::from_str(stdout.trim()).map_err(|e| format!("Failed to parse result: {}", e))?;
+
+    if result.get("error").is_some() {
+        return Err(result.get("error").and_then(|v| v.as_str()).unwrap_or("Unknown error").to_string());
+    }
+
+    println!("[Sessions] Database cleanup completed");
+
+    Ok(CleanupResult {
+        success: result.get("success").and_then(|v| v.as_bool()).unwrap_or(false),
+        messages_checked: result.get("messages_checked").and_then(|v| v.as_u64()).unwrap_or(0) as usize,
+        messages_updated: result.get("messages_updated").and_then(|v| v.as_u64()).unwrap_or(0) as usize,
+        chars_removed: result.get("chars_removed").and_then(|v| v.as_u64()).unwrap_or(0) as usize,
+    })
 }

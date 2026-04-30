@@ -248,6 +248,19 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         logger.debug('[SessionStore] Removed duplicates:', mergedSessions.length - deduplicatedSessions.length);
       }
 
+      // Apply user-renamed titles from localStorage (overrides Hermes Agent auto-titles)
+      let storedTitles: Record<string, string> = {};
+      try {
+        storedTitles = JSON.parse(localStorage.getItem('hermes-session-titles') || '{}');
+      } catch {}
+      if (Object.keys(storedTitles).length > 0) {
+        for (const session of deduplicatedSessions) {
+          if (storedTitles[session.id] && session.chat_name !== storedTitles[session.id]) {
+            session.chat_name = storedTitles[session.id];
+          }
+        }
+      }
+
       set({
         sessions: deduplicatedSessions,
         total: response.total + optimisticSessions.length,
@@ -536,6 +549,13 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       if (currentSession?.id === id) {
         set({ currentSession: { ...currentSession, chat_name: title } });
       }
+
+      // Save user-renamed titles to localStorage so they survive Hermes Agent overwrites
+      try {
+        const stored = JSON.parse(localStorage.getItem('hermes-session-titles') || '{}');
+        stored[id] = title;
+        localStorage.setItem('hermes-session-titles', JSON.stringify(stored));
+      } catch {}
 
       // Update the tab title in navigation store
       useNavigationStore.getState().updateTabTitle(id, title);

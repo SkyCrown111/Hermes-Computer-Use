@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { logger } from '../lib/logger';
 import { t } from '../lib/i18n';
 import { useThemeStore } from './themeStore';
-import { restoreMessages } from './chatStore';
+import { restoreMessages, hasPendingSession } from './chatStore';
 
 const TAB_STORAGE_KEY = 'hermes-open-tabs';
 const SAVE_TABS_DEBOUNCE_MS = 300;
@@ -189,12 +189,13 @@ export const useNavigationStore = create<NavigationState>((set, get) => ({
       // Filter tabs: keep real session IDs that exist in DB, but only keep new_ tabs if they have messages
       const validTabsPromises: Promise<OpenTab | null>[] = data.openTabs
         .map(async (t) => {
-          // Always keep new_ tabs if they have persisted messages
+          // Always keep new_ tabs if they have persisted messages OR pending messages (not yet persisted)
           if (t.id.startsWith('new_')) {
             const msgs = persistedMessages[t.id];
-            if (msgs && msgs.length > 0) {
+            if ((msgs && msgs.length > 0) || hasPendingSession(t.id)) {
               return { id: t.id, title: t.title, type: t.type || 'session' as const };
             }
+            logger.debug('[NavigationStore] new_ tab has no messages, removing:', t.id);
             return null;
           }
           

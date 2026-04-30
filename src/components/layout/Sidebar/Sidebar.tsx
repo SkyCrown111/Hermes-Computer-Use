@@ -140,11 +140,38 @@ export const Sidebar: React.FC = () => {
   const setMobileSidebarOpen = useThemeStore(s => s.setMobileSidebarOpen);
   const { t } = useTranslation();
 
-  // Handle new chat creation
+  // Handle new chat creation - check if there's an active session first
   const handleNewChat = useCallback(() => {
+    const { openTabs, activeTabId } = useNavigationStore.getState();
+
+    // If there's already an active tab with content, switch to it instead of creating new
+    if (activeTabId) {
+      const chatSessions = useChatStore.getState().sessions;
+      const activeSession = chatSessions[activeTabId];
+
+      // If the active session has messages or is streaming, don't create a new one
+      if (activeSession && (activeSession.messages?.length > 0 || activeSession.isStreaming)) {
+        // Just switch to the existing tab
+        setActiveItem('chat');
+        return;
+      }
+    }
+
+    // Check if there's any tab with content that we should switch to
+    for (const tab of openTabs) {
+      const chatSessions = useChatStore.getState().sessions;
+      const session = chatSessions[tab.id];
+      if (session && (session.messages?.length > 0 || session.isStreaming)) {
+        // Switch to this tab instead of creating new
+        useNavigationStore.getState().switchTab(tab.id);
+        return;
+      }
+    }
+
+    // No active session with content, create a new one
     const newId = `new_${Date.now()}`;
     openTab(newId, t('sidebar.newChat'), 'new');
-  }, [openTab, t]);
+  }, [openTab, setActiveItem, t]);
 
   // Navigation items with translated labels
   const navItems: NavItem[] = useMemo(() => [

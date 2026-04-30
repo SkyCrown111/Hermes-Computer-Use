@@ -435,6 +435,7 @@ pub async fn stream_chat_realtime(
         let mut session_id_result = String::new();
         let mut accumulated_content = String::new();
         let mut accumulated_reasoning = String::new();
+        let mut done_received: Option<String> = None;
 
         // Maximum content size to prevent memory issues (10MB)
         const MAX_CONTENT_SIZE: usize = 10 * 1024 * 1024;
@@ -525,6 +526,7 @@ pub async fn stream_chat_realtime(
                             let _ = app_clone.emit("chat:session", session_data);
                         }
                     } else if let Some(result_json) = trimmed.strip_prefix("DONE:") {
+                        done_received = Some(result_json.to_string());
                         println!("[ChatStream] DONE JSON: {}", result_json);
                         if let Ok(result) = serde_json::from_str::<serde_json::Value>(result_json) {
                             session_id_result = result
@@ -533,21 +535,23 @@ pub async fn stream_chat_realtime(
                                 .unwrap_or("")
                                 .to_string();
 
+                            // Try to get content from result, then from messages, then from accumulated
                             let content = result
                                 .get("content")
                                 .and_then(|v| v.as_str())
-                                .unwrap_or(&accumulated_content)
-                                .to_string();
+                                .map(|s| s.to_string())
+                                .filter(|s| !s.is_empty())
+                                .or_else(|| {
+                                    // Try to extract from messages array
+                                    result.get("messages")
+                                        .and_then(|v| v.as_array())
+                                        .and_then(|msgs| msgs.iter().rev().find(|m| m.get("role").and_then(|r| r.as_str()) == Some("assistant")))
+                                        .and_then(|m| m.get("content").and_then(|c| c.as_str()))
+                                        .map(|s| s.to_string())
+                                })
+                                .unwrap_or_else(|| accumulated_content.clone());
 
                             println!("[ChatStream] Session ID: {}", session_id_result);
-                            println!(
-                                "[ChatStream] Content from result: {}",
-                                result
-                                    .get("content")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("(none)")
-                            );
-                            println!("[ChatStream] Accumulated content: {}", accumulated_content);
                             println!("[ChatStream] Final content length: {}", content.len());
 
                             // Emit complete (usage is emitted separately by Python via USAGE: prefix)
@@ -614,6 +618,25 @@ pub async fn stream_chat_realtime(
                 }),
             );
             return Err(error_msg);
+        }
+
+        // If DONE: was never received but process exited successfully,
+        // emit a completion event with whatever content was accumulated
+        if done_received.is_none() {
+            println!("[ChatStream] Process exited successfully but DONE: was not received. Emitting fallback completion.");
+            let content = if !accumulated_content.is_empty() {
+                accumulated_content.clone()
+            } else {
+                "No response received.".to_string()
+            };
+            let _ = app_clone.emit(
+                "chat:complete",
+                serde_json::json!({
+                    "id": session_id_result.clone(),
+                    "content": content,
+                    "reasoning": accumulated_reasoning.clone()
+                }),
+            );
         }
 
         Ok(session_id_result)

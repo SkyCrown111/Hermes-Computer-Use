@@ -69,7 +69,7 @@ const StatusBadge = ({ status, t }: { status: Platform['status']; t: (key: strin
 };
 
 export function Platforms() {
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
 
   const platforms = usePlatformStore(s => s.platforms);
   const selectedPlatform = usePlatformStore(s => s.selectedPlatform);
@@ -128,12 +128,12 @@ export function Platforms() {
     setConnectionError(null);
     const result = await testConnection(type);
     if (result.ok) {
-      toast.success(t('platforms.testConnection') + ' ' + (t('nav.home') === 'Home' ? 'successful!' : '成功！'));
+      toast.success(t('platforms.testSuccess'));
     } else {
-      toast.error(`${t('platforms.testConnection')} ${t('nav.home') === 'Home' ? 'failed' : '失败'}`);
+      toast.error(t('platforms.testFailed'));
       setConnectionError({
         platform: type,
-        error: result.message || (t('nav.home') === 'Home' ? 'Unknown error' : '未知错误'),
+        error: result.message || t('platforms.unknownError'),
         details: result.details,
       });
     }
@@ -391,31 +391,26 @@ export function Platforms() {
         <div className="modal-overlay" onClick={() => setConnectionError(null)}>
           <div className="modal-content glass-card connection-error-modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h2><WarningIcon size={18} /> {t('platforms.testConnection')} {t('nav.home') === 'Home' ? 'Failed' : '失败'}</h2>
+              <h2><WarningIcon size={18} /> {t('platforms.testFailedTitle')}</h2>
               <button className="modal-close" onClick={() => setConnectionError(null)}>×</button>
             </div>
             <div className="modal-body">
               <div className="connection-error-platform">
-                <strong>Platform:</strong> {connectionError.platform}
+                <strong>{t('sessions.platform')}:</strong> {connectionError.platform}
               </div>
               <div className="connection-error-message">
-                <strong>Error:</strong>
+                <strong>{t('platforms.error')}:</strong>
                 <pre>{connectionError.error}</pre>
               </div>
               {connectionError.details && (
                 <div className="connection-error-details">
-                  <strong>Details:</strong>
+                  <strong>{t('monitor.logFile')}:</strong>
                   <pre>{connectionError.details}</pre>
                 </div>
               )}
               <div className="connection-error-tips">
-                <strong>Troubleshooting:</strong>
-                <ul>
-                  <li>Check that your API credentials are correct</li>
-                  <li>Verify network connectivity</li>
-                  <li>Ensure the service is not rate-limiting your requests</li>
-                  <li>Check the service status page for outages</li>
-                </ul>
+                <strong>{t('platforms.troubleshooting')}:</strong>
+                <p>{t('platforms.troubleshootingTips')}</p>
               </div>
             </div>
             <div className="modal-footer">
