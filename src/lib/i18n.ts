@@ -509,7 +509,29 @@ const translations: Translations = {
   'settings.updateAvailable': { zh: '有可用更新', en: 'Update Available' },
   'settings.checking': { zh: '检查中...', en: 'Checking...' },
   'settings.downloading': { zh: '下载中...', en: 'Downloading...' },
-'settings.validationErrors': { zh: '请修正验证错误', en: 'Please fix the validation errors' },  'settings.saved.agent': { zh: 'Agent 配置已保存', en: 'Agent config saved' },  'settings.saved.terminal': { zh: '终端配置已保存', en: 'Terminal config saved' },  'settings.saved.checkpoint': { zh: '检查点配置已保存', en: 'Checkpoint config saved' },  'settings.saved.memory': { zh: '记忆配置已保存', en: 'Memory config saved' },  'settings.saved.config': { zh: '配置已保存', en: 'Configuration saved' },
+  'settings.validationErrors': { zh: '请修正验证错误', en: 'Please fix the validation errors' },
+
+  // Settings success messages
+  'settings.saved.model': { zh: '模型配置已保存，Gateway 已重启', en: 'Model config saved, Gateway restarted' },
+  'settings.saved.agent': { zh: 'Agent 配置已保存，Gateway 已重启', en: 'Agent config saved, Gateway restarted' },
+  'settings.saved.terminal': { zh: '终端配置已保存', en: 'Terminal config saved' },
+  'settings.saved.compression': { zh: '压缩配置已保存', en: 'Compression config saved' },
+  'settings.saved.checkpoint': { zh: '检查点配置已保存', en: 'Checkpoint config saved' },
+  'settings.saved.memory': { zh: '记忆配置已保存', en: 'Memory config saved' },
+  'settings.saved.display': { zh: '显示配置已保存', en: 'Display config saved' },
+  'settings.saved.approval': { zh: '审批配置已保存', en: 'Approval config saved' },
+  'settings.saved.providers': { zh: 'Providers 配置已保存', en: 'Providers config saved' },
+  'settings.saved.auxiliary': { zh: '辅助任务配置已保存', en: 'Auxiliary task config saved' },
+  'settings.deleted.auxiliary': { zh: '辅助任务配置已删除', en: 'Auxiliary task config deleted' },
+  'settings.added.customProvider': { zh: '自定义 Provider 已添加', en: 'Custom provider added' },
+  'settings.updated.customProvider': { zh: '自定义 Provider 已更新', en: 'Custom provider updated' },
+  'settings.deleted.customProvider': { zh: '自定义 Provider 已删除', en: 'Custom provider deleted' },
+  'settings.added.fallbackProvider': { zh: '备用 Provider 已添加', en: 'Fallback provider added' },
+  'settings.deleted.fallbackProvider': { zh: '备用 Provider 已删除', en: 'Fallback provider deleted' },
+  'settings.updated.credentialPool': { zh: '凭据池策略已更新', en: 'Credential pool strategy updated' },
+  'settings.saved.config': { zh: '配置已保存', en: 'Configuration saved' },
+  'settings.imported': { zh: '配置导入成功', en: 'Config imported successfully' },
+  'settings.importFailed': { zh: '导入失败', en: 'Import failed' },
 
   // Auxiliary Task Routing
   'settings.auxiliaryConfig': { zh: '任务路由配置', en: 'Task Routing Config' },
@@ -833,7 +855,6 @@ const translations: Translations = {
   'files.uploadFailed': { zh: '上传失败', en: 'Upload failed' },
   'files.downloadSuccess': { zh: '下载成功', en: 'downloaded successfully' },
   'files.downloadFailed': { zh: '下载失败', en: 'Download failed' },
-  'files.view': { zh: '查看', en: 'View' },
 
   // Common
   'common.save': { zh: '保存', en: 'Save' },

@@ -546,9 +546,6 @@ pub fn get_config_section(section: String) -> Result<serde_json::Value, String> 
 pub fn update_config_section(section: String, data: serde_json::Value) -> Result<serde_json::Value, String> {
     println!("[Config] Updating config section: {}", section);
 
-    let _data_str = serde_json::to_string(&data)
-        .map_err(|e| format!("Failed to serialize data: {}", e))?;
-
     let keys: Vec<&str> = match section.as_str() {
         "model" => vec!["default", "provider", "api_key", "base_url"],
         "agent" => vec!["max_turns", "timeout", "reasoning_effort"],

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Card, Button, ChatIcon, UserIcon, BotIcon, ToolIcon, ExportIcon, SearchIcon, ClockIcon, TrashIcon, SettingsIcon, AlertIcon, EditIcon, ConfirmModal, XIcon } from '../../components';
+import { Card, Button, ChatIcon, ToolIcon, ExportIcon, SearchIcon, ClockIcon, TrashIcon, SettingsIcon, AlertIcon, EditIcon, ConfirmModal, XIcon } from '../../components';
 import { useSessionStore, useNavigationStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
 import { toast } from '../../stores/toastStore';
@@ -111,12 +111,6 @@ interface MessageItemProps {
 }
 
 const MessageItem: React.FC<MessageItemProps> = React.memo(({ message, t }) => {
-  const getRoleIcon = (role: string) => {
-    if (role === 'user') return <UserIcon size={16} />;
-    if (role === 'assistant') return <BotIcon size={16} />;
-    return <SettingsIcon size={16} />;
-  };
-
   const getRoleName = (role: string, lang: 'zh' | 'en'): string => {
     const names: Record<string, { zh: string; en: string }> = {
       user: { zh: '用户', en: 'User' },

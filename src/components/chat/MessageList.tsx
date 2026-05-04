@@ -6,7 +6,7 @@ import { MarkdownRenderer } from '../ui/MarkdownRenderer/MarkdownRenderer';
 import { parseToolJson } from './parseToolJson';
 import type { SessionSearchResult } from './constants';
 import type { ChatMessage } from '../../stores/chatStore';
-import { ZapIcon, AlertIcon, BotIcon } from '../../components';
+import { ZapIcon, AlertIcon } from '../../components';
 
 // ---- Types ----
 

@@ -583,8 +583,8 @@ export function clearSessionMigration(oldId: string) {
 
 // Approximate localStorage limit (most browsers allow ~5MB)
 const LS_LIMIT_BYTES = 5 * 1024 * 1024;
-const LS_WARN_THRESHOLD = 0.8; // warn at 80% usage
-const MAX_MESSAGES_PER_SESSION = 1000; // cap per session to prevent unbounded growth
+const LS_WARN_THRESHOLD = 0.7; // warn at 70% usage
+const MAX_MESSAGES_PER_SESSION = 200; // cap per session to prevent unbounded growth
 
 // Estimate the byte size of a string
 function estimateByteSize(str: string): number {
@@ -606,8 +606,10 @@ const MAX_PERSIST_RETRIES = 1;
 const PERSIST_DEBOUNCE_MS = 500; // Debounce to batch rapid updates
 
 // Track pending sessions (sessions with messages that haven't been persisted yet)
-// This helps restoreTabs know about new_ sessions even before persistence completes
+// This helps restoreTabs know about new_ sessions even before persistence completes.
+// Capped to prevent unbounded growth if clearPendingSession is never called.
 const pendingSessionIds: Set<string> = new Set();
+const MAX_PENDING_SESSIONS = 100;
 
 // Export for use in navigationStore
 export function hasPendingSession(sessionId: string): boolean {
@@ -623,6 +625,16 @@ function persistMessages(sessions: Record<string, PerSessionState>) {
   for (const [sessionId, state] of Object.entries(sessions)) {
     if (state.messages.length > 0) {
       pendingSessionIds.add(sessionId);
+    }
+  }
+
+  // Prevent unbounded growth: if the set gets too large, remove oldest entries
+  if (pendingSessionIds.size > MAX_PENDING_SESSIONS) {
+    const excess = pendingSessionIds.size - MAX_PENDING_SESSIONS;
+    const iter = pendingSessionIds.values();
+    for (let i = 0; i < excess; i++) {
+      const next = iter.next();
+      if (!next.done) pendingSessionIds.delete(next.value);
     }
   }
 
@@ -683,11 +695,10 @@ function doPersist(sessions: Record<string, PerSessionState>) {
       // Reset retry count on success
       persistRetryCount = 0;
     } catch (err) {
-      // If quota exceeded, drop oldest session's messages and retry once
+      // If quota exceeded, truncate the largest sessions and retry
       if (err instanceof DOMException && err.name === 'QuotaExceededError') {
-        logger.warn('[ChatStore] localStorage quota exceeded, dropping oldest session messages');
+        logger.warn('[ChatStore] localStorage quota exceeded, truncating largest sessions');
 
-        // Check recursion limit
         if (persistRetryCount >= MAX_PERSIST_RETRIES) {
           logger.error('[ChatStore] Max persist retries reached, stopping to prevent infinite loop');
           persistRetryCount = 0;
@@ -697,21 +708,20 @@ function doPersist(sessions: Record<string, PerSessionState>) {
         persistRetryCount++;
         const sessionIds = Object.keys(sessions);
         if (sessionIds.length > 0) {
-          // Remove the session with the fewest messages
+          // Sort by message count descending — truncate the largest session
           const sorted = sessionIds.sort(
-            (a, b) => (sessions[a]?.messages.length ?? 0) - (sessions[b]?.messages.length ?? 0)
+            (a, b) => (sessions[b]?.messages.length ?? 0) - (sessions[a]?.messages.length ?? 0)
           );
-          const toRemove = sorted[0];
-          if (toRemove) {
-            logger.warn(`[ChatStore] Dropping messages for session: ${toRemove}`);
-            // Update the in-memory store
-            const { [toRemove]: _removed, ...remaining } = sessions;
-            useChatStore.setState({ sessions: remaining });
-            // Reset flag before retry to allow the recursive call
+          const largestId = sorted[0];
+          if (largestId && sessions[largestId]) {
+            const currentCount = sessions[largestId].messages.length;
+            const keepCount = Math.max(50, Math.floor(currentCount / 2));
+            logger.warn(`[ChatStore] Truncating session ${largestId}: ${currentCount} -> ${keepCount} messages`);
+            sessions[largestId].messages = sessions[largestId].messages.slice(-keepCount);
+            useChatStore.setState({ sessions });
             isPersisting = false;
-            // Retry persist without the dropped session
-            doPersist(remaining);
-            return; // Don't reset flag again
+            doPersist(sessions);
+            return;
           }
         }
       } else {
@@ -752,4 +762,42 @@ export function initializeChatStore() {
 
   useChatStore.setState({ sessions });
   logger.debug('[ChatStore] Initialized with', Object.keys(sessions).length, 'sessions');
+
+  // Background: for any open tab that has no messages in localStorage,
+  // attempt to load from the server (Tauri backend).
+  // This handles the case where localStorage was cleared but sessions still exist.
+  setTimeout(async () => {
+    try {
+      const { getSession } = await import('../services/sessionApi');
+      const { openTabs } = (await import('./navigationStore')).useNavigationStore.getState();
+      const currentSessions = useChatStore.getState().sessions;
+
+      for (const tab of openTabs) {
+        // Skip if we already have messages for this session
+        if (currentSessions[tab.id]?.messages?.length > 0) continue;
+        // Skip new_ sessions (not yet on server)
+        if (tab.id.startsWith('new_')) continue;
+
+        try {
+          const response = await getSession(tab.id);
+          if (response?.messages?.length > 0) {
+            // Convert SessionMessage[] to ChatMessage[] for the chat store
+            const chatMessages: ChatMessage[] = response.messages.map((m, idx) => ({
+              id: `server-${tab.id}-${idx}-${Date.now()}`,
+              role: m.role as 'user' | 'assistant' | 'system',
+              content: m.content,
+              timestamp: m.timestamp,
+              reasoning: m.reasoning,
+            }));
+            useChatStore.getState().loadMessages(tab.id, chatMessages);
+            logger.debug('[ChatStore] Loaded', chatMessages.length, 'messages from server for session:', tab.id);
+          }
+        } catch {
+          // Session might not exist on server, that's fine
+        }
+      }
+    } catch {
+      // Import failed or other non-critical error
+    }
+  }, 2000); // Delay to avoid blocking app startup
 }

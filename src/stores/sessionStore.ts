@@ -5,6 +5,7 @@ import { create } from 'zustand';
 import type { Session, SessionMessage } from '../types';
 import type { Checkpoint } from '../types/checkpoint';
 import { sessionApi } from '../services';
+import * as sessionApiRaw from '../services/sessionApi';
 import { useNavigationStore } from './navigationStore';
 import { useChatStore } from './chatStore';
 import { logger } from '../lib/logger';
@@ -601,9 +602,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
 
   // ============================================
-  // Checkpoint Actions
-  // Note: Checkpoint API endpoints are not available in the current sessionApi.
-  // These actions manage checkpoint state locally only.
+  // Checkpoint Actions (using real backend API)
   // ============================================
 
   // 获取会话的检查点列表
@@ -611,16 +610,20 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     set({ isLoadingCheckpoints: true, error: null });
 
     try {
-      // Checkpoint API not available - return local state
-      const { checkpointsBySession } = get();
-      const checkpoints = checkpointsBySession[sessionId] || [];
+      const checkpoints = await sessionApiRaw.listCheckpoints(sessionId);
 
+      // Cache checkpoints locally
+      const { checkpointsBySession } = get();
       set({
         checkpoints,
+        checkpointsBySession: {
+          ...checkpointsBySession,
+          [sessionId]: checkpoints,
+        },
         isLoadingCheckpoints: false,
       });
 
-      logger.debug('[SessionStore] Fetched checkpoints (local):', checkpoints.length, 'for session:', sessionId);
+      logger.debug('[SessionStore] Fetched checkpoints:', checkpoints.length, 'for session:', sessionId);
       return checkpoints;
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
@@ -634,16 +637,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     set({ isLoadingCheckpoints: true, error: null });
 
     try {
-      // Create a local checkpoint since API is not available
-      const checkpoint: Checkpoint = {
-        id: `checkpoint-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        session_id: sessionId,
-        name: name || null,
-        created_at: new Date().toISOString(),
-        message_count: get().messages.length,
-        size_bytes: 0,
-        description: description || null,
-      };
+      const checkpoint = await sessionApiRaw.createCheckpoint(sessionId, name, description);
+
+      if (!checkpoint) {
+        throw new Error('Failed to create checkpoint');
+      }
 
       const { checkpointsBySession } = get();
       const sessionCheckpoints = checkpointsBySession[sessionId] || [];
@@ -657,7 +655,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         isLoadingCheckpoints: false,
       });
 
-      logger.debug('[SessionStore] Created checkpoint (local):', checkpoint.id, 'for session:', sessionId);
+      logger.debug('[SessionStore] Created checkpoint:', checkpoint.id, 'for session:', sessionId);
       return checkpoint;
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
@@ -667,16 +665,17 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
 
   // 恢复检查点
-  restoreCheckpoint: async (sessionId: string, _checkpointId: string): Promise<void> => {
+  restoreCheckpoint: async (sessionId: string, checkpointId: string): Promise<void> => {
     set({ isLoading: true, error: null });
 
     try {
-      // Checkpoint restore API not available - clear cache and refresh messages
+      await sessionApiRaw.restoreCheckpoint(sessionId, checkpointId);
+
+      // Clear message cache and refresh messages for this session
       const { messageCache } = get();
       const newCache = { ...messageCache };
       delete newCache[sessionId];
 
-      // Refresh messages if this is the current session
       const { currentSession } = get();
       if (currentSession?.id === sessionId) {
         await get().fetchMessages(sessionId);
@@ -687,7 +686,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         isLoading: false,
       });
 
-      logger.debug('[SessionStore] Restored checkpoint (local):', _checkpointId, 'for session:', sessionId);
+      logger.debug('[SessionStore] Restored checkpoint:', checkpointId, 'for session:', sessionId);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       set({ error: errorMsg || 'Unknown error', isLoading: false });
@@ -698,7 +697,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   // 删除检查点
   deleteCheckpoint: async (checkpointId: string, sessionId: string): Promise<void> => {
     try {
-      // Checkpoint delete API not available - remove from local state only
+      await sessionApiRaw.deleteCheckpoint(checkpointId);
+
       const { checkpointsBySession } = get();
       const sessionCheckpoints = checkpointsBySession[sessionId] || [];
       const updatedSessionCheckpoints = sessionCheckpoints.filter(c => c.id !== checkpointId);
@@ -711,7 +711,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         },
       });
 
-      logger.debug('[SessionStore] Deleted checkpoint (local):', checkpointId);
+      logger.debug('[SessionStore] Deleted checkpoint:', checkpointId);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       set({ error: errorMsg || 'Unknown error' });

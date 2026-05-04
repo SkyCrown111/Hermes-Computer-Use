@@ -4,6 +4,7 @@
 //! Queries Hermes Agent state from WSL.
 
 use super::utils::create_command;
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
 
 /// Connected platform
@@ -43,24 +44,23 @@ pub struct SystemStatus {
 }
 
 /// Query SQLite database via WSL Python
+/// SQL is base64-encoded to avoid shell injection.
 fn query_db_single(sql: &str) -> Result<serde_json::Value, String> {
-    let escaped_sql = sql.replace('\n', " ").replace('\'', "'\\''");
-    // Use single quotes to wrap the Python script
+    let sql_b64 = STANDARD.encode(sql);
+
     let script = format!(
         r#"python3 -c '
-import sqlite3
-import json
-import os
-
+import sqlite3, json, os, base64
 conn = sqlite3.connect(os.path.expanduser("~/.hermes/state.db"))
 cursor = conn.cursor()
-cursor.execute("{}")
+sql = base64.b64decode("{}").decode()
+cursor.execute(sql)
 row = cursor.fetchone()
 if row:
     print(json.dumps(row))
 conn.close()
 '"#,
-        escaped_sql
+        sql_b64
     );
 
     let output = create_command("wsl")
@@ -510,7 +510,7 @@ print(json.dumps({
             println!("[Analytics] Command status: {}", output.status.success());
             if output.status.success() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
-                println!("[Analytics] stdout: {}", &stdout[..stdout.len().min(200)]);
+                println!("[Analytics] Received response ({} bytes)", stdout.len());
                 if let Ok(data) = serde_json::from_str::<serde_json::Value>(&stdout) {
                     println!("[Analytics] Parsed JSON successfully");
                     return Some(data);

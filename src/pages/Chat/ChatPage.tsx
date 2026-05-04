@@ -127,7 +127,6 @@ interface MessageBlockProps {
 
 const MessageBlock: React.FC<MessageBlockProps> = React.memo(({ message, onCopy, onDelete, onRegenerate, isLast }) => {
   const content = normalizeContent(message.content);
-  const isUser = message.role === 'user';
   const isAssistant = message.role === 'assistant';
 
   return (
@@ -424,9 +423,9 @@ export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
                 args: tc.args,
                 duration: 1,
               })),
-            };
+            } as ChatMessage;
           })
-          .filter((msg): msg is ChatMessage => msg !== null);
+          .filter((msg): msg is NonNullable<typeof msg> => msg !== null);
         useChatStore.getState().loadMessages(effectiveSessionId, convertedMessages);
       } else {
         logger.debug('[ChatPage] No messages found for session:', effectiveSessionId);
@@ -562,7 +561,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
           }
           if (newSessionId) useSessionStore.getState().refreshSessions();
         },
-        onError: (error) => {
+        onError: (_error) => {
           if (isStoppedRef.current || !isMountedRef.current) return;
           const targetSessionId = getStreamSessionId();
           // Preserve accumulated content on error (e.g. timeout)

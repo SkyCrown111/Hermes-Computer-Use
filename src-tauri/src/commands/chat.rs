@@ -4,17 +4,17 @@
 use super::utils::create_command;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::process::Stdio;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 use tauri::AppHandle;
 use tauri::Emitter;
 
-// Global state to track running chat processes
-// Key: session_id (or empty string for single session), Value: process handle
-lazy_static::lazy_static! {
-    static ref RUNNING_PROCESSES: Arc<Mutex<Option<u32>>> = Arc::new(Mutex::new(None));
-}
+// Global state to track running chat processes by session ID
+// Key: session_id, Value: process PID
+static RUNNING_PROCESSES: LazyLock<Arc<Mutex<HashMap<String, u32>>>> =
+    LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
@@ -269,7 +269,8 @@ pub fn send_chat_message(
     session_id: Option<String>,
 ) -> Result<String, String> {
     println!(
-        "[ChatDirect] Sending chat message, session: {:?}",
+        "[ChatDirect] Sending chat message ({} messages, session: {:?})",
+        messages.len(),
         session_id
     );
 
@@ -366,7 +367,7 @@ pub async fn stream_chat_realtime(
         .map(|m| m.content.clone())
         .unwrap_or_else(|| "Hello".to_string());
 
-    println!("[ChatStream] Query: {}", query);
+    println!("[ChatStream] Query length: {} chars", query.len());
 
     // Build history from all messages except the last user message
     let history: Vec<serde_json::Value> = messages
@@ -414,23 +415,27 @@ pub async fn stream_chat_realtime(
 
         // Store the process ID for potential abort
         let pid = child.id();
+        let session_key = session_clone.clone().unwrap_or_else(|| "default".to_string());
         {
             let mut processes = RUNNING_PROCESSES
                 .lock()
                 .map_err(|e| format!("Failed to lock processes: {}", e))?;
-            *processes = Some(pid);
-            println!("[ChatStream] Stored process PID: {}", pid);
+            processes.insert(session_key.clone(), pid);
+            println!("[ChatStream] Stored process PID: {} for session: {}", pid, session_key);
         }
 
-        // Write JSON to stdin
-        if let Some(mut stdin) = child.stdin.take() {
+        // Write JSON to stdin then close it (signals EOF to child)
+        {
+            let mut stdin = child.stdin.take().expect("Failed to capture stdin");
             stdin
                 .write_all(stdin_data.as_bytes())
                 .map_err(|e| format!("Failed to write to stdin: {}", e))?;
+            stdin.flush().ok();
+            // stdin is dropped here, closing the pipe
         }
 
         let stdout = child.stdout.take().expect("Failed to capture stdout");
-        let reader = BufReader::new(stdout);
+        let mut reader = BufReader::new(stdout);
 
         let mut session_id_result = String::new();
         let mut accumulated_content = String::new();
@@ -527,7 +532,7 @@ pub async fn stream_chat_realtime(
                         }
                     } else if let Some(result_json) = trimmed.strip_prefix("DONE:") {
                         done_received = Some(result_json.to_string());
-                        println!("[ChatStream] DONE JSON: {}", result_json);
+                        println!("[ChatStream] DONE received ({} bytes)", result_json.len());
                         if let Ok(result) = serde_json::from_str::<serde_json::Value>(result_json) {
                             session_id_result = result
                                 .get("session_id")
@@ -581,16 +586,20 @@ pub async fn stream_chat_realtime(
             }
         }
 
+        // Drop the stdout reader to close the pipe before waiting,
+        // otherwise child.wait() can hang if the child is writing to a full pipe buffer.
+        drop(reader);
+
         // Wait for process and capture stderr
         let status = child.wait().map_err(|e| format!("Failed to wait: {}", e))?;
 
-        // Clear the process ID
+        // Clear the process ID for this session
         {
             let mut processes = RUNNING_PROCESSES
                 .lock()
                 .map_err(|e| format!("Failed to lock processes: {}", e))?;
-            *processes = None;
-            println!("[ChatStream] Cleared process PID");
+            processes.remove(&session_key);
+            println!("[ChatStream] Cleared process PID for session: {}", session_key);
         }
 
         if !status.success() {
@@ -771,13 +780,18 @@ pub fn abort_chat() -> Result<(), String> {
         .lock()
         .map_err(|e| format!("Failed to lock processes: {}", e))?;
 
-    if let Some(pid) = processes.take() {
-        println!("[ChatAbort] Killing process with PID: {}", pid);
+    let pids: Vec<(String, u32)> = processes.drain().collect();
 
-        // On Windows, we need to kill the process tree
+    if pids.is_empty() {
+        println!("[ChatAbort] No running processes to abort");
+        return Ok(());
+    }
+
+    for (session_id, pid) in &pids {
+        println!("[ChatAbort] Killing process PID: {} for session: {}", pid, session_id);
+
         #[cfg(windows)]
         {
-            // Use taskkill to kill the process tree
             let output = create_command("taskkill")
                 .args(["/F", "/T", "/PID", &pid.to_string()])
                 .output()
@@ -793,10 +807,8 @@ pub fn abort_chat() -> Result<(), String> {
             }
         }
 
-        // On Linux/macOS, kill the process group
         #[cfg(not(windows))]
         {
-            // Kill the process
             let output = std::process::Command::new("kill")
                 .args(["-9", &pid.to_string()])
                 .output()
@@ -806,56 +818,49 @@ pub fn abort_chat() -> Result<(), String> {
                 println!("[ChatAbort] Process killed successfully");
             }
         }
-
-        println!("[ChatAbort] Chat aborted successfully");
-    } else {
-        println!("[ChatAbort] No running process to abort");
     }
 
+    println!("[ChatAbort] Aborted {} process(es)", pids.len());
+    Ok(())
+}
+
+/// Kill a process by PID (cross-platform)
+fn kill_process(pid: u32) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        let output = create_command("taskkill")
+            .args(["/F", "/T", "/PID", &pid.to_string()])
+            .output()
+            .map_err(|e| format!("Failed to kill process: {}", e))?;
+        if !output.status.success() {
+            return Err(format!("taskkill failed: {}", String::from_utf8_lossy(&output.stderr)));
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let output = std::process::Command::new("kill")
+            .args(["-9", &pid.to_string()])
+            .output()
+            .map_err(|e| format!("Failed to kill process: {}", e))?;
+        if !output.status.success() {
+            return Err("kill failed".to_string());
+        }
+    }
     Ok(())
 }
 
 /// Interrupt a specific session by ID
-/// This is an alias for abort_chat but with session_id parameter for API consistency
 #[tauri::command]
 pub fn interrupt_session(session_id: String) -> Result<(), String> {
     println!("[ChatInterrupt] Interrupting session: {}", session_id);
-    
-    // For now, we use the global abort since we track a single process
-    // In the future, this could be extended to support multiple sessions
+
     let mut processes = RUNNING_PROCESSES
         .lock()
         .map_err(|e| format!("Failed to lock processes: {}", e))?;
 
-    if let Some(pid) = processes.take() {
+    if let Some(pid) = processes.remove(&session_id) {
         println!("[ChatInterrupt] Killing process with PID: {} for session: {}", pid, session_id);
-
-        // On Windows, kill the process tree
-        #[cfg(windows)]
-        {
-            let output = create_command("taskkill")
-                .args(["/F", "/T", "/PID", &pid.to_string()])
-                .output()
-                .map_err(|e| format!("Failed to kill process: {}", e))?;
-
-            if output.status.success() {
-                println!("[ChatInterrupt] Process killed successfully");
-            }
-        }
-
-        // On Linux/macOS, kill the process
-        #[cfg(not(windows))]
-        {
-            let output = std::process::Command::new("kill")
-                .args(["-9", &pid.to_string()])
-                .output()
-                .map_err(|e| format!("Failed to kill process: {}", e))?;
-
-            if output.status.success() {
-                println!("[ChatInterrupt] Process killed successfully");
-            }
-        }
-
+        kill_process(pid)?;
         println!("[ChatInterrupt] Session {} interrupted successfully", session_id);
     } else {
         println!("[ChatInterrupt] No running process for session {}", session_id);

@@ -23,8 +23,6 @@ interface ChatInputProps {
   isStreaming: boolean;
   hasPendingPermission?: boolean;
   disabled?: boolean;
-  modelName?: string;
-  sessionId?: string;
 }
 
 // ---- Constants ----
@@ -47,7 +45,7 @@ const getHermesCommands = (t: (key: string) => string) => [
 // ---- Component ----
 
 export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
-  ({ onSendMessage, onStop, isStreaming, hasPendingPermission, disabled, modelName, sessionId }, ref) => {
+  ({ onSendMessage, onStop, isStreaming, hasPendingPermission, disabled }, ref) => {
     const { t } = useTranslation();
     const HERMES_COMMANDS = useMemo(() => getHermesCommands(t), [t]);
 
@@ -228,8 +226,6 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     // ---- Derived ----
     const canSend = inputValue.trim().length > 0;
     const showStop = isStreaming && !hasPendingPermission;
-    const displayName = modelName || 'hermes';
-    const shortSession = sessionId ? sessionId.slice(0, 8) : null;
 
     // ---- Render ----
     return (

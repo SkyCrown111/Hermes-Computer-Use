@@ -84,6 +84,11 @@ fn validate_path(path: &str) -> Result<String, String> {
         return Err("Path is empty".to_string());
     }
 
+    // Reject null bytes (can bypass string checks in C-backed commands)
+    if path.contains('\0') {
+        return Err("Path contains null byte".to_string());
+    }
+
     // Reject dangerous shell characters
     let dangerous = [
         ';', '|', '`', '$', '\\', '>', '<', '&', '!', '*', '?', '[', ']', '(', ')', '{', '}', '\n',
@@ -95,24 +100,30 @@ fn validate_path(path: &str) -> Result<String, String> {
         }
     }
 
-    // Reject path traversal that escapes the home directory
+    // All paths must start with allowed prefixes
     let normalized = path.replace("//", "/");
-    if normalized.contains("..") {
-        // Allow only if it stays within the user's home
-        let resolved = if normalized.starts_with('~')
-            || normalized.starts_with("/home/")
-            || normalized.starts_with("/mnt/")
-        {
-            normalized
-        } else {
-            return Err("Path must start with ~, /home/, or /mnt/".to_string());
-        };
-        if resolved.contains("/../") || resolved.ends_with("/..") {
-            return Err("Path traversal not allowed".to_string());
-        }
+    if !normalized.starts_with('~')
+        && !normalized.starts_with("/home/")
+        && !normalized.starts_with("/mnt/")
+    {
+        return Err("Path must start with ~, /home/, or /mnt/".to_string());
+    }
+
+    // Reject any path traversal sequences
+    if normalized.contains("/../") || normalized.ends_with("/..") || normalized.contains("../") {
+        return Err("Path traversal not allowed".to_string());
     }
 
     Ok(path.to_string())
+}
+
+/// Protected paths that must never be deleted
+const PROTECTED_PATHS: &[&str] = &["~", "~/.hermes", "/home", "/mnt", "/"];
+
+/// Check if a path targets a protected directory
+fn is_protected_path(path: &str) -> bool {
+    let normalized = path.trim_end_matches('/');
+    PROTECTED_PATHS.iter().any(|&p| normalized == p || normalized.is_empty())
 }
 
 fn quote_shell_arg(value: &str) -> String {
@@ -508,6 +519,11 @@ pub async fn create_directory(path: String) -> Result<FileOperationResult, Strin
 pub async fn delete_file(path: String) -> Result<FileOperationResult, String> {
     println!("[Files] Deleting: {}", path);
     let _ = validate_path(&path)?;
+
+    // Prevent deletion of critical system/hermes directories
+    if is_protected_path(&path) {
+        return Err(format!("Cannot delete protected path: {}", path));
+    }
 
     let cmd = format!("rm -rf {}", quote_shell_arg(&path));
     let output = create_command("wsl")

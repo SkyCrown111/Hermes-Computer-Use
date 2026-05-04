@@ -1,5 +1,4 @@
 // Platform Types - 平台接入类型定义
-import type { ReactNode } from 'react';
 
 export type PlatformType =
   | 'telegram'
@@ -19,7 +18,6 @@ export interface Platform {
   name: string;
   description: string;
   status: PlatformStatus;
-  icon: ReactNode;
   enabled: boolean;
   config?: Record<string, unknown>;
   lastConnected?: string;

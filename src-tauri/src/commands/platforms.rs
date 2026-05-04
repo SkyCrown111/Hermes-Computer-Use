@@ -5,14 +5,11 @@
 
 use super::utils::create_command;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 
-lazy_static! {
-    /// Store WeChat QR code value for polling iLink API
-    static ref WECHAT_QR_VALUE: Mutex<Option<String>> = Mutex::new(None);
-}
+/// Store WeChat QR code value for polling iLink API
+static WECHAT_QR_VALUE: LazyLock<Mutex<Option<String>>> = LazyLock::new(|| Mutex::new(None));
 
 /// Whitelist of valid platform types
 const VALID_PLATFORM_TYPES: &[&str] = &[

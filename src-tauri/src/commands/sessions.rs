@@ -3,7 +3,7 @@
 //! Commands for managing Hermes Agent sessions.
 //! Queries the Hermes SQLite database directly via WSL.
 
-use super::utils::create_command;
+use super::utils::{run_python_script, run_wsl_args};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
 
@@ -73,7 +73,7 @@ fn parse_tool_calls(tool_calls_str: &str) -> Option<Vec<ToolCall>> {
         return None;
     }
 
-    println!("[Sessions] Parsing tool_calls: {}", tool_calls_str);
+    println!("[Sessions] Parsing tool_calls ({} bytes)", tool_calls_str.len());
 
     // Try to parse as array of database-format tool calls
     let db_calls: Vec<DatabaseToolCall> = match serde_json::from_str(tool_calls_str) {
@@ -141,35 +141,31 @@ fn timestamp_to_iso(ts: f64) -> String {
 }
 
 /// Query SQLite database via WSL Python with parameterized queries
+/// SQL and params are both base64-encoded to avoid shell injection.
 fn query_db(sql: &str, params: &[serde_json::Value]) -> Result<Vec<serde_json::Value>, String> {
     let params_json =
         serde_json::to_string(params).map_err(|e| format!("Failed to serialize params: {}", e))?;
     let params_b64 = STANDARD.encode(params_json);
+    let sql_b64 = STANDARD.encode(sql);
 
-    // Escape single quotes for the shell-embedded Python string
-    let escaped_sql = sql.replace('\n', " ").replace('\'', "'\\''");
-
-    // Use single quotes to wrap the Python script, with proper escaping
     let script = format!(
-        r#"python3 -c '
+        r#"
 import sqlite3, json, os, base64
 conn = sqlite3.connect(os.path.expanduser("~/.hermes/state.db"))
 conn.row_factory = sqlite3.Row
 cursor = conn.cursor()
+sql = base64.b64decode("{}").decode()
 params = json.loads(base64.b64decode("{}").decode())
-cursor.execute("{}", params)
+cursor.execute(sql, params)
 rows = cursor.fetchall()
 result = [dict(row) for row in rows]
 print(json.dumps(result))
 conn.close()
-'"#,
-        params_b64, escaped_sql
+"#,
+        sql_b64, params_b64
     );
 
-    let output = create_command("wsl")
-        .args(["bash", "-c", &script])
-        .output()
-        .map_err(|e| format!("Failed to execute WSL command: {}", e))?;
+    let output = run_python_script(&script)?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -187,31 +183,29 @@ conn.close()
 }
 
 /// Execute SQL via WSL Python with parameterized queries (no rows returned)
+/// SQL and params are both base64-encoded to avoid shell injection.
 fn exec_db(sql: &str, params: &[serde_json::Value]) -> Result<(), String> {
     let params_json =
         serde_json::to_string(params).map_err(|e| format!("Failed to serialize params: {}", e))?;
     let params_b64 = STANDARD.encode(params_json);
-    let escaped_sql = sql.replace('\n', " ").replace('\'', "'\\''");
+    let sql_b64 = STANDARD.encode(sql);
 
-    // Use single quotes to wrap the Python script
     let script = format!(
-        r#"python3 -c '
+        r#"
 import sqlite3, json, os, base64
 conn = sqlite3.connect(os.path.expanduser("~/.hermes/state.db"))
 cursor = conn.cursor()
+sql = base64.b64decode("{}").decode()
 params = json.loads(base64.b64decode("{}").decode())
-cursor.execute("{}", params)
+cursor.execute(sql, params)
 conn.commit()
 conn.close()
 print("ok")
-'"#,
-        params_b64, escaped_sql
+"#,
+        sql_b64, params_b64
     );
 
-    let output = create_command("wsl")
-        .args(["bash", "-c", &script])
-        .output()
-        .map_err(|e| format!("Failed to execute: {}", e))?;
+    let output = run_python_script(&script)?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -306,8 +300,6 @@ pub fn list_sessions(
                 .unwrap_or(0.0);
 
             let ended_at = row.get("ended_at").and_then(|v| v.as_f64());
-
-            let _end_reason = row.get("end_reason").and_then(|v| v.as_str()).unwrap_or("");
 
             let status = if ended_at.is_none() {
                 "active"
@@ -808,7 +800,7 @@ pub fn get_sessions_path() -> String {
 /// Update session title (name)
 #[tauri::command]
 pub fn update_session_title(id: String, title: String) -> Result<(), String> {
-    println!("[Sessions] Updating title for session {}: {}", id, title);
+    println!("[Sessions] Updating title for session {}", id);
 
     exec_db(
         "UPDATE sessions SET title = ? WHERE id = ?",
@@ -827,8 +819,8 @@ pub fn search_sessions(
     days: Option<u64>,
 ) -> Result<SearchResults, String> {
     println!(
-        "[Sessions] Searching for: \"{}\" (platform: {:?}, days: {:?})",
-        q, platform, days
+        "[Sessions] Searching (query_len: {}, platform: {:?}, days: {:?})",
+        q.len(), platform, days
     );
 
     // Build the SQL query with filters
@@ -918,9 +910,8 @@ pub fn search_sessions(
         .collect();
 
     println!(
-        "[Sessions] Found {} results for query: \"{}\" (total: {})",
+        "[Sessions] Found {} results (total: {})",
         results.len(),
-        q,
         total
     );
     Ok(SearchResults { results, total })
@@ -1054,14 +1045,12 @@ pub struct RestoreCheckpointResult {
 
 /// Get checkpoints directory path via WSL
 fn get_checkpoints_dir() -> Result<String, String> {
-    let script = r#"python3 -c '
+    let script = r#"
 import os
 print(os.path.expanduser("~/.hermes/checkpoints"))
-'"#;
+"#;
 
-    let output = create_command("wsl")
-        .args(["bash", "-c", script])
-        .output()
+    let output = run_python_script(script)
         .map_err(|e| format!("Failed to get checkpoints dir: {}", e))?;
 
     if output.status.success() {
@@ -1076,17 +1065,15 @@ fn ensure_checkpoints_dir() -> Result<String, String> {
     let dir = get_checkpoints_dir()?;
 
     let script = format!(
-        r#"python3 -c '
+        r#"
 import os
 os.makedirs("{}", exist_ok=True)
 print("ok")
-'"#,
+"#,
         dir
     );
 
-    let output = create_command("wsl")
-        .args(["bash", "-c", &script])
-        .output()
+    let output = run_python_script(&script)
         .map_err(|e| format!("Failed to create checkpoints dir: {}", e))?;
 
     if output.status.success() {
@@ -1578,9 +1565,10 @@ print(json.dumps({
 }))
 "#;
 
-    // Execute the cleanup script
+    // Execute the cleanup script via base64 to avoid shell injection
+    let script_b64 = STANDARD.encode(script_content);
     let output = create_command("wsl")
-        .args(["bash", "-c", &format!("python3 -c '{}'", script_content.replace('\n', " ").replace('\'', "'\\''"))])
+        .args(["bash", "-c", &format!("echo '{}' | base64 -d | python3 -", script_b64)])
         .output()
         .map_err(|e| format!("Failed to run cleanup: {}", e))?;
 

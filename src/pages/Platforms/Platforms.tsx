@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { ConfirmModal, AlertIcon, WarningIcon, CheckIcon } from '../../components';
-import { usePlatformStore } from '../../stores';
+import { usePlatformStore, getPlatformIcon } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
 import { toast } from '../../stores/toastStore';
 import { platformApi } from '../../services/platformApi';
@@ -69,7 +69,7 @@ const StatusBadge = ({ status, t }: { status: Platform['status']; t: (key: strin
 };
 
 export function Platforms() {
-  const { t, lang } = useTranslation();
+  const { t } = useTranslation();
 
   const platforms = usePlatformStore(s => s.platforms);
   const selectedPlatform = usePlatformStore(s => s.selectedPlatform);
@@ -213,7 +213,7 @@ export function Platforms() {
         {platforms.map(platform => (
           <div key={platform.type} className="platform-card glass-card">
             <div className="platform-header">
-              <span className="platform-icon">{platform.icon}</span>
+              <span className="platform-icon">{getPlatformIcon(platform.type)}</span>
               <div className="platform-info">
                 <h3>{platform.name}</h3>
                 <p>{platform.description}</p>
@@ -279,7 +279,7 @@ export function Platforms() {
           <div className="modal-content glass-card" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2>
-                {selectedPlatformData.icon} {selectedPlatformData.name} {t('platforms.configure')}
+                {getPlatformIcon(selectedPlatformData.type)} {selectedPlatformData.name} {t('platforms.configure')}
               </h2>
               <button className="modal-close" onClick={closeConfigModal}>
                 ×

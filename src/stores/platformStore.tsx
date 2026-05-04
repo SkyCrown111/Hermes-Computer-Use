@@ -4,90 +4,18 @@ import { create } from 'zustand';
 import type { Platform, PlatformType } from '../types/platform';
 import { getErrorMessage } from '../lib/errorUtils';
 import { platformApi } from '../services/platformApi';
-import {
-  SmartphoneIcon,
-  ChatIcon,
-  BriefcaseIcon,
-  PlugIcon,
-  GlobeIcon,
-  BotIcon,
-  ZapIcon,
-} from '../components/ui/Icons';
 
-// 默认平台配置
+// 默认平台配置（纯数据，不含 UI 元素）
 const defaultPlatforms: Platform[] = [
-  {
-    type: 'telegram',
-    name: 'Telegram',
-    description: 'Telegram Bot 接入',
-    status: 'disconnected',
-    icon: <SmartphoneIcon size={18} />,
-    enabled: false,
-  },
-  {
-    type: 'discord',
-    name: 'Discord',
-    description: 'Discord Bot 接入',
-    status: 'disconnected',
-    icon: <ChatIcon size={18} />,
-    enabled: false,
-  },
-  {
-    type: 'slack',
-    name: 'Slack',
-    description: 'Slack Bot 接入',
-    status: 'disconnected',
-    icon: <BriefcaseIcon size={18} />,
-    enabled: false,
-  },
-  {
-    type: 'whatsapp',
-    name: 'WhatsApp',
-    description: 'WhatsApp Business API',
-    status: 'disconnected',
-    icon: <ChatIcon size={18} />,
-    enabled: false,
-  },
-  {
-    type: 'weixin',
-    name: '微信',
-    description: '个人微信扫码接入',
-    status: 'disconnected',
-    icon: <ChatIcon size={18} />,
-    enabled: false,
-  },
-  {
-    type: 'wechat',
-    name: '企业微信',
-    description: '企业微信 Work 接入',
-    status: 'disconnected',
-    icon: <BotIcon size={18} />,
-    enabled: false,
-  },
-  {
-    type: 'lark',
-    name: '飞书',
-    description: '飞书机器人接入',
-    status: 'disconnected',
-    icon: <ZapIcon size={18} />,
-    enabled: false,
-  },
-  {
-    type: 'api',
-    name: 'API Gateway',
-    description: 'REST API 接口',
-    status: 'disconnected',
-    icon: <PlugIcon size={18} />,
-    enabled: false,
-  },
-  {
-    type: 'webhook',
-    name: 'Webhook',
-    description: '自定义 Webhook 接入',
-    status: 'disconnected',
-    icon: <GlobeIcon size={18} />,
-    enabled: false,
-  },
+  { type: 'telegram', name: 'Telegram', description: 'Telegram Bot', status: 'disconnected', enabled: false },
+  { type: 'discord', name: 'Discord', description: 'Discord Bot', status: 'disconnected', enabled: false },
+  { type: 'slack', name: 'Slack', description: 'Slack Bot', status: 'disconnected', enabled: false },
+  { type: 'whatsapp', name: 'WhatsApp', description: 'WhatsApp Business API', status: 'disconnected', enabled: false },
+  { type: 'weixin', name: '微信', description: 'WeChat Personal', status: 'disconnected', enabled: false },
+  { type: 'wechat', name: '企业微信', description: 'WeChat Work', status: 'disconnected', enabled: false },
+  { type: 'lark', name: '飞书', description: 'Lark Bot', status: 'disconnected', enabled: false },
+  { type: 'api', name: 'API Gateway', description: 'REST API', status: 'disconnected', enabled: false },
+  { type: 'webhook', name: 'Webhook', description: 'Custom Webhook', status: 'disconnected', enabled: false },
 ];
 
 interface PlatformState {
@@ -122,8 +50,7 @@ export const usePlatformStore = create<PlatformState>((set, get) => ({
     try {
       const platforms = await platformApi.getPlatforms();
       set({ platforms, isLoading: false });
-    } catch (err) {
-      // 使用默认数据
+    } catch {
       set({ platforms: defaultPlatforms, isLoading: false });
     }
   },
@@ -224,3 +151,31 @@ export const usePlatformStore = create<PlatformState>((set, get) => ({
     }
   },
 }));
+
+// Helper: get icon component for a platform type (use in rendering layer)
+import type { ReactNode } from 'react';
+import {
+  SmartphoneIcon,
+  ChatIcon,
+  BriefcaseIcon,
+  PlugIcon,
+  GlobeIcon,
+  BotIcon,
+  ZapIcon,
+} from '../components/ui/Icons';
+
+const PLATFORM_ICON_MAP: Record<PlatformType, ReactNode> = {
+  telegram: <SmartphoneIcon size={18} />,
+  discord: <ChatIcon size={18} />,
+  slack: <BriefcaseIcon size={18} />,
+  whatsapp: <ChatIcon size={18} />,
+  weixin: <ChatIcon size={18} />,
+  wechat: <BotIcon size={18} />,
+  lark: <ZapIcon size={18} />,
+  api: <PlugIcon size={18} />,
+  webhook: <GlobeIcon size={18} />,
+};
+
+export function getPlatformIcon(type: PlatformType): ReactNode {
+  return PLATFORM_ICON_MAP[type] ?? <PlugIcon size={18} />;
+}

@@ -68,7 +68,7 @@ const getFileIcon = (item: FileInfo): string => {
 
 // Files Page Component
 export const Files: React.FC = () => {
-  const { t, lang } = useTranslation();
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<'browser' | 'cache'>('browser');
   // Workspaces loaded from store/config, defaults to home directory
   const [workspaces, setWorkspaces] = useState<Workspace[]>([

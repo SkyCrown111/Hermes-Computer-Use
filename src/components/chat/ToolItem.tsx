@@ -2,7 +2,6 @@ import React, { useState, memo } from 'react';
 import type { ToolCallInfo } from '../../stores/chatStore';
 import { TOOL_ICONS } from './constants';
 import { SimpleDiffViewer } from './SimpleDiffViewer';
-import { MarkdownRenderer } from '../ui/MarkdownRenderer';
 
 interface ToolItemProps {
   tool: ToolCallInfo;

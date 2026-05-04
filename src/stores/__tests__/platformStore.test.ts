@@ -21,7 +21,6 @@ const createMockPlatform = (overrides: Partial<{
   name: string;
   description: string;
   status: 'connected' | 'disconnected' | 'error' | 'pending';
-  icon: null;
   enabled: boolean;
   config: Record<string, unknown>;
 }> = {}) => ({
@@ -29,7 +28,6 @@ const createMockPlatform = (overrides: Partial<{
   name: 'Telegram',
   description: 'Telegram Bot Platform',
   status: 'disconnected' as const,
-  icon: null,
   enabled: false,
   config: {},
   ...overrides,

@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo } from 'react';
 import { NavItem } from '../../../types';
-import { useNavigationStore, useThemeStore } from '../../../stores';
+import { useNavigationStore, useThemeStore, useChatStore } from '../../../stores';
 import { useTranslation } from '../../../hooks/useTranslation';
 import './Sidebar.css';
 
