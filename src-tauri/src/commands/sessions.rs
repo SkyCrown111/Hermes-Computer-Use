@@ -3,7 +3,7 @@
 //! Commands for managing Hermes Agent sessions.
 //! Queries the Hermes SQLite database directly via WSL.
 
-use super::utils::{run_python_script, run_wsl_args};
+use super::utils::{create_command, run_python_script};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
 

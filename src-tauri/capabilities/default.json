@@ -6,7 +6,6 @@
   "permissions": [
     "core:default",
     "opener:default",
-    "updater:default",
     "window-state:default"
   ]
 }

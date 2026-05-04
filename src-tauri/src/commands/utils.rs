@@ -3,7 +3,6 @@
 //! On Windows, commands are executed through WSL (Windows Subsystem for Linux).
 //! On Linux/macOS, commands are executed directly via bash/python3.
 
-use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Output, Stdio};
 

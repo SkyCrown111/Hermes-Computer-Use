@@ -1,6 +1,7 @@
-// Update API Service - Tauri Updater Plugin
+// Update API Service
+// Updater plugin is currently disabled (no signing key configured).
+// This module provides stub implementations that report "not configured".
 
-import { check, type Update, type DownloadEvent } from '@tauri-apps/plugin-updater';
 import { getVersion } from '@tauri-apps/api/app';
 import { logger } from '../lib/logger';
 
@@ -20,9 +21,6 @@ export interface UpdateInfo {
 export type ProgressCallback = (progress: UpdateInfo) => void;
 
 let _currentVersion: string | null = null;
-let _pendingUpdate: Update | null = null;
-const isUpdaterConfigured = () =>
-  (import.meta.env.VITE_TAURI_UPDATER_PUBKEY?.trim() ?? '').length > 0;
 
 /**
  * Get the current application version
@@ -40,106 +38,24 @@ export async function getCurrentVersion(): Promise<string> {
 }
 
 /**
- * Check for updates. Stores the Update instance internally for later install.
+ * Check for updates.
+ * Currently returns "not configured" because the updater plugin is disabled.
  */
 export async function checkForUpdates(): Promise<UpdateInfo> {
-  if (!isUpdaterConfigured()) {
-    return {
-      available: false,
-      currentVersion: await getCurrentVersion(),
-      status: 'error',
-      error: 'Updater is not configured for this build.',
-    };
-  }
-
-  try {
-    const currentVersion = await getCurrentVersion();
-    _pendingUpdate = await check();
-
-    if (!_pendingUpdate) {
-      return {
-        available: false,
-        currentVersion,
-        status: 'uptodate',
-      };
-    }
-
-    return {
-      available: true,
-      currentVersion,
-      newVersion: _pendingUpdate.version,
-      releaseDate: _pendingUpdate.date,
-      releaseNotes: _pendingUpdate.body,
-      status: 'available',
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to check for updates';
-    logger.error('[UpdateApi] Check failed:', error);
-    return {
-      available: false,
-      currentVersion: await getCurrentVersion(),
-      status: 'error',
-      error: message,
-    };
-  }
+  return {
+    available: false,
+    currentVersion: await getCurrentVersion(),
+    status: 'error',
+    error: 'Auto-update is not configured. Please update manually.',
+  };
 }
 
 /**
- * Install the pending update (stored from the last check).
- * Calls onProgress with progress updates.
+ * Install the pending update.
+ * Currently throws because the updater plugin is disabled.
  */
-export async function installPendingUpdate(
-  onProgress?: ProgressCallback
-): Promise<void> {
-  if (!isUpdaterConfigured()) {
-    throw new Error('Updater is not configured for this build.');
-  }
-
-  if (!_pendingUpdate) {
-    throw new Error('No pending update to install. Call checkForUpdates first.');
-  }
-
-  logger.info('[UpdateApi] Downloading update...');
-
-  let downloaded = 0;
-  const currentVersion = await getCurrentVersion();
-
-  await _pendingUpdate.downloadAndInstall((event: DownloadEvent) => {
-    if (event.event === 'Started') {
-      downloaded = 0;
-      onProgress?.({
-        available: true,
-        currentVersion,
-        newVersion: _pendingUpdate?.version,
-        status: 'downloading',
-        downloadProgress: 0,
-        totalBytes: event.data.contentLength,
-      });
-    } else if (event.event === 'Progress') {
-      downloaded += event.data.chunkLength;
-      const total = _pendingUpdate?.version ? 50 * 1024 * 1024 : undefined; // Estimate if not available
-      onProgress?.({
-        available: true,
-        currentVersion,
-        newVersion: _pendingUpdate?.version,
-        status: 'downloading',
-        downloadProgress: total ? Math.round((downloaded / total) * 100) : undefined,
-        downloadedBytes: downloaded,
-        totalBytes: total,
-      });
-    } else if (event.event === 'Finished') {
-      onProgress?.({
-        available: true,
-        currentVersion,
-        newVersion: _pendingUpdate?.version,
-        status: 'ready',
-        downloadProgress: 100,
-      });
-    }
-  });
-
-  _pendingUpdate = null;
-  logger.info('[UpdateApi] Update installed successfully');
+export async function installPendingUpdate(_onProgress?: ProgressCallback): Promise<void> {
+  throw new Error('Auto-update is not configured. Please update manually.');
 }
 
 /**
@@ -147,5 +63,4 @@ export async function installPendingUpdate(
  */
 export function _resetState(): void {
   _currentVersion = null;
-  _pendingUpdate = null;
 }

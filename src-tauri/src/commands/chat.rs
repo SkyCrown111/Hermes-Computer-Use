@@ -435,7 +435,7 @@ pub async fn stream_chat_realtime(
         }
 
         let stdout = child.stdout.take().expect("Failed to capture stdout");
-        let mut reader = BufReader::new(stdout);
+        let reader = BufReader::new(stdout);
 
         let mut session_id_result = String::new();
         let mut accumulated_content = String::new();
@@ -586,10 +586,7 @@ pub async fn stream_chat_realtime(
             }
         }
 
-        // Drop the stdout reader to close the pipe before waiting,
-        // otherwise child.wait() can hang if the child is writing to a full pipe buffer.
-        drop(reader);
-
+        // reader is consumed by .lines() above, pipe is closed.
         // Wait for process and capture stderr
         let status = child.wait().map_err(|e| format!("Failed to wait: {}", e))?;
 
