@@ -780,7 +780,7 @@ export function initializeChatStore() {
 
         try {
           const response = await getSession(tab.id);
-          if (response?.messages?.length > 0) {
+          if (response && response.messages && response.messages.length > 0) {
             // Convert SessionMessage[] to ChatMessage[] for the chat store
             const chatMessages: ChatMessage[] = response.messages.map((m, idx) => ({
               id: `server-${tab.id}-${idx}-${Date.now()}`,

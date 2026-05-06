@@ -801,7 +801,7 @@ export const Sessions: React.FC = () => {
                             <div className="checkpoint-meta">
                               <span>{formatDateTime(cp.created_at)}</span>
                               <span>{cp.message_count} {t('checkpoint.messageCount')}</span>
-                              <span>{formatBytes(cp.size_bytes)}</span>
+                              <span>{formatBytes(cp.size_bytes ?? 0)}</span>
                             </div>
                           </div>
                           <div className="checkpoint-actions">

@@ -106,9 +106,11 @@ export async function countSessions(): Promise<number> {
 export interface Checkpoint {
   id: string;
   session_id: string;
+  name?: string | null;
   created_at: string;
   message_count: number;
-  description?: string;
+  size_bytes?: number;
+  description?: string | null;
 }
 
 export interface CheckpointInfo {

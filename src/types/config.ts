@@ -99,7 +99,7 @@ export const AUXILIARY_TASK_INFO: Record<AuxiliaryTaskType, { nameKey: string; d
   skills_hub: { nameKey: 'aux.skillsHub', descKey: 'aux.skillsHubDesc' },
 };
 
-export type ConfigSection = 'model' | 'agent' | 'terminal' | 'browser' | 'compression' | 'checkpoint' | 'auxiliary' | 'display' | 'memory' | 'approval' | 'skills';
+export type ConfigSection = 'model' | 'agent' | 'terminal' | 'browser' | 'compression' | 'checkpoint' | 'auxiliary' | 'display' | 'memory' | 'approval' | 'skills' | 'providers';
 
 export interface ConfigSectionResponse<T> {
   section: string;
