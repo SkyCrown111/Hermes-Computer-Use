@@ -89,11 +89,9 @@ fn validate_path(path: &str) -> Result<String, String> {
         return Err("Path contains null byte".to_string());
     }
 
-    // Reject dangerous shell characters
-    let dangerous = [
-        ';', '|', '`', '$', '\\', '>', '<', '&', '!', '*', '?', '[', ']', '(', ')', '{', '}', '\n',
-        '\r',
-    ];
+    // Reject only truly dangerous shell metacharacters that enable command injection.
+    // Allow spaces, parentheses, brackets etc. which are valid in filenames.
+    let dangerous = [';', '|', '`', '$', '\\', '>', '<', '&', '\n', '\r'];
     for ch in dangerous {
         if path.contains(ch) {
             return Err(format!("Path contains invalid character: '{}'", ch));

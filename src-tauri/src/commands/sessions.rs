@@ -1345,13 +1345,16 @@ pub fn restore_checkpoint(
 
     // Use base64 to avoid shell injection
     let checkpoint_id_b64 = STANDARD.encode(&checkpoint_id);
+    let session_id_b64 = STANDARD.encode(&session_id);
 
-    // Load checkpoint file
+    // Single Python script that loads checkpoint AND restores all messages in one process.
+    // This avoids the N+1 problem of calling exec_db() per message.
     let script = format!(
-        r#"python3 -c '
-import os, json, glob, base64
+        r#"
+import os, json, glob, base64, sqlite3
 
 checkpoint_id = base64.b64decode("{}").decode("utf-8")
+session_id = base64.b64decode("{}").decode("utf-8")
 pattern = os.path.join("{}", f"*_{{checkpoint_id}}.json")
 files = glob.glob(pattern)
 
@@ -1360,78 +1363,70 @@ if not files:
 else:
     with open(files[0], "r") as f:
         data = json.load(f)
-        print(json.dumps(data))
-'"#,
-        checkpoint_id_b64, dir
+
+    messages = data.get("messages", [])
+
+    # Perform all DB operations in a single connection
+    db_path = os.path.expanduser("~/.hermes/state.db")
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    # Delete existing messages for this session
+    cursor.execute("DELETE FROM messages WHERE session_id = ?", (session_id,))
+
+    # Batch insert all messages
+    for msg in messages:
+        role = msg.get("role", "user")
+        content = msg.get("content", "")
+        timestamp = msg.get("timestamp", 0.0)
+        tool_calls = json.dumps(msg.get("tool_calls")) if msg.get("tool_calls") else ""
+        reasoning = msg.get("reasoning", "") or ""
+        cursor.execute(
+            "INSERT INTO messages (session_id, role, content, timestamp, tool_calls, reasoning) VALUES (?, ?, ?, ?, ?, ?)",
+            (session_id, role, content, timestamp, tool_calls, reasoning)
+        )
+
+    # Update session message count
+    cursor.execute("UPDATE sessions SET message_count = ? WHERE id = ?", (len(messages), session_id))
+
+    conn.commit()
+    conn.close()
+
+    print(json.dumps({{"ok": True, "message_count": len(messages)}}))
+"#,
+        checkpoint_id_b64, session_id_b64, dir
     );
 
+    let script_b64 = STANDARD.encode(&script);
+
     let output = create_command("wsl")
-        .args(["bash", "-c", &script])
+        .args(["bash", "-c", &format!("echo '{}' | base64 -d | python3 -", script_b64)])
         .output()
-        .map_err(|e| format!("Failed to load checkpoint: {}", e))?;
+        .map_err(|e| format!("Failed to restore checkpoint: {}", e))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Failed to load checkpoint: {}", stderr));
+        return Err(format!("Failed to restore checkpoint: {}", stderr));
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let data: serde_json::Value =
-        serde_json::from_str(stdout.trim()).map_err(|e| format!("Failed to parse JSON: {}", e))?;
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let result: serde_json::Value =
+        serde_json::from_str(&stdout).map_err(|e| format!("Failed to parse result: {}", e))?;
 
-    if data.get("error").is_some() {
+    if result.get("error").is_some() {
         return Err(format!("Checkpoint not found: {}", checkpoint_id));
     }
 
-    let messages = data
-        .get("messages")
-        .and_then(|v| v.as_array())
-        .ok_or("No messages in checkpoint")?;
-
-    // Delete existing messages for this session
-    exec_db(
-        "DELETE FROM messages WHERE session_id = ?",
-        &[serde_json::json!(session_id)],
-    )?;
-
-    // Insert messages from checkpoint
-    for msg in messages {
-        let role = msg.get("role").and_then(|v| v.as_str()).unwrap_or("user");
-        let content = msg.get("content").and_then(|v| v.as_str()).unwrap_or("");
-        let timestamp = msg.get("timestamp").and_then(|v| v.as_f64()).unwrap_or(0.0);
-        let tool_calls = msg
-            .get("tool_calls")
-            .and_then(|v| serde_json::to_string(v).ok())
-            .unwrap_or_default();
-        let reasoning = msg.get("reasoning").and_then(|v| v.as_str()).unwrap_or("");
-
-        exec_db(
-            "INSERT INTO messages (session_id, role, content, timestamp, tool_calls, reasoning) VALUES (?, ?, ?, ?, ?, ?)",
-            &[
-                serde_json::json!(session_id),
-                serde_json::json!(role),
-                serde_json::json!(content),
-                serde_json::json!(timestamp),
-                serde_json::json!(tool_calls),
-                serde_json::json!(reasoning),
-            ],
-        )?;
-    }
-
-    // Update session message count
-    exec_db(
-        "UPDATE sessions SET message_count = ? WHERE id = ?",
-        &[
-            serde_json::json!(messages.len()),
-            serde_json::json!(session_id),
-        ],
-    )?;
+    let message_count = result
+        .get("message_count")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0) as usize;
 
     let restored_at = chrono::Utc::now().to_rfc3339();
 
     println!(
-        "[Checkpoints] Restored {} messages for session {}",
-        messages.len(),
+        "[Checkpoints] Restored {} messages for session {} (single-process batch)",
+        message_count,
         session_id
     );
 
@@ -1440,7 +1435,7 @@ else:
         session_id,
         checkpoint_id,
         restored_at,
-        message_count: messages.len(),
+        message_count,
     })
 }
 

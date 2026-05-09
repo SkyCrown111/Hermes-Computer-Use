@@ -57,14 +57,15 @@ const platformConfigFields: Record<PlatformType, { key: string; label: string; t
 
 // 状态徽章
 const StatusBadge = ({ status, t }: { status: Platform['status']; t: (key: string) => string }) => {
-  const statusConfig = {
+  const statusConfig: Record<string, { label: string; className: string }> = {
     connected: { label: t('platforms.connected'), className: 'status-connected' },
     disconnected: { label: t('platforms.disconnected'), className: 'status-disconnected' },
     error: { label: t('platforms.error'), className: 'status-error' },
+    connecting: { label: t('platforms.connecting'), className: 'status-pending' },
     pending: { label: t('platforms.connecting'), className: 'status-pending' },
   };
 
-  const config = statusConfig[status];
+  const config = statusConfig[status] || statusConfig.disconnected;
   return <span className={`status-badge ${config.className}`}>{config.label}</span>;
 };
 

@@ -10,6 +10,7 @@ import type {
   ToggleSkillParams,
   ToggleSkillResponse,
   Toolset,
+  SkillExecutionRecord,
 } from '../types/skill';
 import type { ApiOkResponse } from '../types/common';
 
@@ -69,12 +70,11 @@ export async function createSkill(params: CreateSkillParams): Promise<ApiOkRespo
 }
 
 export async function updateSkill(name: string, category: string, params: UpdateSkillParams): Promise<ApiOkResponse> {
-  return apiClient.invoke<ApiOkResponse>('save_skill', {
-    name,
+  return apiClient.invoke<ApiOkResponse>('update_skill', {
     category,
-    description: params.description,
-    content: params.content,
-    metadata: params.metadata,
+    name,
+    description: params.description || '',
+    content: params.content || '',
   });
 }
 
@@ -97,5 +97,17 @@ export async function getSkillsPath(): Promise<string> {
   } catch (error) {
     logger.debug('[Skills] getSkillsPath failed, using default:', getErrorDetail(error));
     return DEFAULT_PATHS.skills;
+  }
+}
+
+export async function getSkillExecutionHistory(skillName: string, limit?: number): Promise<SkillExecutionRecord[]> {
+  try {
+    return await apiClient.invoke<SkillExecutionRecord[]>('get_skill_execution_history', {
+      skill_name: skillName,
+      limit,
+    });
+  } catch (error) {
+    logger.error(`[SkillsApi] getSkillExecutionHistory failed: ${getErrorDetail(error)}`);
+    return [];
   }
 }

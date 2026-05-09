@@ -364,8 +364,15 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   updateModelConfig: async (data: Partial<ModelConfig>) => {
     set({ isSaving: true, error: null });
     try {
-      await settingsApi.updateConfigSection('model', data as Record<string, unknown>);
-      await settingsApi.restartGateway();
+      // Strip masked API key markers — backend will preserve the existing key
+      const cleanData = { ...data as Record<string, unknown> };
+      if (typeof cleanData.api_key === 'string') {
+        const apiKey = cleanData.api_key as string;
+        if (apiKey.startsWith('__MASKED__') || apiKey.startsWith('•') || (apiKey.includes('****') && apiKey.length > 8)) {
+          delete cleanData.api_key;
+        }
+      }
+      await settingsApi.updateConfigSection('model', cleanData);
       set({ modelConfig: data as ModelConfig, isSaving: false, successMessage: msg('settings.saved.model') });
       clearSuccessLater();
     } catch (err) {
@@ -379,7 +386,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set({ isSaving: true, error: null });
     try {
       await settingsApi.updateConfigSection('agent', data as Record<string, unknown>);
-      await settingsApi.restartGateway();
       set({ agentConfig: data as AgentConfig, isSaving: false, successMessage: msg('settings.saved.agent') });
       clearSuccessLater();
     } catch (err) {
@@ -493,9 +499,14 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   addCustomProvider: async (provider: { name: string; base_url: string; api_key?: string; model?: string }) => {
     set({ isSaving: true, error: null });
     try {
+      // Strip masked API keys
+      const cleanProvider = { ...provider };
+      if (cleanProvider.api_key && (cleanProvider.api_key.startsWith('__MASKED__') || cleanProvider.api_key.startsWith('•'))) {
+        delete cleanProvider.api_key;
+      }
       const resp = await settingsApi.getConfigSection<ProvidersConfig>('providers');
       const currentProviders = resp.data || { custom_providers: [], fallback_providers: [], credential_pool_strategies: {} };
-      const newCustomProviders = [...(currentProviders.custom_providers || []), provider];
+      const newCustomProviders = [...(currentProviders.custom_providers || []), cleanProvider];
       await settingsApi.updateConfigSection('providers', { ...currentProviders, custom_providers: newCustomProviders });
       set({ providersConfig: { ...get().providersConfig, custom_providers: newCustomProviders } as ProvidersConfig, isSaving: false, successMessage: msg('settings.added.customProvider') });
       clearSuccessLater();
@@ -508,10 +519,15 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   updateCustomProvider: async (index: number, provider: { name: string; base_url: string; api_key?: string; model?: string }) => {
     set({ isSaving: true, error: null });
     try {
+      // Strip masked API keys
+      const cleanProvider = { ...provider };
+      if (cleanProvider.api_key && (cleanProvider.api_key.startsWith('__MASKED__') || cleanProvider.api_key.startsWith('•'))) {
+        delete cleanProvider.api_key;
+      }
       const resp = await settingsApi.getConfigSection<ProvidersConfig>('providers');
       const currentProviders = resp.data || { custom_providers: [], fallback_providers: [], credential_pool_strategies: {} };
       const newCustomProviders = [...(currentProviders.custom_providers || [])];
-      newCustomProviders[index] = provider;
+      newCustomProviders[index] = cleanProvider;
       await settingsApi.updateConfigSection('providers', { ...currentProviders, custom_providers: newCustomProviders });
       set({ providersConfig: { ...get().providersConfig, custom_providers: newCustomProviders } as ProvidersConfig, isSaving: false, successMessage: msg('settings.updated.customProvider') });
       clearSuccessLater();
@@ -632,12 +648,18 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   // 导出配置
   exportConfig: async () => {
     const state = get();
-    const exportData = {
+    const exportData: Record<string, unknown> = {
       model: state.modelConfig,
       agent: state.agentConfig,
       terminal: state.terminalConfig,
       compression: state.compressionConfig,
       checkpoint: state.checkpointConfig,
+      memory: state.memoryConfig,
+      approval: state.approvalConfig,
+      providers: state.providersConfig,
+      auxiliary: state.auxiliaryConfig,
+      display: state.displayConfig,
+      raw: state.rawYaml,
       exported_at: new Date().toISOString(),
       version: '1.0.0',
     };

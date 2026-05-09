@@ -96,11 +96,15 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
   },
 
   // 获取执行历史
-  fetchExecutionHistory: async (_skillName?: string) => {
+  fetchExecutionHistory: async (skillName?: string) => {
     set({ isLoadingHistory: true });
     try {
-      // Execution history is not available in the current API
-      set({ executionHistory: [], isLoadingHistory: false });
+      if (skillName) {
+        const history = await skillsApi.getSkillExecutionHistory(skillName, 20);
+        set({ executionHistory: history, isLoadingHistory: false });
+      } else {
+        set({ executionHistory: [], isLoadingHistory: false });
+      }
     } catch (err) {
       logger.error('[SkillsStore] Failed to fetch execution history:', err);
       set({ executionHistory: [], isLoadingHistory: false });

@@ -15,22 +15,69 @@ const ModelConfigForm: React.FC<{
     base_url: '',
   });
   const [showApiKey, setShowApiKey] = useState(false);
+  // Track whether the user has actually edited the API key field
+  const [apiKeyEdited, setApiKeyEdited] = useState(false);
+  // Track the new API key value (separate from masked display)
+  const [newApiKey, setNewApiKey] = useState('');
 
-  // 遮蔽 API Key 显示
-  const maskApiKey = (key: string | undefined): string => {
-    if (!key || key.length < 8) return key || '';
-    return key.slice(0, 4) + '*'.repeat(Math.min(key.length - 8, 20)) + key.slice(-4);
+  // Check if an API key value is a masked placeholder from the backend
+  const isMaskedKey = (key: string | undefined): boolean => {
+    if (!key) return false;
+    return key.startsWith('__MASKED__') || key.startsWith('•') || (key.includes('****') && key.length > 8);
   };
+
+  // Display the API key status
+  const getApiKeyDisplay = (): string => {
+    if (apiKeyEdited && newApiKey) {
+      return showApiKey ? newApiKey : newApiKey.slice(0, 4) + '*'.repeat(Math.min(newApiKey.length - 8, 20)) + newApiKey.slice(-4);
+    }
+    if (formData.api_key && isMaskedKey(formData.api_key)) {
+      // Show a friendly masked display
+      const suffix = formData.api_key.replace(/^(__MASKED__|[•]+)/, '');
+      return showApiKey ? formData.api_key : `****${suffix}`;
+    }
+    if (formData.api_key) {
+      return showApiKey ? formData.api_key : formData.api_key.slice(0, 4) + '*'.repeat(Math.min(formData.api_key.length - 8, 20)) + formData.api_key.slice(-4);
+    }
+    return '';
+  };
+
+  const isApiKeyConfigured = !!(formData.api_key && (isMaskedKey(formData.api_key) || formData.api_key.length > 0));
 
   useEffect(() => {
     if (config) {
       setFormData(config);
+      setApiKeyEdited(false);
+      setNewApiKey('');
     }
   }, [config]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSave(formData);
+    // Build save data — only include api_key if the user actually entered a new one
+    const saveData: Partial<ModelConfig> = {
+      default: formData.default,
+      provider: formData.provider,
+      base_url: formData.base_url,
+    };
+    if (apiKeyEdited && newApiKey) {
+      saveData.api_key = newApiKey;
+    }
+    // If not edited, don't include api_key at all — backend will preserve existing value
+    onSave(saveData);
+  };
+
+  const handleApiKeyChange = (value: string) => {
+    setNewApiKey(value);
+    setApiKeyEdited(true);
+  };
+
+  const handleApiKeyFocus = () => {
+    // When focusing the API key field and it's showing a masked value,
+    // switch to edit mode showing the placeholder
+    if (!apiKeyEdited && isMaskedKey(formData.api_key)) {
+      setShowApiKey(true);
+    }
   };
 
   return (
@@ -67,9 +114,10 @@ const ModelConfigForm: React.FC<{
         <div className="api-key-input-wrapper">
           <Input
             type={showApiKey ? 'text' : 'password'}
-            value={showApiKey ? (formData.api_key || '') : maskApiKey(formData.api_key)}
-            onChange={(e) => setFormData({ ...formData, api_key: e.target.value })}
-            placeholder="sk-..."
+            value={apiKeyEdited ? getApiKeyDisplay() : getApiKeyDisplay()}
+            onChange={(e) => handleApiKeyChange(e.target.value)}
+            onFocus={handleApiKeyFocus}
+            placeholder={isApiKeyConfigured ? t('settings.enterNewApiKey') || 'Enter new API key to update' : 'sk-...'}
             className="form-input"
           />
           <button
@@ -81,7 +129,11 @@ const ModelConfigForm: React.FC<{
           </button>
         </div>
         <span className="form-hint">
-          {formData.api_key ? t('settings.configured') : t('settings.notConfigured')} - {t('settings.apiKeyStored')}
+          {isApiKeyConfigured
+            ? (apiKeyEdited
+              ? (t('settings.willBeUpdated') || 'API key will be updated on save')
+              : (t('settings.configured') + ' - ' + (t('settings.leaveEmptyToKeep') || 'leave empty to keep current')))
+            : t('settings.notConfigured')} - {t('settings.apiKeyStored')}
         </span>
       </div>
 

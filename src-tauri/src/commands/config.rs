@@ -1,11 +1,19 @@
 //! Configuration Commands
 //!
 //! Commands for loading and saving Hermes Agent configuration.
+//! Uses direct YAML file manipulation instead of CLI commands,
+//! ensuring all config sections (model, agent, terminal, compression,
+//! checkpoint, providers, memory, auxiliary, display, approval) are
+//! properly read and written.
 
 use super::utils::{create_command, get_hermes_data_dir};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
 use std::fs;
+
+// ============================================================================
+// Config Structs
+// ============================================================================
 
 /// Model configuration
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -47,7 +55,84 @@ pub struct CheckpointConfig {
     pub max_snapshots: Option<i32>,
 }
 
-/// Hermes configuration structure
+/// Memory configuration
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct MemoryConfig {
+    pub enabled: Option<bool>,
+    pub max_chars: Option<i32>,
+    pub auto_cleanup: Option<bool>,
+    pub cleanup_threshold: Option<i32>,
+    pub retention_days: Option<i32>,
+}
+
+/// Approval configuration
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ApprovalConfig {
+    pub mode: Option<String>,
+    pub safe_commands: Option<Vec<String>>,
+    pub dangerous_commands: Option<Vec<String>>,
+    pub remember_session: Option<bool>,
+    pub show_command_preview: Option<bool>,
+    pub timeout_seconds: Option<i32>,
+}
+
+/// Display configuration
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DisplayConfig {
+    pub compact: Option<bool>,
+    pub skin: Option<String>,
+    pub streaming: Option<bool>,
+    pub show_reasoning: Option<bool>,
+    pub tool_preview: Option<bool>,
+    pub personality: Option<String>,
+    pub resume_display: Option<String>,
+    pub busy_input_mode: Option<String>,
+    pub bell_on_complete: Option<bool>,
+    pub final_response_markdown: Option<String>,
+    pub inline_diffs: Option<bool>,
+    pub show_cost: Option<bool>,
+    pub tool_progress: Option<String>,
+}
+
+/// Custom provider entry
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct CustomProvider {
+    pub name: Option<String>,
+    pub base_url: Option<String>,
+    pub api_key: Option<String>,
+    pub model: Option<String>,
+    pub api_mode: Option<String>,
+    pub key_env: Option<String>,
+}
+
+/// Fallback provider entry
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct FallbackProvider {
+    pub name: Option<String>,
+    pub model: Option<String>,
+    pub priority: Option<i32>,
+}
+
+/// Providers configuration
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ProvidersConfig {
+    pub custom_providers: Option<Vec<CustomProvider>>,
+    pub fallback_providers: Option<Vec<FallbackProvider>>,
+    pub credential_pool_strategies: Option<serde_json::Value>,
+}
+
+/// Auxiliary task config
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AuxiliaryTaskConfig {
+    pub model: Option<String>,
+    pub provider: Option<String>,
+    pub enabled: Option<bool>,
+}
+
+/// Auxiliary configuration (dynamic map of task types)
+pub type AuxiliaryConfig = serde_json::Value;
+
+/// Hermes configuration structure — all sections
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct HermesConfig {
     /// Raw config.yaml content
@@ -66,7 +151,46 @@ pub struct HermesConfig {
     pub compression: Option<CompressionConfig>,
     /// Checkpoint configuration
     pub checkpoint: Option<CheckpointConfig>,
+    /// Memory configuration
+    pub memory: Option<MemoryConfig>,
+    /// Approval configuration
+    pub approval: Option<ApprovalConfig>,
+    /// Display configuration
+    pub display: Option<DisplayConfig>,
+    /// Providers configuration
+    pub providers: Option<ProvidersConfig>,
+    /// Auxiliary configuration
+    pub auxiliary: Option<AuxiliaryConfig>,
 }
+
+// ============================================================================
+// Mask marker for API keys sent to frontend
+// ============================================================================
+
+/// Mask API key for frontend display: `__MASKED__<last4>`
+/// This format is:
+///   - Consistent and machine-detectable (starts with `__MASKED__`)
+///   - Gives the user a preview of which key is configured (last 4 chars)
+///   - Not confusable with real API keys
+fn mask_api_key(key: &str) -> String {
+    if key.len() <= 4 {
+        return "__MASKED__".to_string();
+    }
+    let visible = &key[key.len() - 4..];
+    format!("__MASKED__{}", visible)
+}
+
+/// Check if a string is a masked API key (from our mask format or legacy ••• format)
+fn is_masked_api_key(value: &str) -> bool {
+    value.starts_with("__MASKED__")
+        || value.starts_with('\u{2022}')
+        || (value.contains("****") && value.contains("sk-"))
+        || value.chars().all(|c| c == '\u{2022}')
+}
+
+// ============================================================================
+// File Helpers
+// ============================================================================
 
 /// Read file content, trying WSL first then Windows
 fn read_file_content(path_in_hermes: &str) -> Option<String> {
@@ -87,6 +211,10 @@ fn read_file_content(path_in_hermes: &str) -> Option<String> {
 
     None
 }
+
+// ============================================================================
+// YAML Parsing
+// ============================================================================
 
 /// Parse YAML config into structured config using serde_yaml
 fn parse_config(yaml_content: &str) -> HermesConfig {
@@ -133,77 +261,267 @@ fn parse_config(yaml_content: &str) -> HermesConfig {
             .and_then(|v| v.as_f64())
     }
 
+    /// Helper: get a section mapping by key
+    fn get_section<'a>(root: &'a serde_yaml::Mapping, key: &str) -> Option<&'a serde_yaml::Mapping> {
+        root.get(serde_yaml::Value::String(key.to_string()))
+            .and_then(|v| v.as_mapping())
+    }
+
     // Extract model section
-    if let Some(model_map) = root
-        .get(serde_yaml::Value::String("model".to_string()))
-        .and_then(|v| v.as_mapping())
-    {
+    if let Some(m) = get_section(root, "model") {
         config.model = Some(ModelConfig {
-            default: get_str(model_map, "default"),
-            provider: get_str(model_map, "provider"),
-            api_key: get_str(model_map, "api_key"),
-            base_url: get_str(model_map, "base_url"),
+            default: get_str(m, "default"),
+            provider: get_str(m, "provider"),
+            api_key: get_str(m, "api_key"),
+            base_url: get_str(m, "base_url"),
         });
     }
 
     // Extract agent section
-    if let Some(agent_map) = root
-        .get(serde_yaml::Value::String("agent".to_string()))
-        .and_then(|v| v.as_mapping())
-    {
+    if let Some(m) = get_section(root, "agent") {
         config.agent = Some(AgentConfig {
-            max_turns: get_i64(agent_map, "max_turns").map(|v| v as i32),
-            timeout: get_i64(agent_map, "timeout").map(|v| v as i32),
-            reasoning_effort: get_str(agent_map, "reasoning_effort"),
+            max_turns: get_i64(m, "max_turns").map(|v| v as i32),
+            timeout: get_i64(m, "timeout").map(|v| v as i32),
+            reasoning_effort: get_str(m, "reasoning_effort"),
         });
     }
 
     // Extract terminal section
-    if let Some(terminal_map) = root
-        .get(serde_yaml::Value::String("terminal".to_string()))
-        .and_then(|v| v.as_mapping())
-    {
+    if let Some(m) = get_section(root, "terminal") {
         config.terminal = Some(TerminalConfig {
-            backend: get_str(terminal_map, "backend"),
-            timeout: get_i64(terminal_map, "timeout").map(|v| v as i32),
-            cwd: get_str(terminal_map, "cwd"),
+            backend: get_str(m, "backend"),
+            timeout: get_i64(m, "timeout").map(|v| v as i32),
+            cwd: get_str(m, "cwd"),
         });
     }
 
     // Extract compression section
-    if let Some(compression_map) = root
-        .get(serde_yaml::Value::String("compression".to_string()))
-        .and_then(|v| v.as_mapping())
-    {
+    if let Some(m) = get_section(root, "compression") {
         config.compression = Some(CompressionConfig {
-            enabled: get_bool(compression_map, "enabled"),
-            threshold: get_f64(compression_map, "threshold"),
-            target_ratio: get_f64(compression_map, "target_ratio"),
+            enabled: get_bool(m, "enabled"),
+            threshold: get_f64(m, "threshold"),
+            target_ratio: get_f64(m, "target_ratio"),
         });
     }
 
-    // Extract checkpoints section
-    if let Some(checkpoint_map) = root
-        .get(serde_yaml::Value::String("checkpoints".to_string()))
-        .and_then(|v| v.as_mapping())
-    {
+    // Extract checkpoints section (note: YAML key is "checkpoints", struct field is "checkpoint")
+    if let Some(m) = get_section(root, "checkpoints") {
         config.checkpoint = Some(CheckpointConfig {
-            enabled: get_bool(checkpoint_map, "enabled"),
-            max_snapshots: get_i64(checkpoint_map, "max_snapshots").map(|v| v as i32),
+            enabled: get_bool(m, "enabled"),
+            max_snapshots: get_i64(m, "max_snapshots").map(|v| v as i32),
         });
+    }
+
+    // Extract memory section
+    if let Some(m) = get_section(root, "memory") {
+        config.memory = Some(MemoryConfig {
+            enabled: get_bool(m, "enabled"),
+            max_chars: get_i64(m, "max_chars").map(|v| v as i32),
+            auto_cleanup: get_bool(m, "auto_cleanup"),
+            cleanup_threshold: get_i64(m, "cleanup_threshold").map(|v| v as i32),
+            retention_days: get_i64(m, "retention_days").map(|v| v as i32),
+        });
+    }
+
+    // Extract approval section
+    if let Some(m) = get_section(root, "approval") {
+        config.approval = Some(ApprovalConfig {
+            mode: get_str(m, "mode"),
+            safe_commands: m.get(serde_yaml::Value::String("safe_commands".to_string()))
+                .and_then(|v| v.as_sequence())
+                .map(|seq| seq.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect()),
+            dangerous_commands: m.get(serde_yaml::Value::String("dangerous_commands".to_string()))
+                .and_then(|v| v.as_sequence())
+                .map(|seq| seq.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect()),
+            remember_session: get_bool(m, "remember_session"),
+            show_command_preview: get_bool(m, "show_command_preview"),
+            timeout_seconds: get_i64(m, "timeout_seconds").map(|v| v as i32),
+        });
+    }
+
+    // Extract display section
+    if let Some(m) = get_section(root, "display") {
+        config.display = Some(DisplayConfig {
+            compact: get_bool(m, "compact"),
+            skin: get_str(m, "skin"),
+            streaming: get_bool(m, "streaming"),
+            show_reasoning: get_bool(m, "show_reasoning"),
+            tool_preview: get_bool(m, "tool_preview"),
+            personality: get_str(m, "personality"),
+            resume_display: get_str(m, "resume_display"),
+            busy_input_mode: get_str(m, "busy_input_mode"),
+            bell_on_complete: get_bool(m, "bell_on_complete"),
+            final_response_markdown: get_str(m, "final_response_markdown"),
+            inline_diffs: get_bool(m, "inline_diffs"),
+            show_cost: get_bool(m, "show_cost"),
+            tool_progress: get_str(m, "tool_progress"),
+        });
+    }
+
+    // Extract providers section
+    if let Some(m) = get_section(root, "providers") {
+        let custom_providers = m.get(serde_yaml::Value::String("custom_providers".to_string()))
+            .and_then(|v| v.as_sequence())
+            .map(|seq| {
+                seq.iter().filter_map(|v| {
+                    let entry = v.as_mapping()?;
+                    Some(CustomProvider {
+                        name: get_str(entry, "name"),
+                        base_url: get_str(entry, "base_url"),
+                        api_key: get_str(entry, "api_key"),
+                        model: get_str(entry, "model"),
+                        api_mode: get_str(entry, "api_mode"),
+                        key_env: get_str(entry, "key_env"),
+                    })
+                }).collect()
+            });
+
+        let fallback_providers = m.get(serde_yaml::Value::String("fallback_providers".to_string()))
+            .and_then(|v| v.as_sequence())
+            .map(|seq| {
+                seq.iter().filter_map(|v| {
+                    let entry = v.as_mapping()?;
+                    Some(FallbackProvider {
+                        name: get_str(entry, "name"),
+                        model: get_str(entry, "model"),
+                        priority: get_i64(entry, "priority").map(|v| v as i32),
+                    })
+                }).collect()
+            });
+
+        let credential_pool_strategies = m.get(serde_yaml::Value::String("credential_pool_strategies".to_string()))
+            .and_then(|v| serde_json::to_value(v).ok());
+
+        config.providers = Some(ProvidersConfig {
+            custom_providers,
+            fallback_providers,
+            credential_pool_strategies,
+        });
+    }
+
+    // Extract auxiliary section (dynamic map)
+    if let Some(aux) = root.get(serde_yaml::Value::String("auxiliary".to_string())) {
+        config.auxiliary = Some(serde_json::to_value(aux).unwrap_or(serde_json::Value::Object(Default::default())));
     }
 
     config
 }
 
-/// Mask API key for frontend display, keeping only last 4 chars
-fn mask_api_key(key: &str) -> String {
-    if key.len() <= 8 {
-        return "••••••••".to_string();
+// ============================================================================
+// YAML Merge — writes config by reading-modifying-writing config.yaml
+// ============================================================================
+
+/// Merge a section into the existing config.yaml using Python + PyYAML.
+/// This replaces the old `hermes_config_set` approach which relied on a CLI
+/// command that may not exist. Uses base64-encoded payload via stdin.
+fn yaml_merge_section(section: &str, data: &serde_json::Value) -> Result<(), String> {
+    // Validate section name
+    if section.chars().any(|c| !c.is_alphanumeric() && c != '_' && c != '-') {
+        return Err(format!("Invalid section name: {}", section));
     }
-    let visible = &key[key.len() - 4..];
-    format!("••••••••{}", visible)
+
+    // Strip masked API keys before writing — they are display-only markers
+    let mut clean_data = data.clone();
+    if section == "model" {
+        if let Some(obj) = clean_data.as_object_mut() {
+            if let Some(api_key) = obj.get("api_key").and_then(|v| v.as_str()) {
+                if is_masked_api_key(api_key) {
+                    obj.remove("api_key");
+                }
+            }
+            // Also strip custom_providers api_keys if masked
+        }
+    }
+    if section == "providers" {
+        if let Some(obj) = clean_data.as_object_mut() {
+            if let Some(custom_providers) = obj.get_mut("custom_providers").and_then(|v| v.as_array_mut()) {
+                for provider in custom_providers.iter_mut() {
+                    if let Some(p) = provider.as_object_mut() {
+                        if let Some(api_key) = p.get("api_key").and_then(|v| v.as_str()) {
+                            if is_masked_api_key(api_key) {
+                                p.remove("api_key");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let payload = serde_json::json!({
+        "section": section,
+        "data": clean_data,
+    });
+    let payload_b64 = STANDARD.encode(
+        serde_json::to_string(&payload).map_err(|e| format!("Failed to encode payload: {}", e))?
+    );
+
+    let script = r#"
+import sys, json, base64, os
+
+payload = json.loads(base64.b64decode(sys.stdin.read().strip()).decode('utf-8'))
+section = payload['section']
+data = payload['data']
+config_path = os.path.expanduser('~/.hermes/config.yaml')
+
+# Read existing config
+if os.path.exists(config_path):
+    with open(config_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+else:
+    content = ''
+    os.makedirs(os.path.dirname(config_path), exist_ok=True)
+
+# Parse existing YAML
+try:
+    import yaml
+    config = yaml.safe_load(content) or {}
+except Exception:
+    config = {}
+
+# Ensure top-level is a dict
+if not isinstance(config, dict):
+    config = {}
+
+# Handle section key mapping (frontend 'checkpoint' -> YAML 'checkpoints')
+yaml_section = section
+if section == 'checkpoint':
+    yaml_section = 'checkpoints'
+
+# Merge: for dict sections, deep-update; otherwise replace
+if yaml_section in config and isinstance(config[yaml_section], dict) and isinstance(data, dict):
+    # Remove None values from data (they mean "don't update this field")
+    cleaned = {k: v for k, v in data.items() if v is not None}
+    config[yaml_section].update(cleaned)
+elif data is not None:
+    config[yaml_section] = data
+
+# Write back
+with open(config_path, 'w', encoding='utf-8') as f:
+    yaml.dump(config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+
+print('success')
+"#;
+
+    let cmd = format!("echo '{}' | python3 -c '{}'", payload_b64, script.replace('\'', "'\\''"));
+
+    let output = create_command("wsl")
+        .args(["-e", "bash", "-c", &cmd])
+        .output()
+        .map_err(|e| format!("Failed to merge config section: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to merge config section '{}': {}", section, stderr));
+    }
+
+    println!("[Config] Section '{}' merged successfully", section);
+    Ok(())
 }
+
+// ============================================================================
+// Tauri Commands
+// ============================================================================
 
 /// Load Hermes configuration
 #[tauri::command]
@@ -220,12 +538,8 @@ pub fn load_config() -> Result<HermesConfig, String> {
             // SECURITY: Do NOT log raw YAML as it may contain API keys
             println!("[Config] Loaded config from WSL ({} bytes)", raw.len());
             let mut config = parse_config(&raw);
-            // Mask API key before sending to frontend
-            if let Some(ref mut model) = config.model {
-                if let Some(ref api_key) = model.api_key.clone() {
-                    model.api_key = Some(mask_api_key(api_key));
-                }
-            }
+            // Mask API keys before sending to frontend
+            mask_config_api_keys(&mut config);
             println!(
                 "[Config] Parsed config - model: {:?}, provider: {:?}",
                 config.model.as_ref().and_then(|m| m.default.as_ref()),
@@ -240,12 +554,7 @@ pub fn load_config() -> Result<HermesConfig, String> {
         // SECURITY: Do NOT log raw YAML as it may contain API keys
         println!("[Config] Loaded config from Windows ({} bytes)", raw.len());
         let mut config = parse_config(&raw);
-        // Mask API key before sending to frontend
-        if let Some(ref mut model) = config.model {
-            if let Some(ref api_key) = model.api_key.clone() {
-                model.api_key = Some(mask_api_key(api_key));
-            }
-        }
+        mask_config_api_keys(&mut config);
         println!(
             "[Config] Loaded from Windows - model: {:?}, provider: {:?}",
             config.model.as_ref().and_then(|m| m.default.as_ref()),
@@ -258,52 +567,27 @@ pub fn load_config() -> Result<HermesConfig, String> {
     Ok(HermesConfig::default())
 }
 
-/// Helper function to set a config value using Hermes CLI
-/// Uses base64 encoding to safely pass key and value through shell
-fn hermes_config_set(key: &str, value: &str) -> Result<(), String> {
-    // SECURITY: Do NOT log config values as they may contain API keys
-    println!("[Config] Setting {}", key);
-
-    // Encode both key and value in base64 to avoid shell injection
-    let key_b64 = STANDARD.encode(key);
-    let value_b64 = STANDARD.encode(value);
-
-    let script = format!(
-        r#"
-import os
-import base64
-import subprocess
-
-key = base64.b64decode("{}").decode('utf-8')
-value = base64.b64decode("{}").decode('utf-8')
-
-# Run hermes config set with decoded values
-result = subprocess.run(
-    [os.path.expanduser("~/.hermes/hermes-agent/venv/bin/python"), '-m', 'hermes_cli.main', 'config', 'set', key, value],
-    capture_output=True,
-    text=True
-)
-if result.returncode != 0:
-    raise Exception(result.stderr)
-print("success")
-"#,
-        key_b64, value_b64
-    );
-
-    let output = create_command("wsl")
-        .args(["python3", "-c", &script])
-        .output()
-        .map_err(|e| format!("Failed to run hermes config set: {}", e))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Failed to set {}: {}", key, stderr));
+/// Mask all API keys in the config before sending to frontend
+fn mask_config_api_keys(config: &mut HermesConfig) {
+    // Mask model.api_key
+    if let Some(ref mut model) = config.model {
+        if let Some(ref api_key) = model.api_key.clone() {
+            model.api_key = Some(mask_api_key(api_key));
+        }
     }
-
-    Ok(())
+    // Mask custom_providers[].api_key
+    if let Some(ref mut providers) = config.providers {
+        if let Some(ref mut custom) = providers.custom_providers {
+            for provider in custom.iter_mut() {
+                if let Some(ref api_key) = provider.api_key.clone() {
+                    provider.api_key = Some(mask_api_key(api_key));
+                }
+            }
+        }
+    }
 }
 
-/// Save Hermes configuration - uses base64 encoding for safe shell transport
+/// Save Hermes configuration
 #[tauri::command]
 pub fn save_config(config: HermesConfig) -> Result<(), String> {
     println!("[Config] Saving configuration...");
@@ -312,15 +596,11 @@ pub fn save_config(config: HermesConfig) -> Result<(), String> {
     // If raw content is provided, write directly using base64 encoding
     if let Some(raw) = &config.raw {
         let encoded = STANDARD.encode(raw);
-
         let script = format!(
             r#"
-import os
-import base64
-
+import os, base64
 filepath = os.path.expanduser("~/.hermes/config.yaml")
 os.makedirs(os.path.dirname(filepath), exist_ok=True)
-
 content = base64.b64decode("{}").decode('utf-8')
 with open(filepath, 'w', encoding='utf-8') as f:
     f.write(content)
@@ -329,101 +609,72 @@ print("success")
             encoded
         );
 
-        let wsl_result = create_command("wsl")
+        let output = create_command("wsl")
             .args(["python3", "-c", &script])
             .output();
 
-        if wsl_result.is_ok() && wsl_result.unwrap().status.success() {
-            println!("[Config] Raw configuration saved to WSL");
-            return Ok(());
+        if let Ok(out) = output {
+            if out.status.success() {
+                println!("[Config] Raw configuration saved to WSL");
+                return Ok(());
+            }
         }
     }
 
-    // Use Hermes CLI to set individual config values
-    // This ensures proper YAML handling and validation
-
-    // Model config
+    // Structured save: merge each section via YAML
     if let Some(model) = &config.model {
-        if let Some(default) = &model.default {
-            if !default.is_empty() {
-                hermes_config_set("model.default", default)?;
-            }
-        }
-        if let Some(provider) = &model.provider {
-            if !provider.is_empty() {
-                hermes_config_set("model.provider", provider)?;
-            }
-        }
-        if let Some(api_key) = &model.api_key {
-            if !api_key.is_empty() && !api_key.starts_with("••••••••") {
-                hermes_config_set("model.api_key", api_key)?;
-            }
-        }
-        if let Some(base_url) = &model.base_url {
-            if !base_url.is_empty() {
-                hermes_config_set("model.base_url", base_url)?;
-            }
-        }
-    } else {
-        println!("[Config] No model config provided");
+        let data = serde_json::to_value(model)
+            .map_err(|e| format!("Failed to serialize model config: {}", e))?;
+        yaml_merge_section("model", &data)?;
     }
 
-    // Agent config
     if let Some(agent) = &config.agent {
-        if let Some(max_turns) = agent.max_turns {
-            hermes_config_set("agent.max_turns", &max_turns.to_string())?;
-        }
-        if let Some(timeout) = agent.timeout {
-            hermes_config_set("agent.timeout", &timeout.to_string())?;
-        }
-        if let Some(reasoning_effort) = &agent.reasoning_effort {
-            if !reasoning_effort.is_empty() {
-                hermes_config_set("agent.reasoning_effort", reasoning_effort)?;
-            }
-        }
+        let data = serde_json::to_value(agent)
+            .map_err(|e| format!("Failed to serialize agent config: {}", e))?;
+        yaml_merge_section("agent", &data)?;
     }
 
-    // Terminal config
     if let Some(terminal) = &config.terminal {
-        if let Some(backend) = &terminal.backend {
-            if !backend.is_empty() {
-                hermes_config_set("terminal.backend", backend)?;
-            }
-        }
-        if let Some(timeout) = terminal.timeout {
-            hermes_config_set("terminal.timeout", &timeout.to_string())?;
-        }
-        if let Some(cwd) = &terminal.cwd {
-            if !cwd.is_empty() {
-                hermes_config_set("terminal.cwd", cwd)?;
-            }
-        }
+        let data = serde_json::to_value(terminal)
+            .map_err(|e| format!("Failed to serialize terminal config: {}", e))?;
+        yaml_merge_section("terminal", &data)?;
     }
 
-    // Compression config
     if let Some(compression) = &config.compression {
-        if let Some(enabled) = compression.enabled {
-            hermes_config_set("compression.enabled", &enabled.to_string())?;
-        }
-        if let Some(threshold) = compression.threshold {
-            hermes_config_set("compression.threshold", &threshold.to_string())?;
-        }
-        if let Some(target_ratio) = compression.target_ratio {
-            hermes_config_set("compression.target_ratio", &target_ratio.to_string())?;
-        }
+        let data = serde_json::to_value(compression)
+            .map_err(|e| format!("Failed to serialize compression config: {}", e))?;
+        yaml_merge_section("compression", &data)?;
     }
 
-    // Checkpoint config
     if let Some(checkpoint) = &config.checkpoint {
-        if let Some(enabled) = checkpoint.enabled {
-            hermes_config_set("checkpoints.enabled", &enabled.to_string())?;
-        }
-        if let Some(max_snapshots) = checkpoint.max_snapshots {
-            hermes_config_set("checkpoints.max_snapshots", &max_snapshots.to_string())?;
-        }
+        let data = serde_json::to_value(checkpoint)
+            .map_err(|e| format!("Failed to serialize checkpoint config: {}", e))?;
+        yaml_merge_section("checkpoint", &data)?;
     }
 
-    println!("[Config] Configuration saved successfully via Hermes CLI");
+    if let Some(memory) = &config.memory {
+        let data = serde_json::to_value(memory)
+            .map_err(|e| format!("Failed to serialize memory config: {}", e))?;
+        yaml_merge_section("memory", &data)?;
+    }
+
+    if let Some(approval) = &config.approval {
+        let data = serde_json::to_value(approval)
+            .map_err(|e| format!("Failed to serialize approval config: {}", e))?;
+        yaml_merge_section("approval", &data)?;
+    }
+
+    if let Some(providers) = &config.providers {
+        let data = serde_json::to_value(providers)
+            .map_err(|e| format!("Failed to serialize providers config: {}", e))?;
+        yaml_merge_section("providers", &data)?;
+    }
+
+    if let Some(auxiliary) = &config.auxiliary {
+        yaml_merge_section("auxiliary", auxiliary)?;
+    }
+
+    println!("[Config] Configuration saved successfully via YAML merge");
     Ok(())
 }
 
@@ -437,7 +688,6 @@ pub fn get_data_dir() -> String {
 #[tauri::command]
 pub async fn check_data_dir_exists() -> bool {
     println!("[Config] Checking if Hermes data directory exists...");
-    // Use spawn_blocking to avoid blocking main thread
     let result = tokio::task::spawn_blocking(|| {
         // Check WSL first
         if let Ok(output) = create_command("wsl")
@@ -496,12 +746,9 @@ pub fn update_config_raw(yaml_text: String) -> Result<(), String> {
 
     let script = format!(
         r#"
-import os
-import base64
-
+import os, base64
 filepath = os.path.expanduser("~/.hermes/config.yaml")
 os.makedirs(os.path.dirname(filepath), exist_ok=True)
-
 content = base64.b64decode("{}").decode('utf-8')
 with open(filepath, 'w', encoding='utf-8') as f:
     f.write(content)
@@ -533,7 +780,10 @@ pub fn get_config_section(section: String) -> Result<serde_json::Value, String> 
     let config_value = serde_json::to_value(&config)
         .map_err(|e| format!("Failed to serialize config: {}", e))?;
 
-    let data = config_value.get(&section).cloned().unwrap_or(serde_json::Value::Null);
+    // Map 'checkpoint' struct field to 'checkpoint' key in JSON
+    let json_key = section.as_str();
+
+    let data = config_value.get(json_key).cloned().unwrap_or(serde_json::Value::Null);
 
     Ok(serde_json::json!({
         "section": section,
@@ -541,41 +791,13 @@ pub fn get_config_section(section: String) -> Result<serde_json::Value, String> 
     }))
 }
 
-/// Update a specific config section
+/// Update a specific config section using YAML merge
 #[tauri::command]
 pub fn update_config_section(section: String, data: serde_json::Value) -> Result<serde_json::Value, String> {
     println!("[Config] Updating config section: {}", section);
 
-    let keys: Vec<&str> = match section.as_str() {
-        "model" => vec!["default", "provider", "api_key", "base_url"],
-        "agent" => vec!["max_turns", "timeout", "reasoning_effort"],
-        "terminal" => vec!["backend", "timeout", "cwd"],
-        "compression" => vec!["enabled", "threshold", "target_ratio"],
-        "checkpoint" => vec!["enabled", "max_snapshots"],
-        _ => {
-            let data_map = data.as_object();
-            if let Some(map) = data_map {
-                map.keys().map(|k| k.as_str()).collect()
-            } else {
-                vec![]
-            }
-        }
-    };
-
-    for key in keys {
-        if let Some(value) = data.get(key) {
-            let config_key = format!("{}.{}", section, key);
-            let value_str = match value {
-                serde_json::Value::String(s) => s.clone(),
-                serde_json::Value::Number(n) => n.to_string(),
-                serde_json::Value::Bool(b) => b.to_string(),
-                _ => continue,
-            };
-            if !value_str.is_empty() {
-                hermes_config_set(&config_key, &value_str)?;
-            }
-        }
-    }
+    // Use YAML merge instead of broken hermes_config_set CLI
+    yaml_merge_section(&section, &data)?;
 
     Ok(serde_json::json!({
         "ok": true,
@@ -584,7 +806,7 @@ pub fn update_config_section(section: String, data: serde_json::Value) -> Result
     }))
 }
 
-/// Export configuration
+/// Export configuration (all sections)
 #[tauri::command]
 pub fn export_config() -> Result<serde_json::Value, String> {
     println!("[Config] Exporting configuration...");
@@ -592,13 +814,39 @@ pub fn export_config() -> Result<serde_json::Value, String> {
     let config = load_config()?;
     let now = chrono::Utc::now().to_rfc3339();
 
-    Ok(serde_json::json!({
-        "model": config.model.unwrap_or_default(),
-        "agent": config.agent.unwrap_or_default(),
-        "terminal": config.terminal.unwrap_or_default(),
-        "compression": config.compression.unwrap_or_default(),
-        "checkpoint": config.checkpoint.unwrap_or_default(),
-        "exported_at": now,
-        "version": "0.1.0"
-    }))
+    let mut export = serde_json::Map::new();
+    if let Some(model) = config.model {
+        export.insert("model".to_string(), serde_json::to_value(model).unwrap_or_default());
+    }
+    if let Some(agent) = config.agent {
+        export.insert("agent".to_string(), serde_json::to_value(agent).unwrap_or_default());
+    }
+    if let Some(terminal) = config.terminal {
+        export.insert("terminal".to_string(), serde_json::to_value(terminal).unwrap_or_default());
+    }
+    if let Some(compression) = config.compression {
+        export.insert("compression".to_string(), serde_json::to_value(compression).unwrap_or_default());
+    }
+    if let Some(checkpoint) = config.checkpoint {
+        export.insert("checkpoint".to_string(), serde_json::to_value(checkpoint).unwrap_or_default());
+    }
+    if let Some(memory) = config.memory {
+        export.insert("memory".to_string(), serde_json::to_value(memory).unwrap_or_default());
+    }
+    if let Some(approval) = config.approval {
+        export.insert("approval".to_string(), serde_json::to_value(approval).unwrap_or_default());
+    }
+    if let Some(providers) = config.providers {
+        export.insert("providers".to_string(), serde_json::to_value(providers).unwrap_or_default());
+    }
+    if let Some(auxiliary) = config.auxiliary {
+        export.insert("auxiliary".to_string(), auxiliary);
+    }
+    if let Some(display) = config.display {
+        export.insert("display".to_string(), serde_json::to_value(display).unwrap_or_default());
+    }
+    export.insert("exported_at".to_string(), serde_json::Value::String(now));
+    export.insert("version".to_string(), serde_json::Value::String("1.0.0".to_string()));
+
+    Ok(serde_json::Value::Object(export))
 }

@@ -709,7 +709,7 @@ function doPersist(sessions: Record<string, PerSessionState>) {
         const sessionIds = Object.keys(sessions);
         if (sessionIds.length > 0) {
           // Sort by message count descending — truncate the largest session
-          const sorted = sessionIds.sort(
+          const sorted = [...sessionIds].sort(
             (a, b) => (sessions[b]?.messages.length ?? 0) - (sessions[a]?.messages.length ?? 0)
           );
           const largestId = sorted[0];
@@ -717,10 +717,17 @@ function doPersist(sessions: Record<string, PerSessionState>) {
             const currentCount = sessions[largestId].messages.length;
             const keepCount = Math.max(50, Math.floor(currentCount / 2));
             logger.warn(`[ChatStore] Truncating session ${largestId}: ${currentCount} -> ${keepCount} messages`);
-            sessions[largestId].messages = sessions[largestId].messages.slice(-keepCount);
-            useChatStore.setState({ sessions });
+            // Build a new sessions object instead of mutating the existing one
+            const truncatedSessions = {
+              ...sessions,
+              [largestId]: {
+                ...sessions[largestId],
+                messages: sessions[largestId].messages.slice(-keepCount),
+              },
+            };
+            useChatStore.setState({ sessions: truncatedSessions });
             isPersisting = false;
-            doPersist(sessions);
+            doPersist(truncatedSessions);
             return;
           }
         }

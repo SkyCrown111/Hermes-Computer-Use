@@ -88,38 +88,38 @@ else:
     let char_count = content.chars().count();
 
     // Parse sections (split by ## headers)
+    // Fixed: handle first ## header correctly by capturing title without
+    // requiring non-empty current_section
     let mut sections = Vec::new();
     let mut current_section = String::new();
-    let mut current_start = 1;
+    let mut current_start: usize = 1;
     let mut current_title: Option<String> = None;
-    let mut line_num = 1;
-    let mut section_id = 0;
+    let mut line_num: usize = 1;
+    let mut section_id: usize = 0;
 
     for line in content.lines() {
-        if line.starts_with("## ") && !current_section.is_empty() {
-            // Save current section
-            let char_count = current_section.chars().count();
-            sections.push(MemorySection {
-                id: format!("section-{}", section_id),
-                title: current_title.clone(),
-                content: current_section.trim().to_string(),
-                start_line: current_start,
-                end_line: line_num - 1,
-                char_count,
-            });
-            section_id += 1;
+        if line.starts_with("## ") {
+            // Save previous section if it has content
+            if !current_section.trim().is_empty() {
+                let char_count = current_section.chars().count();
+                sections.push(MemorySection {
+                    id: format!("section-{}", section_id),
+                    title: current_title.clone(),
+                    content: current_section.trim().to_string(),
+                    start_line: current_start,
+                    end_line: line_num - 1,
+                    char_count,
+                });
+                section_id += 1;
+            }
 
-            // Start new section
+            // Start new section with this header's title
             current_section = String::new();
             current_start = line_num;
             current_title = Some(line[3..].to_string());
         } else {
-            if current_section.is_empty() && line.starts_with("## ") {
-                current_title = Some(line[3..].to_string());
-            } else {
-                current_section.push_str(line);
-                current_section.push('\n');
-            }
+            current_section.push_str(line);
+            current_section.push('\n');
         }
         line_num += 1;
     }
@@ -279,12 +279,16 @@ pub fn search_memories(query: String, case_sensitive: bool) -> Result<Vec<Memory
         return Err("Query cannot be empty".to_string());
     }
 
+    // Use base64 encoding for the query to avoid shell injection
+    let query_b64 = STANDARD.encode(&query);
+
     let script = format!(
         r#"
 import os
 import json
+import base64
 
-query = "{}"
+query = base64.b64decode("{}").decode('utf-8')
 case_sensitive = {}
 results = []
 
@@ -292,12 +296,12 @@ for filename in ["MEMORY.md", "USER.md"]:
     filepath = os.path.expanduser("~/.hermes/memories/" + filename)
     if not os.path.isfile(filepath):
         continue
-    
+
     with open(filepath, 'r', encoding='utf-8') as f:
         lines = f.readlines()
-    
+
     search_query = query if case_sensitive else query.lower()
-    
+
     for i, line in enumerate(lines):
         search_line = line if case_sensitive else line.lower()
         if search_query in search_line:
@@ -313,7 +317,7 @@ for filename in ["MEMORY.md", "USER.md"]:
 
 print(json.dumps(results))
 "#,
-        query.replace("\"", "\\\""),
+        query_b64,
         case_sensitive
     );
 

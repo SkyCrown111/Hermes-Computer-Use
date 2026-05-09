@@ -407,7 +407,8 @@ def parse_args() -> Dict:
                 return {
                     'query': data.get('query', ''),
                     'session_id': data.get('session_id'),
-                    'history': data.get('history', [])
+                    'history': data.get('history', []),
+                    'model_override': data.get('model_override'),
                 }
         except Exception:
             pass
@@ -422,7 +423,8 @@ def parse_args() -> Dict:
             return {
                 'query': data.get('query', ''),
                 'session_id': data.get('session_id'),
-                'history': data.get('history', [])
+                'history': data.get('history', []),
+                'model_override': data.get('model_override'),
             }
         except json.JSONDecodeError as e:
             emit_error(f'Invalid JSON input: {e}')
@@ -434,7 +436,8 @@ def parse_args() -> Dict:
         return {
             'query': query,
             'session_id': session_id,
-            'history': []
+            'history': [],
+            'model_override': None,
         }
 
 # ============================================================================
@@ -494,6 +497,7 @@ def main() -> None:
     query = args['query']
     session_id = args['session_id']
     history = args['history']
+    model_override = args.get('model_override')
 
     if not query:
         emit_error('Empty query')
@@ -504,6 +508,17 @@ def main() -> None:
 
     # Resolve runtime configuration
     config = resolve_runtime_config()
+
+    # Apply model_override if provided (takes precedence over config.yaml)
+    if model_override:
+        if isinstance(model_override, dict):
+            if 'model' in model_override and model_override['model']:
+                config['model'] = model_override['model']
+                print(f'DEBUG: Model override: model={model_override["model"]}', file=sys.stderr)
+            if 'provider' in model_override and model_override['provider']:
+                config['provider'] = model_override['provider']
+                print(f'DEBUG: Model override: provider={model_override["provider"]}', file=sys.stderr)
+
     print(f'DEBUG: Using model={config["model"]}, provider={config["provider"]}, base_url={config["base_url"]}',
           file=sys.stderr)
     print(f'DEBUG: History messages: {len(history)}', file=sys.stderr)

@@ -166,7 +166,7 @@ except Exception as e:
     }
 }
 
-/// Write MCP config to WSL
+/// Write MCP config to WSL using base64 encoding via stdin for safe transport
 fn write_mcp_config(mcp_config: &serde_json::Value) -> Result<(), String> {
     let mcp_str = serde_json::to_string(mcp_config)
         .map_err(|e| format!("Failed to serialize MCP config: {}", e))?;
@@ -174,25 +174,27 @@ fn write_mcp_config(mcp_config: &serde_json::Value) -> Result<(), String> {
     // Use base64 encoding to avoid shell escaping issues
     let encoded = STANDARD.encode(&mcp_str);
 
-    let script = format!(r#"
+    let script = r#"
 import os
 import json
 import yaml
 import base64
+import sys
 
 filepath = os.path.expanduser("~/.hermes/config.yaml")
 os.makedirs(os.path.dirname(filepath), exist_ok=True)
 
 # Read existing config
-config = {{}}
+config = {}
 try:
     with open(filepath, 'r', encoding='utf-8') as f:
-        config = yaml.safe_load(f) or {{}}
+        config = yaml.safe_load(f) or {}
 except:
     pass
 
-# Decode MCP config from base64
-mcp_json = json.loads(base64.b64decode("{}").decode('utf-8'))
+# Decode MCP config from base64 read from stdin
+encoded_data = sys.stdin.read().strip()
+mcp_json = json.loads(base64.b64decode(encoded_data).decode('utf-8'))
 config['mcp'] = mcp_json
 
 # Write back
@@ -200,16 +202,27 @@ with open(filepath, 'w', encoding='utf-8') as f:
     yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
 
 print("Config saved successfully")
-"#, encoded);
+"#;
 
-    let output = create_command("wsl")
+    let mut child = create_command("wsl")
         .args(["-e", "bash", "-c", &format!("python3 -c '{}'", script.replace("'", "'\\''"))])
-        .output()
+        .stdin(std::process::Stdio::piped())
+        .spawn()
         .map_err(|e| format!("Failed to write MCP config: {}", e))?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Failed to save MCP config: {}", stderr));
+    if let Some(mut stdin) = child.stdin.take() {
+        use std::io::Write;
+        stdin
+            .write_all(encoded.as_bytes())
+            .map_err(|e| format!("Failed to write MCP config to stdin: {}", e))?;
+    }
+
+    let status = child
+        .wait()
+        .map_err(|e| format!("Failed to wait for MCP config write: {}", e))?;
+
+    if !status.success() {
+        return Err("Failed to save MCP config".to_string());
     }
 
     Ok(())

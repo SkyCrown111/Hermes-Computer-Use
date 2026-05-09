@@ -19,9 +19,11 @@ const VALID_PLATFORM_TYPES: &[&str] = &[
     "whatsapp",
     "wechat",
     "feishu",
+    "lark",
     "weixin",
     "qqbot",
     "api_server",
+    "api",
     "webhook",
 ];
 
@@ -76,6 +78,7 @@ fn get_platform_definitions() -> Vec<(&'static str, &'static str, &'static str)>
         ("whatsapp", "WhatsApp", "💬"),
         ("wechat", "企业微信", "🏢"),
         ("feishu", "飞书", "🪽"),
+        ("lark", "Lark", "🪽"),
         ("weixin", "微信", "📱"),
         ("qqbot", "QQ Bot", "🤖"),
         ("api_server", "API Server", "🔌"),
@@ -282,7 +285,7 @@ with open(filepath, 'w', encoding='utf-8') as f:
     Ok(())
 }
 
-/// Enable platform
+/// Enable platform - updates gateway state and attempts to connect via Hermes gateway
 #[tauri::command]
 pub fn enable_platform(platform_type: String) -> Result<(), String> {
     println!("[Platforms] Enabling platform: {}", platform_type);
@@ -292,14 +295,24 @@ pub fn enable_platform(platform_type: String) -> Result<(), String> {
 
     let mut gateway_state = read_gateway_state()?;
 
-    let platform_entry = serde_json::json!({
+    let now = chrono::Utc::now().to_rfc3339();
+
+    let mut platform_entry = serde_json::json!({
         "config": {},
-        "state": "connected",
-        "updated_at": chrono::Utc::now().to_rfc3339()
+        "state": "connecting",
+        "updated_at": now
     });
 
     if let Some(platforms) = gateway_state.get_mut("platforms") {
         if let Some(platforms_obj) = platforms.as_object_mut() {
+            // Preserve existing config if re-enabling
+            if let Some(existing) = platforms_obj.get(&valid_type) {
+                if let Some(existing_config) = existing.get("config") {
+                    if let Some(entry_obj) = platform_entry.as_object_mut() {
+                        entry_obj.insert("config".to_string(), existing_config.clone());
+                    }
+                }
+            }
             platforms_obj.insert(valid_type.clone(), platform_entry);
         }
     } else {
@@ -309,6 +322,42 @@ pub fn enable_platform(platform_type: String) -> Result<(), String> {
     }
 
     write_gateway_state(&gateway_state)?;
+
+    // Try to trigger the gateway to connect the platform via hermes CLI
+    let connect_result = create_command("wsl")
+        .args([
+            "python3", "-c",
+            &format!("import os; venv = os.path.expanduser('~/.hermes/hermes-agent/venv/bin/python'); import subprocess; subprocess.run([venv, '-m', 'hermes_cli.main', 'platform', 'connect', '{}'])", valid_type),
+        ])
+        .output();
+
+    match connect_result {
+        Ok(output) if output.status.success() => {
+            println!("[Platforms] Gateway connected platform: {}", valid_type);
+            // Update state to connected
+            let mut gateway_state = read_gateway_state()?;
+            if let Some(platforms) = gateway_state.get_mut("platforms") {
+                if let Some(platforms_obj) = platforms.as_object_mut() {
+                    if let Some(platform) = platforms_obj.get_mut(&valid_type) {
+                        if let Some(platform_obj) = platform.as_object_mut() {
+                            platform_obj.insert("state".to_string(), serde_json::Value::String("connected".to_string()));
+                            platform_obj.insert("updated_at".to_string(), serde_json::Value::String(chrono::Utc::now().to_rfc3339()));
+                        }
+                    }
+                }
+            }
+            write_gateway_state(&gateway_state)?;
+        }
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            println!("[Platforms] Gateway connect failed (platform state saved as 'connecting'): {}", stderr);
+            // Leave state as "connecting" — the gateway may connect later
+        }
+        Err(e) => {
+            println!("[Platforms] Gateway CLI not available (platform state saved as 'connecting'): {}", e);
+        }
+    }
+
     println!("[Platforms] Enabled platform: {}", valid_type);
     Ok(())
 }
@@ -416,7 +465,7 @@ pub fn test_platform_connection(platform_type: String) -> Result<serde_json::Val
     }
 }
 
-/// Reconnect platform
+/// Reconnect platform - attempts to reconnect via Hermes gateway
 #[tauri::command]
 pub fn reconnect_platform(platform_type: String) -> Result<(), String> {
     println!("[Platforms] Reconnecting platform: {}", platform_type);
@@ -426,26 +475,71 @@ pub fn reconnect_platform(platform_type: String) -> Result<(), String> {
 
     let mut gateway_state = read_gateway_state()?;
 
+    // Check if platform exists in state
+    let platform_exists = gateway_state
+        .get("platforms")
+        .and_then(|p| p.get(&valid_type))
+        .is_some();
+
+    if !platform_exists {
+        return Err(format!("Platform not found: {}", valid_type));
+    }
+
+    // Update state to "connecting"
     if let Some(platforms) = gateway_state.get_mut("platforms") {
         if let Some(platforms_obj) = platforms.as_object_mut() {
             if let Some(platform) = platforms_obj.get_mut(&valid_type) {
                 if let Some(platform_obj) = platform.as_object_mut() {
                     platform_obj.insert(
                         "state".to_string(),
-                        serde_json::Value::String("connected".to_string()),
+                        serde_json::Value::String("connecting".to_string()),
                     );
                     platform_obj.insert(
                         "updated_at".to_string(),
                         serde_json::Value::String(chrono::Utc::now().to_rfc3339()),
                     );
                 }
-            } else {
-                return Err(format!("Platform not found: {}", valid_type));
             }
         }
     }
-
     write_gateway_state(&gateway_state)?;
+
+    // Try to trigger reconnect via hermes CLI
+    let connect_result = create_command("wsl")
+        .args([
+            "python3", "-c",
+            &format!("import os; venv = os.path.expanduser('~/.hermes/hermes-agent/venv/bin/python'); import subprocess; subprocess.run([venv, '-m', 'hermes_cli.main', 'platform', 'connect', '{}'])", valid_type),
+        ])
+        .output();
+
+    // Update state based on result
+    let new_state = match connect_result {
+        Ok(output) if output.status.success() => "connected",
+        _ => "error",
+    };
+
+    let mut gateway_state = read_gateway_state()?;
+    if let Some(platforms) = gateway_state.get_mut("platforms") {
+        if let Some(platforms_obj) = platforms.as_object_mut() {
+            if let Some(platform) = platforms_obj.get_mut(&valid_type) {
+                if let Some(platform_obj) = platform.as_object_mut() {
+                    platform_obj.insert("state".to_string(), serde_json::Value::String(new_state.to_string()));
+                    platform_obj.insert("updated_at".to_string(), serde_json::Value::String(chrono::Utc::now().to_rfc3339()));
+                    if new_state == "error" {
+                        platform_obj.insert("error_message".to_string(), serde_json::Value::String("Reconnect failed — gateway may not be running".to_string()));
+                    } else {
+                        platform_obj.remove("error_message");
+                    }
+                }
+            }
+        }
+    }
+    write_gateway_state(&gateway_state)?;
+
+    if new_state == "error" {
+        return Err(format!("Failed to reconnect platform {} — gateway may not be running", valid_type));
+    }
+
     println!("[Platforms] Reconnected platform: {}", valid_type);
     Ok(())
 }
@@ -697,26 +791,46 @@ pub fn send_platform_message(
 ) -> Result<serde_json::Value, String> {
     let valid_type = validate_platform_type(&platform_type)?;
 
-    // Use Hermes send_message tool via Python
+    // Validate chat_id to prevent injection
+    if chat_id.is_empty() {
+        return Err("Chat ID cannot be empty".to_string());
+    }
+
+    // Use base64 encoding for safe message transport
+    let message_b64 = STANDARD.encode(&message);
+    let chat_id_b64 = STANDARD.encode(&chat_id);
+
     let script = format!(
         r#"
+import os
 import sys
 import json
-sys.path.insert(0, str(__import__('pathlib').Path.home() / '.hermes' / 'hermes-agent'))
+import base64
 
-# Construct target string
-target = "{}:{}"
+# Decode inputs from base64
+chat_id = base64.b64decode("{}").decode('utf-8')
+message = base64.b64decode("{}").decode('utf-8')
+platform = "{}"
+target = f"{{platform}}:{{chat_id}}"
 
-# Call send_message tool
-try:
-    from tools.send_message_tool import send_message
-    result = send_message(target=target, message="""{}""")
-    print(json.dumps({{"success": True, "result": result}}))
-except Exception as e:
-    print(json.dumps({{"success": False, "error": str(e)}}))
+# Try to use hermes CLI to send the message
+venv_python = os.path.expanduser("~/.hermes/hermes-agent/venv/bin/python")
+if not os.path.isfile(venv_python):
+    print(json.dumps({{"success": False, "error": "Hermes agent not installed"}}))
+    exit(0)
+
+import subprocess
+result = subprocess.run(
+    [venv_python, '-m', 'hermes_cli.main', 'send', '--target', target, '--message', message],
+    capture_output=True, text=True, timeout=30
+)
+
+if result.returncode == 0:
+    print(json.dumps({{"success": True, "output": result.stdout.strip()}}))
+else:
+    print(json.dumps({{"success": False, "error": result.stderr.strip() or "Send failed"}}))
 "#,
-        valid_type, chat_id,
-        message.replace("\"", "\\\"").replace("\n", "\\n")
+        chat_id_b64, message_b64, valid_type
     );
 
     let output = create_command("wsl")

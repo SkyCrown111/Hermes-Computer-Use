@@ -185,10 +185,10 @@ pub async fn get_system_status() -> Result<SystemStatus, String> {
         };
 
         // Get system metrics via WSL
-        let (cpu_percent, memory_percent, memory_used_mb, memory_total_mb) = get_system_metrics();
+        let (cpu_percent, memory_percent, memory_used_mb, memory_total_mb, disk_percent) = get_system_metrics();
 
-        (active_sessions, pending_tasks, gateway_state, cpu_percent, memory_percent, memory_used_mb, memory_total_mb, hermes_cli_available, gateway_process_running)
-    }).await.unwrap_or((0, 0, serde_json::json!({}), 0.0, 0.0, 0, 0, false, false));
+        (active_sessions, pending_tasks, gateway_state, cpu_percent, memory_percent, memory_used_mb, memory_total_mb, disk_percent, hermes_cli_available, gateway_process_running)
+    }).await.unwrap_or((0, 0, serde_json::json!({}), 0.0, 0.0, 0, 0, 0.0, false, false));
 
     // Determine gateway status - use multiple sources
     // Priority: 1. gateway_state.json, 2. process check, 3. CLI availability
@@ -199,7 +199,7 @@ pub async fn get_system_status() -> Result<SystemStatus, String> {
         .unwrap_or("unknown");
 
     // Determine final status (mapped to frontend expected values: online|offline|degraded)
-    let gateway_status = if file_status == "running" || result.8 {
+    let gateway_status = if file_status == "running" || result.9 {
         "online".to_string()
     } else {
         "offline".to_string()
@@ -207,7 +207,7 @@ pub async fn get_system_status() -> Result<SystemStatus, String> {
 
     println!(
         "[System] Gateway status: file={}, process={}, cli={}, final={}",
-        file_status, result.8, result.7, gateway_status
+        file_status, result.9, result.8, gateway_status
     );
 
     let start_time = result
@@ -241,8 +241,8 @@ pub async fn get_system_status() -> Result<SystemStatus, String> {
         result.0, result.1, gateway_status
     );
     println!(
-        "[System] CPU: {}%, Memory: {}% ({} / {} MB)",
-        result.3, result.4, result.5, result.6
+        "[System] CPU: {}%, Memory: {}% ({} / {} MB), Disk: {}%",
+        result.3, result.4, result.5, result.6, result.7
     );
 
     Ok(SystemStatus {
@@ -257,15 +257,15 @@ pub async fn get_system_status() -> Result<SystemStatus, String> {
             memory_percent: result.4,
             memory_used_mb: result.5,
             memory_total_mb: result.6,
-            disk_percent: 0.0,
+            disk_percent: result.7,
         },
         active_sessions: result.0,
         pending_tasks: result.1,
     })
 }
 
-/// Get system metrics (CPU, memory) via WSL
-fn get_system_metrics() -> (f32, f32, u64, u64) {
+/// Get system metrics (CPU, memory, disk) via WSL
+fn get_system_metrics() -> (f32, f32, u64, u64, f32) {
     // Get memory info from /proc/meminfo - simpler and more reliable
     let (memory_percent, memory_used_mb, memory_total_mb) = if let Ok(output) =
         create_command("wsl")
@@ -311,6 +311,21 @@ fn get_system_metrics() -> (f32, f32, u64, u64) {
         }
     } else {
         (0.0, 0, 0)
+    };
+
+    // Get disk usage for the ~/.hermes filesystem
+    let disk_percent = if let Ok(output) = create_command("wsl")
+        .args(["bash", "-c", "df --output=pcent ~/.hermes 2>/dev/null | tail -1 | tr -d ' %'"])
+        .output()
+    {
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            stdout.parse::<f32>().unwrap_or(0.0)
+        } else {
+            0.0
+        }
+    } else {
+        0.0
     };
 
     // Get CPU usage - read from /proc/stat twice with delay
@@ -366,7 +381,7 @@ fn get_system_metrics() -> (f32, f32, u64, u64) {
         0.0
     };
 
-    (cpu_percent, memory_percent, memory_used_mb, memory_total_mb)
+    (cpu_percent, memory_percent, memory_used_mb, memory_total_mb, disk_percent)
 }
 
 /// Usage totals

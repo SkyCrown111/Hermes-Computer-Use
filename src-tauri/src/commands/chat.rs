@@ -237,15 +237,16 @@ fn check_wsl_available() -> bool {
 
 /// Check if Hermes Agent is available for the actual streaming path.
 /// This validates the Python runtime and imports used by stream_agent.py instead of only checking a CLI binary.
+/// Returns a JSON object `{ status: string }` so the frontend can match on known values.
 #[tauri::command]
-pub fn check_hermes_health() -> Result<bool, String> {
+pub fn check_hermes_health() -> Result<serde_json::Value, String> {
     println!("[ChatDirect] Checking Hermes Agent runtime availability...");
 
     #[cfg(windows)]
     {
         if !check_wsl_available() {
             println!("[ChatDirect] WSL is not available on this system");
-            return Ok(false);
+            return Ok(serde_json::json!({ "status": "unhealthy" }));
         }
     }
 
@@ -254,15 +255,25 @@ pub fn check_hermes_health() -> Result<bool, String> {
     }
 
     match find_python_path() {
-        Ok(python_path) => check_hermes_runtime_imports(&python_path),
+        Ok(python_path) => {
+            match check_hermes_runtime_imports(&python_path) {
+                Ok(true) => Ok(serde_json::json!({ "status": "healthy" })),
+                Ok(false) => Ok(serde_json::json!({ "status": "degraded" })),
+                Err(e) => {
+                    println!("[ChatDirect] Runtime import check failed: {}", e);
+                    Ok(serde_json::json!({ "status": "unhealthy" }))
+                }
+            }
+        }
         Err(e) => {
             println!("[ChatDirect] Python runtime not available: {}", e);
-            Ok(false)
+            Ok(serde_json::json!({ "status": "unhealthy" }))
         }
     }
 }
 
 /// Send a chat message (simple version)
+/// Uses base64-encoded arguments passed via stdin to prevent shell injection.
 #[tauri::command]
 pub fn send_chat_message(
     messages: Vec<ChatMessage>,
@@ -284,21 +295,39 @@ pub fn send_chat_message(
         .map(|m| m.content.clone())
         .unwrap_or_else(|| "Hello".to_string());
 
-    // Use stream_agent.py for simple call
-    let mut cmd_str = format!(
-        "{} ~/.hermes/hermes-app/stream_agent.py '{}'",
-        python_path,
-        query.replace("'", "'\\''")
+    // Encode query and session_id as base64 to avoid shell injection
+    // Use the stdin-based approach with stream_agent.py --stdin flag
+    let cmd = format!(
+        "{} ~/.hermes/hermes-app/stream_agent.py --stdin",
+        python_path
     );
 
-    if let Some(sid) = session_id {
-        cmd_str.push_str(&format!(" '{}'", sid.replace("'", "'\\''")));
+    let stdin_json = serde_json::json!({
+        "query": query,
+        "session_id": session_id,
+    });
+    let stdin_data = stdin_json.to_string();
+
+    let mut child = create_command("wsl")
+        .args(["-e", "bash", "-c", &cmd])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Failed to spawn Hermes: {}", e))?;
+
+    // Write JSON payload to stdin
+    {
+        let mut stdin = child.stdin.take().expect("Failed to capture stdin");
+        stdin
+            .write_all(stdin_data.as_bytes())
+            .map_err(|e| format!("Failed to write to stdin: {}", e))?;
+        stdin.flush().ok();
+        // stdin is dropped here, closing the pipe
     }
 
-    let output = create_command("wsl")
-        .args(["-e", "bash", "-c", &cmd_str])
-        .output()
-        .map_err(|e| format!("Failed to run Hermes: {}", e))?;
+    let output = child.wait_with_output()
+        .map_err(|e| format!("Failed to read Hermes output: {}", e))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
 
@@ -322,8 +351,10 @@ pub fn send_chat_message(
 /// Start Hermes Gateway (now just checks CLI)
 #[tauri::command]
 pub fn start_hermes_gateway() -> Result<String, String> {
-    if check_hermes_health()? {
-        return Ok("Hermes CLI available - direct mode enabled".to_string());
+    let health = check_hermes_health()?;
+    let status = health.get("status").and_then(|v| v.as_str()).unwrap_or("unhealthy");
+    if status == "healthy" || status == "degraded" {
+        return Ok(format!("Hermes CLI available (status: {}) - direct mode enabled", status));
     }
     Err("Hermes CLI not found".to_string())
 }
@@ -350,6 +381,7 @@ pub async fn stream_chat_realtime(
     app: AppHandle,
     messages: Vec<ChatMessage>,
     session_id: Option<String>,
+    model_override: Option<serde_json::Value>,
 ) -> Result<String, String> {
     println!(
         "[ChatStream] Starting realtime stream, session: {:?}",
@@ -389,6 +421,9 @@ pub async fn stream_chat_realtime(
     let session_clone = session_id.clone();
 
     let handle = tokio::task::spawn_blocking(move || {
+        // Clean up stale process entries before spawning a new one
+        cleanup_stale_processes();
+
         // Build command to run stream_agent.py with --stdin flag
         let script_path = "~/.hermes/hermes-app/stream_agent.py";
         let cmd_str = format!("{} {} --stdin", python_path, script_path);
@@ -397,7 +432,8 @@ pub async fn stream_chat_realtime(
         let stdin_json = serde_json::json!({
             "query": query,
             "session_id": session_clone,
-            "history": history
+            "history": history,
+            "model_override": model_override
         });
         let stdin_data = stdin_json.to_string();
 
@@ -763,57 +799,46 @@ pub async fn stream_chat_with_progress(
     app: AppHandle,
     messages: Vec<ChatMessage>,
     session_id: Option<String>,
+    model_override: Option<serde_json::Value>,
 ) -> Result<String, String> {
-    let result = stream_chat_realtime(app, messages, session_id).await?;
+    let result = stream_chat_realtime(app, messages, session_id, model_override).await?;
     Ok(result)
 }
 
-/// Abort the currently running chat stream
+/// Abort the currently running chat stream.
+/// If `session_id` is provided, only kills the process for that session.
+/// Otherwise, kills all running chat processes.
 #[tauri::command]
-pub fn abort_chat() -> Result<(), String> {
-    println!("[ChatAbort] Attempting to abort chat...");
+pub fn abort_chat(session_id: Option<String>) -> Result<(), String> {
+    println!("[ChatAbort] Attempting to abort chat, session_id: {:?}", session_id);
 
     let mut processes = RUNNING_PROCESSES
         .lock()
         .map_err(|e| format!("Failed to lock processes: {}", e))?;
 
-    let pids: Vec<(String, u32)> = processes.drain().collect();
+    let pids: Vec<(String, u32)> = if let Some(sid) = session_id {
+        // Only kill the specific session
+        if let Some(pid) = processes.remove(&sid) {
+            vec![(sid, pid)]
+        } else {
+            println!("[ChatAbort] No running process for session: {}", sid);
+            return Ok(());
+        }
+    } else {
+        // Kill all running processes
+        processes.drain().collect()
+    };
 
     if pids.is_empty() {
         println!("[ChatAbort] No running processes to abort");
         return Ok(());
     }
 
-    for (session_id, pid) in &pids {
-        println!("[ChatAbort] Killing process PID: {} for session: {}", pid, session_id);
-
-        #[cfg(windows)]
-        {
-            let output = create_command("taskkill")
-                .args(["/F", "/T", "/PID", &pid.to_string()])
-                .output()
-                .map_err(|e| format!("Failed to kill process: {}", e))?;
-
-            if output.status.success() {
-                println!("[ChatAbort] Process killed successfully");
-            } else {
-                println!(
-                    "[ChatAbort] Failed to kill process: {}",
-                    String::from_utf8_lossy(&output.stderr)
-                );
-            }
-        }
-
-        #[cfg(not(windows))]
-        {
-            let output = std::process::Command::new("kill")
-                .args(["-9", &pid.to_string()])
-                .output()
-                .map_err(|e| format!("Failed to kill process: {}", e))?;
-
-            if output.status.success() {
-                println!("[ChatAbort] Process killed successfully");
-            }
+    for (sid, pid) in &pids {
+        println!("[ChatAbort] Killing process PID: {} for session: {}", pid, sid);
+        match kill_process(*pid) {
+            Ok(()) => println!("[ChatAbort] Process killed successfully"),
+            Err(e) => println!("[ChatAbort] Failed to kill process: {}", e),
         }
     }
 
@@ -864,4 +889,58 @@ pub fn interrupt_session(session_id: String) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+/// Clean up stale entries from RUNNING_PROCESSES.
+/// Removes entries whose processes have already exited, preventing stale PID accumulation.
+/// Called periodically or before new process creation.
+pub fn cleanup_stale_processes() {
+    let mut processes = match RUNNING_PROCESSES.lock() {
+        Ok(p) => p,
+        Err(_) => return,
+    };
+
+    let stale_keys: Vec<String> = processes
+        .iter()
+        .filter(|(_, pid)| {
+            // Check if the process is still running.
+            // The PIDs stored are the Windows-side PIDs of the wsl.exe process tree.
+            #[cfg(windows)]
+            {
+                // Use std::process::Command directly — tasklist is a native Windows command,
+                // not a WSL command, so it must not go through create_command.
+                let check = std::process::Command::new("tasklist")
+                    .args(["/FI", &format!("PID eq {}", pid), "/NH"])
+                    .output();
+                match check {
+                    Ok(output) => {
+                        let stdout = String::from_utf8_lossy(&output.stdout);
+                        // If the PID appears in tasklist output, process is still alive
+                        !stdout.contains(&pid.to_string())
+                    }
+                    Err(_) => true, // Assume stale if we can't check
+                }
+            }
+            #[cfg(not(windows))]
+            {
+                // On Linux/macOS, use kill -0 to check if process exists
+                std::process::Command::new("kill")
+                    .args(["-0", &pid.to_string()])
+                    .output()
+                    .map(|o| !o.status.success())
+                    .unwrap_or(true)
+            }
+        })
+        .map(|(k, _)| k.clone())
+        .collect();
+
+    for key in &stale_keys {
+        if let Some(pid) = processes.remove(key) {
+            println!("[ChatCleanup] Removed stale entry: session={}, pid={}", key, pid);
+        }
+    }
+
+    if !stale_keys.is_empty() {
+        println!("[ChatCleanup] Cleaned up {} stale process entr(ies)", stale_keys.len());
+    }
 }

@@ -174,7 +174,8 @@ export async function streamChatRealtime(
   message: string,
   sessionId: string | null,
   _historyOrCallbacks?: ChatHistoryEntry[] | StreamCallbacks,
-  callbacks?: StreamCallbacks
+  callbacks?: StreamCallbacks,
+  modelOverride?: { provider?: string; model?: string }
 ): Promise<void> {
   // Resolve history and callbacks from flexible parameter signature
   const history: ChatHistoryEntry[] =
@@ -290,7 +291,7 @@ export async function streamChatRealtime(
 
     // Fire the backend command (do not await -- it returns immediately and
     // communicates results via Tauri events).
-    invoke('stream_chat_realtime', { messages, session_id: sessionId }).catch((error) => {
+    invoke('stream_chat_realtime', { messages, session_id: sessionId, model_override: modelOverride || null }).catch((error) => {
       const detail = getErrorDetail(error);
       logger.error(`[HermesChat] stream_chat_realtime invoke failed: ${detail}`);
       resolvedCallbacks.onError?.(detail);
@@ -338,9 +339,11 @@ export async function respondSecret(secretId: string, value: string): Promise<vo
   await apiClient.invoke('respond_secret', { secret_id: secretId, value });
 }
 
-export async function abortChat(_sessionId: string): Promise<void> {
+export async function abortChat(sessionId: string): Promise<void> {
   if (!isTauri()) return;
-  await apiClient.invoke('abort_chat', {});
+  // Use interrupt_session to kill only the specific session's process,
+  // not abort_chat which kills ALL running chat processes.
+  await apiClient.invoke('interrupt_session', { session_id: sessionId });
 }
 
 export async function startHermesGateway(): Promise<{ status: string; message?: string }> {

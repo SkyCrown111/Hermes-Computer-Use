@@ -2,6 +2,7 @@
 //! Direct tool calling without chat conversation
 
 use super::utils::create_command;
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
 
 /// Tool information schema
@@ -27,13 +28,12 @@ pub struct ToolResult {
 #[tauri::command]
 pub fn list_available_tools() -> Result<Vec<ToolInfo>, String> {
     let script = r#"
-import sys
+import sys, json
 sys.path.insert(0, str(__import__('pathlib').Path.home() / '.hermes' / 'hermes-agent'))
 from tools.registry import registry
 from tools import discover_builtin_tools
 discover_builtin_tools()
 tools = registry.get_all_tools()
-import json
 result = []
 for t in tools:
     result.append({
@@ -63,25 +63,37 @@ print(json.dumps(result))
     Ok(tools)
 }
 
-/// Get schema for a specific tool
+/// Get schema for a specific tool.
+/// Uses base64-encoded tool_name passed via stdin to prevent shell injection.
 #[tauri::command]
 pub fn get_tool_schema(tool_name: String) -> Result<serde_json::Value, String> {
-    let script = format!(r#"
-import sys
+    // Validate tool_name: only allow alphanumeric, underscores, hyphens, and dots
+    if tool_name.chars().any(|c| !c.is_alphanumeric() && c != '_' && c != '-' && c != '.') {
+        return Err(format!("Invalid tool name: {}", tool_name));
+    }
+
+    let script = r#"
+import sys, json, base64
 sys.path.insert(0, str(__import__('pathlib').Path.home() / '.hermes' / 'hermes-agent'))
 from tools.registry import registry
 from tools import discover_builtin_tools
 discover_builtin_tools()
-entry = registry.get_entry('{}')
+
+tool_name = base64.b64decode(sys.stdin.read().strip()).decode('utf-8')
+entry = registry.get_entry(tool_name)
 if entry:
-    import json
-    print(json.dumps({{'schema': entry.schema, 'description': entry.description}}))
+    print(json.dumps({'schema': entry.schema, 'description': entry.description}))
 else:
-    print('{{"error": "Tool not found"}}')
-"#, tool_name);
+    print(json.dumps({'error': 'Tool not found'}))
+"#;
+
+    let tool_name_b64 = STANDARD.encode(&tool_name);
+
+    // Use echo + pipe to pass base64-encoded tool name via stdin
+    let cmd = format!("echo '{}' | python3 -c '{}'", tool_name_b64, script.replace('\'', "'\\''"));
 
     let output = create_command("wsl")
-        .args(["-e", "python3", "-c", &script])
+        .args(["-e", "bash", "-c", &cmd])
         .output()
         .map_err(|e| format!("Failed to get tool schema: {}", e))?;
 
@@ -101,33 +113,45 @@ else:
     Ok(result)
 }
 
-/// Invoke a tool directly
+/// Invoke a tool directly.
+/// Uses base64-encoded payload passed via stdin to prevent shell injection.
 #[tauri::command]
 pub async fn invoke_tool(
     tool_name: String,
     args: serde_json::Value,
     session_id: Option<String>,
 ) -> Result<ToolResult, String> {
+    // Validate tool_name: only allow alphanumeric, underscores, hyphens, and dots
+    if tool_name.chars().any(|c| !c.is_alphanumeric() && c != '_' && c != '-' && c != '.') {
+        return Err(format!("Invalid tool name: {}", tool_name));
+    }
+
     let args_json = serde_json::to_string(&args).map_err(|e| format!("Invalid args: {}", e))?;
     let _session_arg = session_id.map(|s| format!("--session-id {}", s)).unwrap_or_default();
 
-    let script = format!(r#"
-import sys
-import json
+    // Encode the entire payload as base64 and pass via stdin
+    let payload = serde_json::json!({
+        "tool_name": tool_name,
+        "args": args,
+    });
+    let payload_b64 = STANDARD.encode(serde_json::to_string(&payload).map_err(|e| format!("Failed to encode payload: {}", e))?);
+
+    let script = r#"
+import sys, json, base64, time
 sys.path.insert(0, str(__import__('pathlib').Path.home() / '.hermes' / 'hermes-agent'))
 from tools.registry import registry
 from tools import discover_builtin_tools
 discover_builtin_tools()
 
-tool_name = '{}'
-args = json.loads('''{}''')
+payload = json.loads(base64.b64decode(sys.stdin.read().strip()).decode('utf-8'))
+tool_name = payload['tool_name']
+args = payload.get('args', {})
 
 entry = registry.get_entry(tool_name)
 if not entry:
-    print(json.dumps({{'success': False, 'output': None, 'error': 'Tool not found'}}))
+    print(json.dumps({'success': False, 'output': None, 'error': 'Tool not found'}))
     sys.exit(0)
 
-import time
 start = time.time()
 try:
     if entry.is_async:
@@ -136,14 +160,17 @@ try:
     else:
         result = entry.handler(**args)
     duration = int((time.time() - start) * 1000)
-    print(json.dumps({{'success': True, 'output': result, 'error': None, 'duration_ms': duration}}))
+    print(json.dumps({'success': True, 'output': result, 'error': None, 'duration_ms': duration}))
 except Exception as e:
     duration = int((time.time() - start) * 1000)
-    print(json.dumps({{'success': False, 'output': None, 'error': str(e), 'duration_ms': duration}}))
-"#, tool_name, args_json);
+    print(json.dumps({'success': False, 'output': None, 'error': str(e), 'duration_ms': duration}))
+"#;
+
+    // Use echo + pipe to pass base64-encoded payload via stdin
+    let cmd = format!("echo '{}' | python3 -c '{}'", payload_b64, script.replace('\'', "'\\''"));
 
     let output = create_command("wsl")
-        .args(["-e", "python3", "-c", &script])
+        .args(["-e", "bash", "-c", &cmd])
         .output()
         .map_err(|e| format!("Failed to invoke tool: {}", e))?;
 
@@ -158,10 +185,9 @@ except Exception as e:
 #[tauri::command]
 pub fn list_toolsets() -> Result<Vec<serde_json::Value>, String> {
     let script = r#"
-import sys
+import sys, json
 sys.path.insert(0, str(__import__('pathlib').Path.home() / '.hermes' / 'hermes-agent'))
 from toolsets import TOOLSETS
-import json
 result = []
 for name, info in TOOLSETS.items():
     result.append({
