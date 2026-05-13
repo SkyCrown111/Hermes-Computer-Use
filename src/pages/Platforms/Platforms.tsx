@@ -40,9 +40,19 @@ const platformConfigFields: Record<PlatformType, { key: string; label: string; t
   weixin: [
     // 个人微信使用扫码登录，allowed_users 在扫码成功后自动添加
   ],
+  feishu: [
+    { key: 'app_id', label: 'App ID', type: 'text', placeholder: 'Feishu App ID' },
+    { key: 'app_secret', label: 'App Secret', type: 'password', placeholder: 'Feishu App Secret' },
+  ],
   lark: [
     { key: 'app_id', label: 'App ID', type: 'text', placeholder: 'Lark App ID' },
     { key: 'app_secret', label: 'App Secret', type: 'password', placeholder: 'Lark App Secret' },
+  ],
+  qqbot: [],
+  api_server: [
+    { key: 'port', label: 'Port', type: 'number', placeholder: '8080' },
+    { key: 'host', label: 'Host', type: 'text', placeholder: '0.0.0.0' },
+    { key: 'api_key', label: 'API Key', type: 'password', placeholder: 'Optional: API access key' },
   ],
   api: [
     { key: 'port', label: 'Port', type: 'number', placeholder: '8080' },
@@ -177,7 +187,7 @@ export function Platforms() {
     if (isConfigModalOpen && selectedPlatform === 'weixin') {
       loadQRCode();
     }
-  }, [isConfigModalOpen, selectedPlatform]);
+  }, [isConfigModalOpen, selectedPlatform, loadQRCode]);
 
   // Poll QR code scan status
   useEffect(() => {
@@ -189,7 +199,7 @@ export function Platforms() {
             setQrcodeStatus('scanned');
             clearInterval(pollRef.current ?? undefined);
           }
-        } catch (error) {
+        } catch {
           // QR code polling failed silently
         }
       }, 3000);

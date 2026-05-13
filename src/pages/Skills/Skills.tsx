@@ -179,7 +179,7 @@ export const Skills: React.FC = () => {
         clearSelectedSkill();
         toast.success(t('skills.execution.success'));
       }
-    } catch (err) {
+    } catch {
       toast.error(t('skills.execution.failed'));
     } finally {
       setIsExecuting(false);
@@ -210,7 +210,7 @@ export const Skills: React.FC = () => {
       toast.error(t('skills.deleteFailed'));
     }
     setDeleteConfirm(null);
-  }, [deleteConfirm, deleteSkill, lang]);
+  }, [deleteConfirm, deleteSkill, t]);
 
   // Save edited skill
   const handleSaveEdit = useCallback(async () => {
@@ -230,7 +230,7 @@ export const Skills: React.FC = () => {
     } else {
       toast.error(t('skills.updateFailed'));
     }
-  }, [editingSkill, updateSkill, lang]);
+  }, [editingSkill, updateSkill, t]);
 
   // Copy skill content to clipboard
   const handleCopyContent = useCallback(async () => {

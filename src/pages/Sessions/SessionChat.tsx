@@ -7,58 +7,12 @@ import type { ChatInputHandle, AttachedFile } from '../../components/chat';
 import type { ChatMessage, ToolCallInfo } from '../../stores/chatStore';
 import { XIcon } from '../../components';
 import { MarkdownRenderer } from '../../components/ui/MarkdownRenderer';
+import { normalizeContent } from '../../lib/contentUtils';
 import { cleanErrorMessage } from '../../lib/errorUtils';
 import type { Session, SessionMessage } from '../../types';
 import './SessionChat.css';
 
 // ---- Helpers ----
-
-function normalizeContent(content: string): string {
-  if (!content) return '';
-  let clean = content.replace(/\\n/g, '\n').replace(/\r\n/g, '\n');
-
-  // Remove tool output dumps embedded in content
-  const stripped = clean.trim();
-  if (stripped.startsWith('{') && (
-    stripped.includes('"total_lines"') ||
-    stripped.includes('"file_size"') ||
-    stripped.includes('"bytes_written"') ||
-    stripped.includes('"files_modified"') ||
-    stripped.includes('"_warning"') ||
-    stripped.includes('"is_binary"') ||
-    stripped.includes('"dirs_created"')
-  )) {
-    return '';
-  }
-
-  // Remove JSON tool output lines
-  clean = clean.replace(/^\s*\{"success":\s*(true|false).*\}\s*$/gm, '');
-  clean = clean.replace(/^\s*\{"output":\s*".*$/gm, '');
-  clean = clean.replace(/^\s*\{"bytes_written":\s*\d+.*$/gm, '');
-  clean = clean.replace(/^\s*\{"total_count":.*$/gm, '');
-  clean = clean.replace(/^\s*\{"total_lines":\s*\d+.*$/gm, '');
-  clean = clean.replace(/^\s*\{"file_size":\s*\d+.*$/gm, '');
-  clean = clean.replace(/^\s*\{"content":\s*".*"total_lines".*$/gm, '');
-  clean = clean.replace(/^\s*\{"content":\s*".*"file_size".*$/gm, '');
-  clean = clean.replace(/^\s*\{"content":\s*".*"_warning".*$/gm, '');
-  clean = clean.replace(/^\s*\{"content":\s*".*"is_binary".*$/gm, '');
-  clean = clean.replace(/^\s*\{"session_id":.*"pid".*$/gm, '');
-  clean = clean.replace(/^\s*"total_lines":\s*\d+.*$/gm, '');
-  clean = clean.replace(/^\s*"file_size":\s*\d+.*$/gm, '');
-  clean = clean.replace(/^\s*"truncated":\s*(true|false).*$/gm, '');
-  clean = clean.replace(/^\s*"hint":\s*"[^"]*".*$/gm, '');
-  clean = clean.replace(/^\s*"is_binary":\s*(true|false).*$/gm, '');
-  clean = clean.replace(/^\s*"is_image":\s*(true|false).*$/gm, '');
-  clean = clean.replace(/^\s*"files_modified":\s*\[.*$/gm, '');
-  clean = clean.replace(/^\s*"lint":\s*\{.*$/gm, '');
-  clean = clean.replace(/^\s*"_warning":\s*"[^"]*".*$/gm, '');
-  // File content dumps with line numbers
-  clean = clean.replace(/^\s*\d+\|.*$/gm, '');
-  // Malformed Markdown links
-  clean = clean.replace(/\[[a-zA-Z_][\w.]*\]\(https?:\/\/[\w.]+\)/g, '');
-
-  return clean.trim();
-}
 
 let msgCounter = 0;
 const nextId = () => `sc-${++msgCounter}-${Date.now()}`;
@@ -145,6 +99,7 @@ export const SessionChat: React.FC<SessionChatProps> = ({ session, initialMessag
 
   // Refs
   const isStoppedRef = useRef(false);
+  const isStreamingRef = useRef(false);
   const streamingContentRef = useRef('');
   const streamingToolsRef = useRef<ToolCallInfo[]>([]);
   const chatInputRef = useRef<ChatInputHandle>(null);
@@ -174,14 +129,14 @@ export const SessionChat: React.FC<SessionChatProps> = ({ session, initialMessag
     checkHermesApiHealth().then(available => setApiAvailable(available));
   }, []);
 
-  // Cleanup on unmount
+  // Cleanup on unmount — use ref so cleanup only runs on unmount, not on every isStreaming change
   useEffect(() => {
     return () => {
-      if (isStreaming) {
+      if (isStreamingRef.current) {
         abortChat(session.id).catch(() => {});
       }
     };
-  }, [isStreaming, session.id]);
+  }, [session.id]);
 
   // Auto-scroll
   useEffect(() => {
@@ -209,6 +164,7 @@ export const SessionChat: React.FC<SessionChatProps> = ({ session, initialMessag
     setMessages(prev => [...prev, userMsg]);
 
     setIsStreaming(true);
+    isStreamingRef.current = true;
     setStreamingContent('');
     setStreamingTools([]);
     streamingContentRef.current = '';
@@ -220,7 +176,7 @@ export const SessionChat: React.FC<SessionChatProps> = ({ session, initialMessag
     }));
 
     try {
-      await streamChatRealtime(text.trim(), session.id, historyForApi, {
+      await streamChatRealtime(text.trim(), session.id, { history: historyForApi, callbacks: {
         onChunk: (_chunk, accumulated) => {
           if (isStoppedRef.current) return;
           streamingContentRef.current = accumulated;
@@ -235,6 +191,7 @@ export const SessionChat: React.FC<SessionChatProps> = ({ session, initialMessag
         onComplete: (content) => {
           if (isStoppedRef.current) return;
           setIsStreaming(false);
+          isStreamingRef.current = false;
           const assistantMsg: ChatMessage = {
             id: nextId(),
             role: 'assistant',
@@ -251,6 +208,7 @@ export const SessionChat: React.FC<SessionChatProps> = ({ session, initialMessag
         onError: (error) => {
           if (isStoppedRef.current) return;
           setIsStreaming(false);
+          isStreamingRef.current = false;
           // Preserve accumulated content on error
           const accumulated = streamingContentRef.current;
           const tools = streamingToolsRef.current;
@@ -280,9 +238,10 @@ export const SessionChat: React.FC<SessionChatProps> = ({ session, initialMessag
         onApproval: (approval) => {
           respondApproval(approval.id, false).catch(() => {});
         },
-      });
+      }});
     } catch (error) {
       setIsStreaming(false);
+      isStreamingRef.current = false;
       const errorMsg: ChatMessage = {
         id: nextId(),
         role: 'assistant',
@@ -300,7 +259,8 @@ export const SessionChat: React.FC<SessionChatProps> = ({ session, initialMessag
   const handleStop = useCallback(async () => {
     isStoppedRef.current = true;
     setIsStreaming(false);
-    try { await abortChat(session.id); } catch {}
+    isStreamingRef.current = false;
+    try { await abortChat(session.id); } catch { /* abort may already be complete */ }
     streamingContentRef.current = '';
     streamingToolsRef.current = [];
     setStreamingContent('');

@@ -27,7 +27,7 @@ interface SessionCardProps {
 
 const SessionCard: React.FC<SessionCardProps> = React.memo(({ session, isSelected, isBatchMode, onClick, onDetail, onDelete, onEdit, onExport, onToggleSelect, t }) => {
   return (
-    <div className={`session-card ${isSelected ? 'session-card-selected' : ''}`} onClick={isBatchMode ? onToggleSelect : onClick} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); isBatchMode ? onToggleSelect() : onClick(); } }}>
+    <div className={`session-card ${isSelected ? 'session-card-selected' : ''}`} onClick={isBatchMode ? onToggleSelect : onClick} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (isBatchMode) { onToggleSelect(); } else { onClick(); } } }}>
       {isBatchMode && (
         <div className="session-checkbox" onClick={(e) => e.stopPropagation()}>
           <input type="checkbox" checked={isSelected} onChange={onToggleSelect} />
@@ -495,7 +495,7 @@ export const Sessions: React.FC = () => {
       setCheckpointDescription('');
       // Refresh checkpoints
       await fetchCheckpoints(createCheckpointModal.id);
-    } catch (err) {
+    } catch {
       toast.error(t('checkpoint.createFailed'));
     } finally {
       setIsCreatingCheckpoint(false);
@@ -512,7 +512,7 @@ export const Sessions: React.FC = () => {
       if (currentSession?.id === restoreConfirm.session.id) {
         await fetchSession(restoreConfirm.session.id);
       }
-    } catch (err) {
+    } catch {
       toast.error(t('checkpoint.restoreFailed'));
     }
   };
@@ -523,7 +523,7 @@ export const Sessions: React.FC = () => {
       await deleteCheckpoint(deleteCheckpointConfirm.checkpoint.id, deleteCheckpointConfirm.sessionId);
       toast.success(t('checkpoint.deleteSuccess'));
       setDeleteCheckpointConfirm(null);
-    } catch (err) {
+    } catch {
       toast.error(t('checkpoint.deleteFailed'));
     }
   };

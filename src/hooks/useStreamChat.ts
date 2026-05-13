@@ -103,7 +103,7 @@ export function useStreamChat(options: StreamChatOptions) {
     };
 
     try {
-      await streamChatRealtime(message, sessionId, history, callbacks);
+      await streamChatRealtime(message, sessionId, { history, callbacks });
     } catch (error) {
       if (isStoppedRef.current) return;
       onStatusChange?.('error');

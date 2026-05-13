@@ -1,4 +1,4 @@
-// Hermes Chat Proxy Commands
+﻿// Hermes Chat Proxy Commands
 // Direct Hermes Agent calling with real-time streaming via Python wrapper
 
 use super::utils::create_command;
@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::process::Stdio;
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 use tauri::AppHandle;
 use tauri::Emitter;
 
@@ -25,44 +25,48 @@ pub struct ChatMessage {
 /// The stream_agent.py script content (embedded in binary)
 const STREAM_AGENT_SCRIPT: &str = include_str!("../../scripts/stream_agent.py");
 
+/// Cached result of ensure_scripts_installed to avoid repeated WSL checks
+static SCRIPTS_INSTALL_CHECK: OnceLock<Result<(), String>> = OnceLock::new();
+
 /// Initialize hermes-app scripts in user directory
 fn ensure_scripts_installed() -> Result<(), String> {
-    // Create directory
-    let mkdir_cmd = "mkdir -p ~/.hermes/hermes-app";
-    create_command("wsl")
-        .args(["-e", "bash", "-c", mkdir_cmd])
-        .output()
-        .map_err(|e| format!("Failed to create directory: {}", e))?;
+    SCRIPTS_INSTALL_CHECK.get_or_init(|| {
+        // Create directory
+        let mkdir_cmd = "mkdir -p ~/.hermes/hermes-app";
+        create_command("wsl")
+            .args(["-e", "bash", "-c", mkdir_cmd])
+            .output()
+            .map_err(|e| format!("Failed to create directory: {}", e))?;
 
-    // Actually, let's just check if file exists and skip if it does
-    let check_cmd =
-        "test -f ~/.hermes/hermes-app/stream_agent.py && echo 'exists' || echo 'not_found'";
-    let output = create_command("wsl")
-        .args(["-e", "bash", "-c", check_cmd])
-        .output()
-        .map_err(|e| format!("Failed to check script: {}", e))?;
+        // Check if file exists and skip if it does
+        let check_cmd =
+            "test -f ~/.hermes/hermes-app/stream_agent.py && echo 'exists' || echo 'not_found'";
+        let output = create_command("wsl")
+            .args(["-e", "bash", "-c", check_cmd])
+            .output()
+            .map_err(|e| format!("Failed to check script: {}", e))?;
 
-    let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if result == "exists" {
-        println!("[ChatDirect] Script already installed");
-        return Ok(());
-    }
+        let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if result == "exists" {
+            println!("[ChatDirect] Script already installed");
+            return Ok(());
+        }
 
-    // Write script using base64 encoding (most reliable)
-    // Use temp file in WSL, not Windows
-    let encoded = STANDARD.encode(STREAM_AGENT_SCRIPT);
-    let write_cmd = format!(
-        "mkdir -p ~/.hermes/hermes-app && echo '{}' | base64 -d > ~/.hermes/hermes-app/stream_agent.py",
-        encoded
-    );
+        // Write script using base64 encoding (most reliable)
+        let encoded = STANDARD.encode(STREAM_AGENT_SCRIPT);
+        let write_cmd = format!(
+            "mkdir -p ~/.hermes/hermes-app && echo '{}' | base64 -d > ~/.hermes/hermes-app/stream_agent.py",
+            encoded
+        );
 
-    create_command("wsl")
-        .args(["-e", "bash", "-c", &write_cmd])
-        .output()
-        .map_err(|e| format!("Failed to install script: {}", e))?;
+        create_command("wsl")
+            .args(["-e", "bash", "-c", &write_cmd])
+            .output()
+            .map_err(|e| format!("Failed to install script: {}", e))?;
 
-    println!("[ChatDirect] Script installed to ~/.hermes/hermes-app/stream_agent.py");
-    Ok(())
+        println!("[ChatDirect] Script installed to ~/.hermes/hermes-app/stream_agent.py");
+        Ok(())
+    }).clone()
 }
 
 /// Find the Python executable path for running Hermes
@@ -238,7 +242,7 @@ fn check_wsl_available() -> bool {
 /// Check if Hermes Agent is available for the actual streaming path.
 /// This validates the Python runtime and imports used by stream_agent.py instead of only checking a CLI binary.
 /// Returns a JSON object `{ status: string }` so the frontend can match on known values.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn check_hermes_health() -> Result<serde_json::Value, String> {
     println!("[ChatDirect] Checking Hermes Agent runtime availability...");
 
@@ -274,7 +278,7 @@ pub fn check_hermes_health() -> Result<serde_json::Value, String> {
 
 /// Send a chat message (simple version)
 /// Uses base64-encoded arguments passed via stdin to prevent shell injection.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn send_chat_message(
     messages: Vec<ChatMessage>,
     session_id: Option<String>,
@@ -349,7 +353,7 @@ pub fn send_chat_message(
 }
 
 /// Start Hermes Gateway (now just checks CLI)
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn start_hermes_gateway() -> Result<String, String> {
     let health = check_hermes_health()?;
     let status = health.get("status").and_then(|v| v.as_str()).unwrap_or("unhealthy");
@@ -360,13 +364,13 @@ pub fn start_hermes_gateway() -> Result<String, String> {
 }
 
 /// Restart Hermes Gateway
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn restart_hermes_gateway() -> Result<String, String> {
     start_hermes_gateway()
 }
 
 /// Stream a chat message (simple version)
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn stream_chat_message(
     messages: Vec<ChatMessage>,
     session_id: Option<String>,
@@ -376,7 +380,7 @@ pub fn stream_chat_message(
 
 /// Stream chat with real-time events - full streaming with tool/reasoning callbacks
 /// Emits events: "chat:token", "chat:reasoning", "chat:tool", "chat:complete", "chat:error"
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn stream_chat_realtime(
     app: AppHandle,
     messages: Vec<ChatMessage>,
@@ -688,7 +692,7 @@ pub async fn stream_chat_realtime(
 }
 
 /// Respond to an approval request
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn respond_approval(approval_id: String, choice: String) -> Result<(), String> {
     println!(
         "[Approval] Responding to approval {}: {}",
@@ -723,7 +727,7 @@ pub fn respond_approval(approval_id: String, choice: String) -> Result<(), Strin
 }
 
 /// Respond to a clarify question
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn respond_clarify(clarify_id: String, answer: String) -> Result<(), String> {
     println!(
         "[Clarify] Responding to clarify {}: {}",
@@ -758,7 +762,7 @@ pub fn respond_clarify(clarify_id: String, answer: String) -> Result<(), String>
 }
 
 /// Respond to a secret capture request
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn respond_secret(secret_id: String, value: String) -> Result<(), String> {
     println!(
         "[Secret] Responding to secret {}: {}",
@@ -794,7 +798,7 @@ pub fn respond_secret(secret_id: String, value: String) -> Result<(), String> {
 }
 
 /// Stream chat with progress (legacy)
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn stream_chat_with_progress(
     app: AppHandle,
     messages: Vec<ChatMessage>,
@@ -808,7 +812,7 @@ pub async fn stream_chat_with_progress(
 /// Abort the currently running chat stream.
 /// If `session_id` is provided, only kills the process for that session.
 /// Otherwise, kills all running chat processes.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn abort_chat(session_id: Option<String>) -> Result<(), String> {
     println!("[ChatAbort] Attempting to abort chat, session_id: {:?}", session_id);
 
@@ -872,7 +876,7 @@ fn kill_process(pid: u32) -> Result<(), String> {
 }
 
 /// Interrupt a specific session by ID
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn interrupt_session(session_id: String) -> Result<(), String> {
     println!("[ChatInterrupt] Interrupting session: {}", session_id);
 
@@ -907,7 +911,7 @@ pub fn cleanup_stale_processes() {
             // The PIDs stored are the Windows-side PIDs of the wsl.exe process tree.
             #[cfg(windows)]
             {
-                // Use std::process::Command directly — tasklist is a native Windows command,
+                // Use std::process::Command directly �?tasklist is a native Windows command,
                 // not a WSL command, so it must not go through create_command.
                 let check = std::process::Command::new("tasklist")
                     .args(["/FI", &format!("PID eq {}", pid), "/NH"])
@@ -944,3 +948,4 @@ pub fn cleanup_stale_processes() {
         println!("[ChatCleanup] Cleaned up {} stale process entr(ies)", stale_keys.len());
     }
 }
+

@@ -67,6 +67,7 @@ export interface StreamApprovalEvent {
   command: string;
   description: string;
   allow_permanent: boolean;
+  choices?: Array<'once' | 'session' | 'always' | 'deny'>;
 }
 
 export interface StreamClarifyEvent {
@@ -116,14 +117,13 @@ export async function sendMessage(params: SendMessageParams): Promise<SendMessag
     };
   }
 
+  // Backend expects messages: Vec<ChatMessage> + session_id: Option<String>
+  // Build the messages array from the single user message
+  const messages = [{ role: 'user' as const, content: params.message }];
+
   return apiClient.invoke<SendMessageResponse>('send_chat_message', {
-    message: params.message,
-    session_id: params.session_id,
-    platform: params.platform,
-    chat_id: params.chat_id,
-    skills: params.skills,
-    model_override: params.model_override,
-    stream: params.stream ?? true,
+    messages,
+    session_id: params.session_id ?? null,
   });
 }
 
@@ -135,21 +135,28 @@ export function createStreamSubscription(sessionId: string, handler: StreamEvent
     return () => {};
   }
 
+  let cancelled = false;
   let unlisten: (() => void) | null = null;
   const eventName = `chat-stream-${sessionId}`;
 
   (async () => {
     try {
       const { listen } = await import('@tauri-apps/api/event');
+      if (cancelled) return;
       unlisten = await listen<ChatStreamEvent>(eventName, (event) => {
         handler(event.payload);
       });
+      if (cancelled) {
+        unlisten();
+        unlisten = null;
+      }
     } catch (error) {
       logger.error(`[HermesChat] Failed to subscribe to stream: ${error}`);
     }
   })();
 
   return () => {
+    cancelled = true;
     if (unlisten) {
       unlisten();
       unlisten = null;
@@ -170,18 +177,35 @@ export async function emitChatEvent(sessionId: string, event: ChatStreamEvent): 
   }
 }
 
+export interface StreamChatRealtimeOptions {
+  history?: ChatHistoryEntry[];
+  callbacks?: StreamCallbacks;
+  modelOverride?: { provider?: string; model?: string };
+}
+
 export async function streamChatRealtime(
   message: string,
   sessionId: string | null,
-  _historyOrCallbacks?: ChatHistoryEntry[] | StreamCallbacks,
-  callbacks?: StreamCallbacks,
-  modelOverride?: { provider?: string; model?: string }
+  historyOrOptions?: ChatHistoryEntry[] | StreamChatRealtimeOptions,
+  legacyCallbacks?: StreamCallbacks,
+  legacyModelOverride?: { provider?: string; model?: string }
 ): Promise<void> {
-  // Resolve history and callbacks from flexible parameter signature
-  const history: ChatHistoryEntry[] =
-    Array.isArray(_historyOrCallbacks) ? _historyOrCallbacks : [];
-  const resolvedCallbacks: StreamCallbacks =
-    (callbacks ?? (_historyOrCallbacks && !Array.isArray(_historyOrCallbacks) ? _historyOrCallbacks as StreamCallbacks : {})) || {};
+  // Support both new options-object and legacy positional signatures
+  let history: ChatHistoryEntry[];
+  let resolvedCallbacks: StreamCallbacks;
+  let modelOverride: { provider?: string; model?: string } | undefined;
+
+  if (Array.isArray(historyOrOptions)) {
+    // Legacy positional: (message, sessionId, history, callbacks, modelOverride)
+    history = historyOrOptions;
+    resolvedCallbacks = legacyCallbacks ?? {};
+    modelOverride = legacyModelOverride;
+  } else {
+    // New options object: (message, sessionId, options)
+    history = historyOrOptions?.history ?? [];
+    resolvedCallbacks = historyOrOptions?.callbacks ?? {};
+    modelOverride = historyOrOptions?.modelOverride;
+  }
 
   if (!isTauri()) {
     logger.warn('[HermesChat] Not in Tauri environment, stream not available');
@@ -317,16 +341,22 @@ export async function checkHermesApiHealth(): Promise<boolean> {
 
   try {
     const result = await invoke<{ status: string }>('check_hermes_health');
-    return result.status === 'ok' || result.status === 'healthy';
+    return result.status === 'healthy' || result.status === 'degraded';
   } catch (error) {
     logger.error(`[HermesChat] checkHermesApiHealth failed: ${error}`);
     return false;
   }
 }
 
-export async function respondApproval(approvalId: string, approved: boolean): Promise<void> {
+export type ApprovalResponseChoice = boolean | 'once' | 'session' | 'always' | 'deny' | 'approved' | 'denied';
+
+export async function respondApproval(approvalId: string, choice: ApprovalResponseChoice): Promise<void> {
   if (!isTauri()) return;
-  await apiClient.invoke('respond_approval', { approval_id: approvalId, choice: approved ? 'approved' : 'denied' });
+  const normalizedChoice =
+    choice === true ? 'approved' :
+    choice === false ? 'denied' :
+    choice;
+  await apiClient.invoke('respond_approval', { approval_id: approvalId, choice: normalizedChoice });
 }
 
 export async function respondClarify(clarifyId: string, response: string): Promise<void> {

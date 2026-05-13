@@ -66,7 +66,7 @@ fn validate_skill_identifier(name: &str) -> Result<String, String> {
 
 /// List all skills - reads real data from WSL using Python
 /// Merges with persisted enabled states from skill_states.json
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn list_skills(category: Option<String>) -> Result<Vec<Skill>, String> {
     let category_filter = category.clone();
     println!("[Skills] Listing skills...");
@@ -220,7 +220,7 @@ print(json.dumps(skills))
 }
 
 /// Get a skill by name - searches all categories in WSL for the skill
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn get_skill(name: String) -> Result<Skill, String> {
     println!("[Skills] Getting skill by name: {}", name);
 
@@ -332,7 +332,7 @@ print(json.dumps({{"found": False}}))
 }
 
 /// Get skill detail by category and name
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn get_skill_detail(category: String, name: String) -> Result<serde_json::Value, String> {
     // Validate identifiers to prevent path traversal
     let _ = validate_skill_identifier(&category)?;
@@ -420,7 +420,7 @@ print(json.dumps(result))
 }
 
 /// Get skill categories
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn get_skill_categories() -> Result<Vec<SkillCategory>, String> {
     println!("[Skills] Getting categories...");
 
@@ -507,9 +507,9 @@ print(json.dumps(categories))
     Ok(vec![])
 }
 
-/// Update skill parameters — rewrites the SKILL.md with updated metadata and content
+/// Update skill parameters -?rewrites the SKILL.md with updated metadata and content
 /// Uses base64 encoding for safe shell transport
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn update_skill(
     category: String,
     name: String,
@@ -578,8 +578,8 @@ print(json.dumps({{"success": True, "path": skill_file}}))
     Err("Failed to execute WSL command".to_string())
 }
 
-/// Save a skill (legacy — delegates to update_skill or create_skill)
-#[tauri::command]
+/// Save a skill (legacy -?delegates to update_skill or create_skill)
+#[tauri::command(rename_all = "snake_case")]
 pub fn save_skill(skill: Skill) -> Result<(), String> {
     println!("[Skills] Saving skill: {}", skill.name);
 
@@ -593,13 +593,13 @@ pub fn save_skill(skill: Skill) -> Result<(), String> {
         );
     }
 
-    // Otherwise, we don't have enough info to save — just log a warning
+    // Otherwise, we don't have enough info to save -?just log a warning
     println!("[Skills] Warning: save_skill called without category/path, skipping write");
     Ok(())
 }
 
 /// Create a new skill with content - uses base64 encoding for safe shell transport
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn create_skill(params: CreateSkillParams) -> Result<(), String> {
     println!(
         "[Skills] Creating skill: {} in category {}",
@@ -701,7 +701,7 @@ print(json.dumps({{"success": True, "path": skill_file}}))
 }
 
 /// Delete a skill
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn delete_skill(category: String, name: String) -> Result<(), String> {
     println!("[Skills] Deleting skill: {}/{}", category, name);
 
@@ -744,7 +744,7 @@ else:
 
 /// Toggle skill enabled status
 /// Persists the enabled state in a separate state file
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn toggle_skill(name: String, enabled: bool) -> Result<(), String> {
     println!("[Skills] Toggling skill '{}' to enabled={}", name, enabled);
 
@@ -805,7 +805,7 @@ print("success")
 }
 
 /// Get skills directory path
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn get_skills_path() -> Result<String, String> {
     Ok("~/.hermes/skills".to_string())
 }
@@ -824,7 +824,7 @@ pub struct SkillExecutionRecord {
 
 /// Get execution history for a skill
 /// Reads from ~/.hermes/skills/.execution_history.json in WSL
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn get_skill_execution_history(
     skill_name: String,
     limit: Option<usize>,

@@ -6,6 +6,7 @@ import { useSettingsStore } from '../settingsStore';
 vi.mock('../../services/settingsApi', () => ({
   loadConfig: vi.fn(),
   saveConfig: vi.fn(),
+  updateConfigSection: vi.fn(),
   restartGateway: vi.fn(),
 }));
 
@@ -44,7 +45,7 @@ describe('SettingsStore', () => {
         checkpoint: { enabled: true, max_snapshots: 10 },
         raw: 'model:\n  default: gpt-4',
       };
-      vi.mocked(settingsApi.loadConfig).mockResolvedValue(mockConfig as any);
+      vi.mocked(settingsApi.loadConfig).mockResolvedValue(mockConfig);
 
       await useSettingsStore.getState().fetchAllConfigs();
 
@@ -69,7 +70,7 @@ describe('SettingsStore', () => {
     it('should fetch model config', async () => {
       vi.mocked(settingsApi.loadConfig).mockResolvedValue({
         model: { default: 'claude', provider: 'anthropic' },
-      } as any);
+      });
 
       await useSettingsStore.getState().fetchModelConfig();
 
@@ -83,7 +84,7 @@ describe('SettingsStore', () => {
     it('should fetch agent config', async () => {
       vi.mocked(settingsApi.loadConfig).mockResolvedValue({
         agent: { max_turns: 50, timeout: 600 },
-      } as any);
+      });
 
       await useSettingsStore.getState().fetchAgentConfig();
 
@@ -94,20 +95,17 @@ describe('SettingsStore', () => {
   });
 
   describe('updateModelConfig', () => {
-    it('should update model config and restart gateway', async () => {
-      vi.mocked(settingsApi.loadConfig).mockResolvedValue({} as any);
-      vi.mocked(settingsApi.saveConfig).mockResolvedValue({ ok: true });
-      vi.mocked(settingsApi.restartGateway).mockResolvedValue({ ok: true });
+    it('should update model config via updateConfigSection', async () => {
+      vi.mocked(settingsApi.updateConfigSection).mockResolvedValue({ ok: true, section: 'model', data: {} });
 
       await useSettingsStore.getState().updateModelConfig({ default: 'gpt-4o' });
 
-      expect(settingsApi.saveConfig).toHaveBeenCalled();
-      expect(settingsApi.restartGateway).toHaveBeenCalled();
+      expect(settingsApi.updateConfigSection).toHaveBeenCalledWith('model', expect.objectContaining({ default: 'gpt-4o' }));
       expect(useSettingsStore.getState().modelConfig?.default).toBe('gpt-4o');
     });
 
     it('should set error on update failure', async () => {
-      vi.mocked(settingsApi.loadConfig).mockRejectedValue(new Error('Update failed'));
+      vi.mocked(settingsApi.updateConfigSection).mockRejectedValue(new Error('Update failed'));
 
       await useSettingsStore.getState().updateModelConfig({ default: 'test' });
 
@@ -117,31 +115,29 @@ describe('SettingsStore', () => {
 
   describe('updateAgentConfig', () => {
     it('should update agent config', async () => {
-      vi.mocked(settingsApi.loadConfig).mockResolvedValue({} as any);
-      vi.mocked(settingsApi.saveConfig).mockResolvedValue({ ok: true });
-      vi.mocked(settingsApi.restartGateway).mockResolvedValue({ ok: true });
+      vi.mocked(settingsApi.updateConfigSection).mockResolvedValue({ ok: true, section: 'agent', data: {} });
 
       await useSettingsStore.getState().updateAgentConfig({ max_turns: 200 });
 
+      expect(settingsApi.updateConfigSection).toHaveBeenCalledWith('agent', expect.objectContaining({ max_turns: 200 }));
       expect(useSettingsStore.getState().agentConfig?.max_turns).toBe(200);
     });
   });
 
   describe('updateTerminalConfig', () => {
-    it('should update terminal config without restart', async () => {
-      vi.mocked(settingsApi.loadConfig).mockResolvedValue({} as any);
-      vi.mocked(settingsApi.saveConfig).mockResolvedValue({ ok: true });
+    it('should update terminal config', async () => {
+      vi.mocked(settingsApi.updateConfigSection).mockResolvedValue({ ok: true, section: 'terminal', data: {} });
 
       await useSettingsStore.getState().updateTerminalConfig({ backend: 'docker' });
 
+      expect(settingsApi.updateConfigSection).toHaveBeenCalledWith('terminal', expect.objectContaining({ backend: 'docker' }));
       expect(useSettingsStore.getState().terminalConfig?.backend).toBe('docker');
-      expect(settingsApi.restartGateway).not.toHaveBeenCalled();
     });
   });
 
   describe('setEditMode', () => {
     it('should set edit mode to yaml', async () => {
-      vi.mocked(settingsApi.loadConfig).mockResolvedValue({ raw: 'test: value' } as any);
+      vi.mocked(settingsApi.loadConfig).mockResolvedValue({ raw: 'test: value' });
 
       useSettingsStore.getState().setEditMode('yaml');
 
@@ -185,7 +181,7 @@ describe('SettingsStore', () => {
       vi.mocked(settingsApi.saveConfig).mockResolvedValue({ ok: true });
       vi.mocked(settingsApi.loadConfig).mockResolvedValue({
         model: { default: 'imported', provider: 'auto' },
-      } as any);
+      });
 
       const json = JSON.stringify({
         model: { default: 'imported', provider: 'auto', api_key: '', base_url: '' },

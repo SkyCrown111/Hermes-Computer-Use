@@ -115,7 +115,7 @@ pub struct PerformanceMetrics {
 }
 
 /// Get logs from file
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn get_logs(
     file: Option<String>,
     lines: Option<usize>,
@@ -175,7 +175,7 @@ pub async fn get_logs(
 }
 
 /// Get log statistics
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn get_log_stats(file: Option<String>) -> Result<LogStats, String> {
     let file_name = file.unwrap_or_else(|| "agent".to_string());
 
@@ -244,7 +244,7 @@ fi
 }
 
 /// Get gateway detailed status
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn get_gateway_status() -> Result<GatewayDetailedStatus, String> {
     println!("[Monitor] Getting gateway status...");
 
@@ -527,37 +527,41 @@ fn parse_throughput_stats(gateway_state: &serde_json::Value) -> ThroughputStats 
 }
 
 /// Get performance metrics - collects multiple sample points
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn get_performance_metrics(minutes: Option<u32>) -> Result<PerformanceMetrics, String> {
     let _minutes = minutes.unwrap_or(30);
     println!("[Monitor] Getting performance metrics...");
 
-    // Collect 3 samples with short intervals for a basic trend
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
+    // Run blocking operations (WSL calls + sleep) on a dedicated thread
+    let result = tokio::task::spawn_blocking(move || {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
 
-    let (cpu1, mem1) = get_current_metrics();
+        let (cpu1, mem1) = get_current_metrics();
 
-    // Wait briefly and collect another sample
-    std::thread::sleep(std::time::Duration::from_millis(200));
-    let (cpu2, mem2) = get_current_metrics();
+        // Wait briefly and collect another sample
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        let (cpu2, mem2) = get_current_metrics();
 
-    let interval_secs: u64 = 5;
+        let interval_secs: u64 = 5;
 
-    Ok(PerformanceMetrics {
-        cpu: vec![
-            MetricPoint { timestamp: now - interval_secs, value: cpu1 },
-            MetricPoint { timestamp: now, value: cpu2 },
-        ],
-        memory: vec![
-            MetricPoint { timestamp: now - interval_secs, value: mem1 },
-            MetricPoint { timestamp: now, value: mem2 },
-        ],
-        network_in: vec![],
-        network_out: vec![],
-    })
+        PerformanceMetrics {
+            cpu: vec![
+                MetricPoint { timestamp: now - interval_secs, value: cpu1 },
+                MetricPoint { timestamp: now, value: cpu2 },
+            ],
+            memory: vec![
+                MetricPoint { timestamp: now - interval_secs, value: mem1 },
+                MetricPoint { timestamp: now, value: mem2 },
+            ],
+            network_in: vec![],
+            network_out: vec![],
+        }
+    }).await.map_err(|e| format!("Task join error: {}", e))?;
+
+    Ok(result)
 }
 
 /// Get current CPU and memory metrics
@@ -662,7 +666,7 @@ fn get_cpu_usage() -> f32 {
 }
 
 /// Get log components
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn get_log_components() -> Result<Vec<String>, String> {
     let script = r#"
 if [ -f ~/.hermes/logs/agent.log ]; then
@@ -686,7 +690,7 @@ fi
 }
 
 /// Clear logs
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn clear_logs(file: Option<String>) -> Result<(), String> {
     let file_name = file.unwrap_or_else(|| "agent".to_string());
 
@@ -710,7 +714,7 @@ pub async fn clear_logs(file: Option<String>) -> Result<(), String> {
 }
 
 /// Reload gateway configuration (hot reload)
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn reload_gateway_config() -> Result<(), String> {
     println!("[Monitor] Reloading gateway config...");
 

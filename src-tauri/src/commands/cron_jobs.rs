@@ -96,7 +96,7 @@ fn write_jobs_json(data: &serde_json::Value) -> Result<(), String> {
     }
     Ok(())
 }
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn list_cron_jobs() -> Result<Vec<CronJob>, String> {
     println!("[Cron] Listing cron jobs...");
 
@@ -235,7 +235,7 @@ pub fn list_cron_jobs() -> Result<Vec<CronJob>, String> {
 }
 
 /// Get a cron job by ID
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn get_cron_job(id: String) -> Result<CronJob, String> {
     let data = read_jobs_json()?;
 
@@ -358,7 +358,7 @@ pub fn get_cron_job(id: String) -> Result<CronJob, String> {
 }
 
 /// Delete a cron job
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn delete_cron_job(id: String) -> Result<(), String> {
     println!("[Cron] Deleting job: {}", id);
 
@@ -376,7 +376,7 @@ pub fn delete_cron_job(id: String) -> Result<(), String> {
 }
 
 /// Save (create or update) a cron job
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn save_cron_job(job: CronJob) -> Result<(), String> {
     println!("[Cron] Saving job: {}", job.id);
 
@@ -402,7 +402,7 @@ pub fn save_cron_job(job: CronJob) -> Result<(), String> {
 }
 
 /// Toggle a cron job's enabled state
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn toggle_cron_job(id: String, enabled: bool) -> Result<(), String> {
     println!("[Cron] Toggling job {} to enabled={}", id, enabled);
 
@@ -426,14 +426,14 @@ pub fn toggle_cron_job(id: String, enabled: bool) -> Result<(), String> {
 }
 
 /// Get cron directory path
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn get_cron_path() -> Result<String, String> {
     Ok("~/.hermes/cron".to_string())
 }
 
 /// Trigger a cron job manually
 /// Tries hermes CLI first, falls back to direct stream_agent.py invocation
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn trigger_cron_job(id: String) -> Result<(), String> {
     println!("[Cron] Triggering job: {}", id);
 
@@ -531,7 +531,7 @@ pub struct CronJobOutput {
 }
 
 /// Get cron job execution outputs
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn get_cron_outputs(
     job_id: String,
     limit: Option<usize>,
@@ -614,7 +614,7 @@ pub fn get_cron_outputs(
 }
 
 /// Pause a cron job (sets enabled = false and records paused_at)
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn pause_cron_job(id: String) -> Result<serde_json::Value, String> {
     println!("[Cron] Pausing job: {}", id);
 
@@ -643,7 +643,7 @@ pub fn pause_cron_job(id: String) -> Result<serde_json::Value, String> {
 }
 
 /// Resume a paused cron job (sets enabled = true and records resumed_at)
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn resume_cron_job(id: String) -> Result<serde_json::Value, String> {
     println!("[Cron] Resuming job: {}", id);
 

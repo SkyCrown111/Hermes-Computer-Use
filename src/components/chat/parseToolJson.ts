@@ -197,9 +197,9 @@ export function parseToolJson(content: string): {
 
   // Clean up remaining artifacts
   cleanContent = cleanContent
-    .replace(/^\s*,\s*"[^"]+"\s*:\s*[\d\[\{][^\n]*$/gm, '')
+    .replace(/^\s*,\s*"[^"]+"\s*:\s*[\d[{][^\n]*$/gm, '')
     .replace(/\}\s*\{/g, '\n')
-    .replace(/\}\s*,\s*"[^"]+"\s*:\s*[\d\[\{]/g, '}')
+    .replace(/\}\s*,\s*"[^"]+"\s*:\s*[\d[{]/g, '}')
     .replace(/\[\s*\{[^}]*"tool"[^}]*\}[\s\S]*?\]/g, '')
     .replace(/,\s*\d+\s*,\s*\}/g, '')
     .replace(/,\s*\}/g, '}')

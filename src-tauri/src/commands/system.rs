@@ -81,7 +81,7 @@ conn.close()
 }
 
 /// Get system status - reads real data from Hermes database and gateway state
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn get_system_status() -> Result<SystemStatus, String> {
     println!("[System] Getting system status...");
 
@@ -429,7 +429,7 @@ pub struct UsageAnalytics {
 }
 
 /// Get usage analytics - reads real data from database
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn get_usage_analytics(days: Option<u32>) -> Result<UsageAnalytics, String> {
     println!(
         "[Analytics] Getting usage analytics for {} days...",
@@ -677,7 +677,7 @@ print(json.dumps({
 }
 
 /// Health check - performs actual system health verification
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn health_check() -> Result<serde_json::Value, String> {
     println!("[System] Performing health check...");
 

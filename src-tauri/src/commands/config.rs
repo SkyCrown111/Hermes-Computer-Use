@@ -132,7 +132,7 @@ pub struct AuxiliaryTaskConfig {
 /// Auxiliary configuration (dynamic map of task types)
 pub type AuxiliaryConfig = serde_json::Value;
 
-/// Hermes configuration structure — all sections
+/// Hermes configuration structure -?all sections
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct HermesConfig {
     /// Raw config.yaml content
@@ -180,7 +180,7 @@ fn mask_api_key(key: &str) -> String {
     format!("__MASKED__{}", visible)
 }
 
-/// Check if a string is a masked API key (from our mask format or legacy ••• format)
+/// Check if a string is a masked API key (from our mask format or legacy ••-?format)
 fn is_masked_api_key(value: &str) -> bool {
     value.starts_with("__MASKED__")
         || value.starts_with('\u{2022}')
@@ -408,7 +408,7 @@ fn parse_config(yaml_content: &str) -> HermesConfig {
 }
 
 // ============================================================================
-// YAML Merge — writes config by reading-modifying-writing config.yaml
+// YAML Merge -?writes config by reading-modifying-writing config.yaml
 // ============================================================================
 
 /// Merge a section into the existing config.yaml using Python + PyYAML.
@@ -420,7 +420,7 @@ fn yaml_merge_section(section: &str, data: &serde_json::Value) -> Result<(), Str
         return Err(format!("Invalid section name: {}", section));
     }
 
-    // Strip masked API keys before writing — they are display-only markers
+    // Strip masked API keys before writing -?they are display-only markers
     let mut clean_data = data.clone();
     if section == "model" {
         if let Some(obj) = clean_data.as_object_mut() {
@@ -503,11 +503,31 @@ with open(config_path, 'w', encoding='utf-8') as f:
 print('success')
 "#;
 
-    let cmd = format!("echo '{}' | python3 -c '{}'", payload_b64, script.replace('\'', "'\\''"));
+    // Use flock for file locking to prevent race conditions during read-modify-write,
+    // and use stdin pipe instead of echo+pipe for safe data transport.
+    // The flock wrapper acquires a lock on ~/.hermes/.config.lock before running the Python script.
+    let flock_script = format!(
+        "flock ~/.hermes/.config.lock -c 'cat | python3 -c \"{}\"'",
+        script.replace('"', "\\\"").replace('\n', " ")
+    );
 
-    let output = create_command("wsl")
-        .args(["-e", "bash", "-c", &cmd])
-        .output()
+    let mut child = create_command("wsl")
+        .args(["-e", "bash", "-c", &flock_script])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Failed to merge config section: {}", e))?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        use std::io::Write;
+        stdin
+            .write_all(format!("{}\n", payload_b64).as_bytes())
+            .map_err(|e| format!("Failed to write config payload: {}", e))?;
+    }
+
+    let output = child
+        .wait_with_output()
         .map_err(|e| format!("Failed to merge config section: {}", e))?;
 
     if !output.status.success() {
@@ -524,7 +544,7 @@ print('success')
 // ============================================================================
 
 /// Load Hermes configuration
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn load_config() -> Result<HermesConfig, String> {
     println!("[Config] Loading configuration...");
 
@@ -588,7 +608,7 @@ fn mask_config_api_keys(config: &mut HermesConfig) {
 }
 
 /// Save Hermes configuration
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn save_config(config: HermesConfig) -> Result<(), String> {
     println!("[Config] Saving configuration...");
     // SECURITY: Do NOT log config details as they may contain API keys
@@ -679,13 +699,13 @@ print("success")
 }
 
 /// Get the Hermes data directory path
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn get_data_dir() -> String {
     get_hermes_data_dir().to_string_lossy().to_string()
 }
 
 /// Check if Hermes data directory exists (async)
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn check_data_dir_exists() -> bool {
     println!("[Config] Checking if Hermes data directory exists...");
     let result = tokio::task::spawn_blocking(|| {
@@ -716,7 +736,7 @@ pub async fn check_data_dir_exists() -> bool {
 }
 
 /// Get raw config.yaml content
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn get_config_raw() -> Result<serde_json::Value, String> {
     println!("[Config] Getting raw config...");
 
@@ -738,7 +758,7 @@ pub fn get_config_raw() -> Result<serde_json::Value, String> {
 }
 
 /// Update raw config.yaml content using base64 encoding
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn update_config_raw(yaml_text: String) -> Result<(), String> {
     println!("[Config] Updating raw config...");
 
@@ -772,7 +792,7 @@ print("success")
 }
 
 /// Get a specific config section
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn get_config_section(section: String) -> Result<serde_json::Value, String> {
     println!("[Config] Getting config section: {}", section);
 
@@ -792,7 +812,7 @@ pub fn get_config_section(section: String) -> Result<serde_json::Value, String> 
 }
 
 /// Update a specific config section using YAML merge
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn update_config_section(section: String, data: serde_json::Value) -> Result<serde_json::Value, String> {
     println!("[Config] Updating config section: {}", section);
 
@@ -807,7 +827,7 @@ pub fn update_config_section(section: String, data: serde_json::Value) -> Result
 }
 
 /// Export configuration (all sections)
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn export_config() -> Result<serde_json::Value, String> {
     println!("[Config] Exporting configuration...");
 

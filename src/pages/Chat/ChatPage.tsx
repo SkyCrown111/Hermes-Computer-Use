@@ -1,78 +1,21 @@
 // ChatPage — Claude Code desktop style: full-width messages, role labels, clean terminal aesthetic
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { streamChatRealtime, checkHermesApiHealth, respondApproval, abortChat } from '../../services/hermesChat';
+import { streamChatRealtime, checkHermesApiHealth, respondApproval, respondClarify, respondSecret, abortChat } from '../../services/hermesChat';
 import { useSessionStore, useNavigationStore, useChatStore, resolveSessionId } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
 import { logger } from '../../lib/logger';
 import { cleanErrorMessage } from '../../lib/errorUtils';
+import { normalizeContent } from '../../lib/contentUtils';
 import { parseToolJson } from '../../components/chat/parseToolJson';
 import type { ChatMessage, ToolCallInfo } from '../../stores/chatStore';
 import { requestNotificationPermission } from '../../services/notifications';
 import { toast } from '../../stores/toastStore';
-import { ChatInput } from '../../components/chat';
+import { ChatInput, PermissionCard, ClarifyCard, SecretCard } from '../../components/chat';
 import type { ChatInputHandle, AttachedFile } from '../../components/chat';
 import { ThinkingBlock } from '../../components/chat/ThinkingBlock';
 import { ToolItem } from '../../components/chat/ToolItem';
 import { MarkdownRenderer } from '../../components/ui/MarkdownRenderer';
 import './ChatPage.css';
-
-// ---- Helpers ----
-
-function normalizeContent(content: string): string {
-  if (!content) return '';
-  let clean = content;
-  // Order matters: process \\\\ (escaped backslash) before \\\\n etc.
-  clean = clean.replace(/\\\\n/g, '\n');
-  clean = clean.replace(/\\\\r/g, '\r');
-  clean = clean.replace(/\\\\t/g, '\t');
-  clean = clean.replace(/\\"/g, '"');
-  // Don't replace remaining \\\\ here — it would double-process
-  clean = clean.replace(/\r\n/g, '\n');
-  clean = clean.replace(/\r/g, '\n');
-  clean = clean.replace(/\n{3,}/g, '\n\n');
-
-  // Remove tool output dumps embedded in content
-  const stripped = clean.trim();
-  if (stripped.startsWith('{') && (
-    stripped.includes('"total_lines"') ||
-    stripped.includes('"file_size"') ||
-    stripped.includes('"bytes_written"') ||
-    stripped.includes('"files_modified"') ||
-    stripped.includes('"_warning"') ||
-    stripped.includes('"is_binary"') ||
-    stripped.includes('"dirs_created"')
-  )) {
-    return '';
-  }
-
-  // Remove JSON tool output lines
-  clean = clean.replace(/^\s*\{"success":\s*(true|false).*\}\s*$/gm, '');
-  clean = clean.replace(/^\s*\{"output":\s*".*$/gm, '');
-  clean = clean.replace(/^\s*\{"bytes_written":\s*\d+.*$/gm, '');
-  clean = clean.replace(/^\s*\{"total_count":.*$/gm, '');
-  clean = clean.replace(/^\s*\{"total_lines":\s*\d+.*$/gm, '');
-  clean = clean.replace(/^\s*\{"file_size":\s*\d+.*$/gm, '');
-  clean = clean.replace(/^\s*\{"content":\s*".*"total_lines".*$/gm, '');
-  clean = clean.replace(/^\s*\{"content":\s*".*"file_size".*$/gm, '');
-  clean = clean.replace(/^\s*\{"content":\s*".*"_warning".*$/gm, '');
-  clean = clean.replace(/^\s*\{"content":\s*".*"is_binary".*$/gm, '');
-  clean = clean.replace(/^\s*\{"session_id":.*"pid".*$/gm, '');
-  clean = clean.replace(/^\s*"total_lines":\s*\d+.*$/gm, '');
-  clean = clean.replace(/^\s*"file_size":\s*\d+.*$/gm, '');
-  clean = clean.replace(/^\s*"truncated":\s*(true|false).*$/gm, '');
-  clean = clean.replace(/^\s*"hint":\s*"[^"]*".*$/gm, '');
-  clean = clean.replace(/^\s*"is_binary":\s*(true|false).*$/gm, '');
-  clean = clean.replace(/^\s*"is_image":\s*(true|false).*$/gm, '');
-  clean = clean.replace(/^\s*"files_modified":\s*\[.*$/gm, '');
-  clean = clean.replace(/^\s*"lint":\s*\{.*$/gm, '');
-  clean = clean.replace(/^\s*"_warning":\s*"[^"]*".*$/gm, '');
-  // File content dumps with line numbers
-  clean = clean.replace(/^\s*\d+\|.*$/gm, '');
-  // Malformed Markdown links
-  clean = clean.replace(/\[[a-zA-Z_][\w.]*\]\(https?:\/\/[\w.]+\)/g, '');
-
-  return clean.trim();
-}
 
 // ---- Tool Calls Block ----
 
@@ -311,6 +254,8 @@ export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
   const sessionReasoningText = useChatStore((s) => s.sessions[effectiveSessionId || '']?.reasoningText);
   const sessionStreamingTools = useChatStore((s) => s.sessions[effectiveSessionId || '']?.streamingTools);
   const sessionPendingPermission = useChatStore((s) => s.sessions[effectiveSessionId || '']?.pendingPermission);
+  const sessionPendingClarify = useChatStore((s) => s.sessions[effectiveSessionId || '']?.pendingClarify);
+  const sessionPendingSecret = useChatStore((s) => s.sessions[effectiveSessionId || '']?.pendingSecret);
 
   // Chat store actions
   const addMessage = useChatStore((s) => s.addMessage);
@@ -321,6 +266,12 @@ export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
   const setReasoningText = useChatStore((s) => s.setReasoningText);
   const clearReasoningText = useChatStore((s) => s.clearReasoningText);
   const clearStreamingTools = useChatStore((s) => s.clearStreamingTools);
+  const setPendingPermission = useChatStore((s) => s.setPendingPermission);
+  const clearPendingPermission = useChatStore((s) => s.clearPendingPermission);
+  const setPendingClarify = useChatStore((s) => s.setPendingClarify);
+  const clearPendingClarify = useChatStore((s) => s.clearPendingClarify);
+  const setPendingSecret = useChatStore((s) => s.setPendingSecret);
+  const clearPendingSecret = useChatStore((s) => s.clearPendingSecret);
 
   // Session store
   const updateSessionActivity = useSessionStore((s) => s.updateSessionActivity);
@@ -335,12 +286,12 @@ export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
   const isStoppedRef = useRef<boolean>(false);
   const isNearBottomRef = useRef<boolean>(true);
 
-  // Derived state
-  const messages = sessionMessages ?? [];
+  // Derived state (useMemo to stabilize references for useEffect dependencies)
+  const messages = useMemo(() => sessionMessages ?? [], [sessionMessages]);
   const isStreaming = sessionIsStreaming ?? false;
   const streamingText = sessionStreamingText ?? '';
   const reasoningText = sessionReasoningText ?? '';
-  const streamingTools = sessionStreamingTools ?? [];
+  const streamingTools = useMemo(() => sessionStreamingTools ?? [], [sessionStreamingTools]);
 
   // Check API health
   useEffect(() => {
@@ -433,7 +384,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
     }).catch((err) => {
       logger.error('[ChatPage] Failed to load session:', err);
     });
-  }, [effectiveSessionId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [effectiveSessionId]);
 
   // Track scroll position (isNearBottom pattern)
   const handleScroll = useCallback(() => {
@@ -463,14 +414,14 @@ export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
     if (currentPendingPermission) {
       const choice = text.trim().toLowerCase();
       await respondApproval(currentPendingPermission.id, choice === 'y' || choice === 'yes');
-      useChatStore.getState().clearPendingPermission(effectiveSessionId);
+      clearPendingPermission(effectiveSessionId);
       return;
     }
 
     if (currentIsStreaming) {
       setStreaming(effectiveSessionId, false);
       clearStreamingTools(effectiveSessionId);
-      try { await abortChat(effectiveSessionId); } catch {}
+      try { await abortChat(effectiveSessionId); } catch { /* abort may already be complete */ }
       await new Promise(resolve => setTimeout(resolve, 100));
     }
 
@@ -496,7 +447,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
 
       const historyForApi = initialHistoryForApi.map(m => ({ role: m.role, content: m.content }));
 
-      await streamChatRealtime(enrichedMessage, requestSessionId, historyForApi, {
+      await streamChatRealtime(enrichedMessage, requestSessionId, { history: historyForApi, callbacks: {
         onChunk: (_chunk, accumulated) => {
           if (isStoppedRef.current || !isMountedRef.current) return;
           setStreamingText(getStreamSessionId(), accumulated);
@@ -593,7 +544,19 @@ export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
           }
         },
         onApproval: (approval) => {
-          respondApproval(approval.id, false).catch(() => {});
+          const targetSessionId = getStreamSessionId();
+          if (!targetSessionId) return;
+          setPendingPermission(targetSessionId, approval);
+        },
+        onClarify: (clarify) => {
+          const targetSessionId = getStreamSessionId();
+          if (!targetSessionId) return;
+          setPendingClarify(targetSessionId, clarify);
+        },
+        onSecret: (secret) => {
+          const targetSessionId = getStreamSessionId();
+          if (!targetSessionId) return;
+          setPendingSecret(targetSessionId, secret);
         },
         onSessionCreated: (newSessionId) => {
           logger.debug('[ChatPage] onSessionCreated - newSessionId:', newSessionId, 'requestSessionId:', requestSessionId);
@@ -608,7 +571,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
             logger.debug('[ChatPage] onSessionCreated - migration complete, streamSessionId:', streamSessionId);
           }
         },
-      });
+      }});
     } catch (error) {
       if (!isStoppedRef.current) {
         const targetSessionId = getStreamSessionId();
@@ -621,12 +584,36 @@ export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
         }
       }
     }
-  }, [effectiveSessionId, addMessage, updateMessage, setStreaming, setStreamingText, setReasoningText, clearReasoningText, clearStreamingTools, updateSessionActivity, t]);
+  }, [effectiveSessionId, addMessage, updateMessage, setStreaming, setStreamingText, setReasoningText, clearReasoningText, clearStreamingTools, updateSessionActivity, clearPendingPermission, setPendingPermission, setPendingClarify, setPendingSecret, t]);
+
+  const handleApprovalResponse = useCallback(async (choice: 'once' | 'session' | 'always' | 'deny') => {
+    if (!effectiveSessionId || !sessionPendingPermission) return;
+    await respondApproval(sessionPendingPermission.id, choice);
+    clearPendingPermission(effectiveSessionId);
+  }, [effectiveSessionId, sessionPendingPermission, clearPendingPermission]);
+
+  const handleClarifyResponse = useCallback(async (answer: string) => {
+    if (!effectiveSessionId || !sessionPendingClarify) return;
+    await respondClarify(sessionPendingClarify.id, answer);
+    clearPendingClarify(effectiveSessionId);
+  }, [effectiveSessionId, sessionPendingClarify, clearPendingClarify]);
+
+  const handleSecretResponse = useCallback(async (value: string) => {
+    if (!effectiveSessionId || !sessionPendingSecret) return;
+    await respondSecret(sessionPendingSecret.id, value);
+    clearPendingSecret(effectiveSessionId);
+  }, [effectiveSessionId, sessionPendingSecret, clearPendingSecret]);
+
+  const handleSecretSkip = useCallback(async () => {
+    if (!effectiveSessionId || !sessionPendingSecret) return;
+    await respondSecret(sessionPendingSecret.id, '');
+    clearPendingSecret(effectiveSessionId);
+  }, [effectiveSessionId, sessionPendingSecret, clearPendingSecret]);
 
   const handleStop = useCallback(async () => {
     if (!effectiveSessionId) return;
     isStoppedRef.current = true;
-    try { await abortChat(effectiveSessionId); } catch {}
+    try { await abortChat(effectiveSessionId); } catch { /* abort may already be complete */ }
     const currentSession = useChatStore.getState().sessions[effectiveSessionId];
     const sTools = currentSession?.streamingTools || [];
     const currentStreamingText = currentSession?.streamingText || '';
@@ -694,6 +681,22 @@ export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
                 streamingText={streamingText}
                 reasoningText={reasoningText}
                 streamingTools={streamingTools}
+              />
+            )}
+
+            {sessionPendingPermission && (
+              <PermissionCard approval={sessionPendingPermission} onRespond={handleApprovalResponse} />
+            )}
+
+            {sessionPendingClarify && (
+              <ClarifyCard clarify={sessionPendingClarify} onRespond={handleClarifyResponse} />
+            )}
+
+            {sessionPendingSecret && (
+              <SecretCard
+                secret={sessionPendingSecret}
+                onRespond={handleSecretResponse}
+                onSkip={handleSecretSkip}
               />
             )}
 

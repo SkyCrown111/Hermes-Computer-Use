@@ -220,7 +220,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
             mergedSessions.unshift(sessionWithTitle);
             logger.debug('[SessionStore] Fetched missing session:', tab.id, 'title:', sessionWithTitle.chat_name);
           }
-        } catch (err) {
+        } catch {
           // Session does not exist on server - close the stale tab
           logger.warn('[SessionStore] Session not found, closing tab:', tab.id);
           newOptimisticIds.delete(tab.id);
@@ -253,11 +253,12 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       let storedTitles: Record<string, string> = {};
       try {
         storedTitles = JSON.parse(localStorage.getItem('hermes-session-titles') || '{}');
-      } catch {}
+      } catch { /* non-critical: titles from localStorage */ }
       if (Object.keys(storedTitles).length > 0) {
-        for (const session of deduplicatedSessions) {
+        for (let i = 0; i < deduplicatedSessions.length; i++) {
+          const session = deduplicatedSessions[i];
           if (storedTitles[session.id] && session.chat_name !== storedTitles[session.id]) {
-            session.chat_name = storedTitles[session.id];
+            deduplicatedSessions[i] = { ...session, chat_name: storedTitles[session.id] };
           }
         }
       }
@@ -556,7 +557,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         const stored = JSON.parse(localStorage.getItem('hermes-session-titles') || '{}');
         stored[id] = title;
         localStorage.setItem('hermes-session-titles', JSON.stringify(stored));
-      } catch {}
+      } catch { /* non-critical: persisting renamed title */ }
 
       // Update the tab title in navigation store
       useNavigationStore.getState().updateTabTitle(id, title);

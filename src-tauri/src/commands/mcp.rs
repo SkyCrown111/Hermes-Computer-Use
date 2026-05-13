@@ -229,7 +229,7 @@ print("Config saved successfully")
 }
 
 /// List all MCP servers
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn list_mcp_servers() -> Result<Vec<McpServer>, String> {
     println!("[MCP] Listing MCP servers...");
 
@@ -283,7 +283,7 @@ fn parse_server_config(name: &str, value: &serde_json::Value) -> McpServerConfig
 }
 
 /// Get a single MCP server by name
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn get_mcp_server(name: String) -> Result<McpServer, String> {
     println!("[MCP] Getting MCP server: {}", name);
 
@@ -310,7 +310,7 @@ pub fn get_mcp_server(name: String) -> Result<McpServer, String> {
 }
 
 /// Add a new MCP server
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn add_mcp_server(request: AddMcpServerRequest) -> Result<(), String> {
     println!("[MCP] Adding MCP server: {}", request.name);
 
@@ -361,7 +361,7 @@ pub fn add_mcp_server(request: AddMcpServerRequest) -> Result<(), String> {
 }
 
 /// Remove an MCP server
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn remove_mcp_server(name: String) -> Result<(), String> {
     println!("[MCP] Removing MCP server: {}", name);
 
@@ -382,7 +382,7 @@ pub fn remove_mcp_server(name: String) -> Result<(), String> {
 }
 
 /// Start an MCP server
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn start_mcp_server(name: String) -> Result<(), String> {
     println!("[MCP] Starting MCP server: {}", name);
 
@@ -400,7 +400,7 @@ pub fn start_mcp_server(name: String) -> Result<(), String> {
 }
 
 /// Stop an MCP server
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn stop_mcp_server(name: String) -> Result<(), String> {
     println!("[MCP] Stopping MCP server: {}", name);
 
@@ -411,7 +411,7 @@ pub fn stop_mcp_server(name: String) -> Result<(), String> {
 }
 
 /// Test MCP connection
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn test_mcp_connection(config: McpServerConfig) -> Result<McpConnectionTestResult, String> {
     println!("[MCP] Testing MCP connection for: {}", config.name);
 
@@ -439,7 +439,7 @@ pub fn test_mcp_connection(config: McpServerConfig) -> Result<McpConnectionTestR
 }
 
 /// Get MCP tools for a server
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn get_mcp_tools(name: String) -> Result<Vec<McpTool>, String> {
     println!("[MCP] Getting tools for server: {}", name);
 
@@ -457,7 +457,7 @@ pub fn get_mcp_tools(name: String) -> Result<Vec<McpTool>, String> {
 }
 
 /// Get MCP resources for a server
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn get_mcp_resources(name: String) -> Result<Vec<McpResource>, String> {
     println!("[MCP] Getting resources for server: {}", name);
 
@@ -475,7 +475,7 @@ pub fn get_mcp_resources(name: String) -> Result<Vec<McpResource>, String> {
 }
 
 /// Get MCP server logs
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn get_mcp_logs(name: String) -> Result<Vec<McpLogEntry>, String> {
     println!("[MCP] Getting logs for server: {}", name);
 
@@ -493,7 +493,7 @@ pub fn get_mcp_logs(name: String) -> Result<Vec<McpLogEntry>, String> {
 }
 
 /// Get MCP server statistics
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn get_mcp_stats() -> Result<McpServerStats, String> {
     println!("[MCP] Getting MCP statistics...");
 
@@ -517,7 +517,7 @@ pub fn get_mcp_stats() -> Result<McpServerStats, String> {
 }
 
 /// Update MCP server configuration
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn update_mcp_server(name: String, config: McpServerConfig) -> Result<(), String> {
     println!("[MCP] Updating MCP server: {}", name);
 

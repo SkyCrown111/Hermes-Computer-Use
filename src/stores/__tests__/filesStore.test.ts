@@ -1,7 +1,7 @@
 // Files Store Tests
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useFilesStore } from '../filesStore';
-import type { DirectoryContent, FileContent, FileInfo } from '../../types/files';
+import type { DirectoryContent, FileContent, FileInfo, FileEditState } from '../../types/files';
 
 // Mock the files API
 vi.mock('../../services/filesApi', () => ({
@@ -153,7 +153,7 @@ describe('FilesStore', () => {
 
   describe('closeFile', () => {
     it('should close current file', () => {
-      useFilesStore.setState({ currentFile: createMockFileContent(), editState: {} as any });
+      useFilesStore.setState({ currentFile: createMockFileContent(), editState: { path: '/test', content: '', originalContent: '', isDirty: false, isSaving: false } satisfies FileEditState });
 
       useFilesStore.getState().closeFile();
 
@@ -179,7 +179,7 @@ describe('FilesStore', () => {
 
   describe('cancelEdit', () => {
     it('should cancel editing', () => {
-      useFilesStore.setState({ editState: {} as any });
+      useFilesStore.setState({ editState: { path: '/test', content: '', originalContent: '', isDirty: false, isSaving: false } satisfies FileEditState });
 
       useFilesStore.getState().cancelEdit();
 

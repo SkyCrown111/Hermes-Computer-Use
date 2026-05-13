@@ -117,7 +117,7 @@ const MemoryFileView: React.FC<MemoryFileViewProps> = ({
       lastSavedContentRef.current = editingContent;
       setAutoSaveStatus('idle');
     }
-  }, [isEditing]);
+  }, [isEditing, editingContent]);
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -314,24 +314,6 @@ export const Memory: React.FC = () => {
     fetchMemory();
   }, [fetchMemory]);
 
-  // 搜索处理 - supports case sensitivity and regex
-  const handleSearch = useCallback((query: string) => {
-    if (!query.trim()) {
-      searchMemory('');
-      setLocalSearchResults([]);
-      return;
-    }
-
-    // Use advanced search with case sensitivity or regex
-    if (searchCaseSensitive || searchRegex) {
-      performAdvancedSearch(query);
-    } else {
-      // Use API search for simple queries
-      searchMemory(query);
-      setLocalSearchResults([]);
-    }
-  }, [searchMemory, searchCaseSensitive, searchRegex]);
-
   // Advanced search implementation
   const performAdvancedSearch = useCallback((query: string) => {
     if (!memoryData) return;
@@ -382,6 +364,24 @@ export const Memory: React.FC = () => {
 
     setLocalSearchResults(results);
   }, [memoryData, activeTab, searchRegex, searchCaseSensitive]);
+
+  // 搜索处理 - supports case sensitivity and regex
+  const handleSearch = useCallback((query: string) => {
+    if (!query.trim()) {
+      searchMemory('');
+      setLocalSearchResults([]);
+      return;
+    }
+
+    // Use advanced search with case sensitivity or regex
+    if (searchCaseSensitive || searchRegex) {
+      performAdvancedSearch(query);
+    } else {
+      // Use API search for simple queries
+      searchMemory(query);
+      setLocalSearchResults([]);
+    }
+  }, [searchMemory, searchCaseSensitive, searchRegex, performAdvancedSearch]);
 
   // 开始编辑
   const handleStartEdit = useCallback((type: MemoryFileType) => {

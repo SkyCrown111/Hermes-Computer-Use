@@ -112,6 +112,15 @@ fn validate_path(path: &str) -> Result<String, String> {
         return Err("Path traversal not allowed".to_string());
     }
 
+    // Restrict ~ expansion: only allow ~ followed by / or at end of string
+    // This prevents ~otheruser/ expansion to other users' home directories
+    if normalized.starts_with('~') {
+        let after_tilde = &normalized[1..];
+        if !after_tilde.is_empty() && !after_tilde.starts_with('/') {
+            return Err("Only current user home (~) expansion is allowed".to_string());
+        }
+    }
+
     Ok(path.to_string())
 }
 
@@ -161,7 +170,7 @@ fn get_file_info(name: &str) -> (Option<String>, Option<String>) {
 }
 
 /// List directory contents
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn list_directory(
     path: String,
     recursive: Option<bool>,
@@ -398,7 +407,7 @@ fn format_timestamp(ts: i64) -> String {
 }
 
 /// Read file content
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn read_file(path: String) -> Result<FileContent, String> {
     println!("[Files] Reading file: {}", path);
     let _ = validate_path(&path)?;
@@ -451,7 +460,7 @@ pub async fn read_file(path: String) -> Result<FileContent, String> {
 }
 
 /// Write file content
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn write_file(path: String, content: String) -> Result<FileOperationResult, String> {
     println!("[Files] Writing file: {}", path);
     let _ = validate_path(&path)?;
@@ -489,7 +498,7 @@ pub async fn write_file(path: String, content: String) -> Result<FileOperationRe
 }
 
 /// Create directory
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn create_directory(path: String) -> Result<FileOperationResult, String> {
     println!("[Files] Creating directory: {}", path);
     let _ = validate_path(&path)?;
@@ -513,7 +522,7 @@ pub async fn create_directory(path: String) -> Result<FileOperationResult, Strin
 }
 
 /// Delete file or directory
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn delete_file(path: String) -> Result<FileOperationResult, String> {
     println!("[Files] Deleting: {}", path);
     let _ = validate_path(&path)?;
@@ -542,7 +551,7 @@ pub async fn delete_file(path: String) -> Result<FileOperationResult, String> {
 }
 
 /// Move file or directory
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn move_file(source: String, destination: String) -> Result<FileOperationResult, String> {
     println!("[Files] Moving {} to {}", source, destination);
     let _ = validate_path(&source)?;
@@ -571,7 +580,7 @@ pub async fn move_file(source: String, destination: String) -> Result<FileOperat
 }
 
 /// Copy file or directory
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn copy_file(source: String, destination: String) -> Result<FileOperationResult, String> {
     println!("[Files] Copying {} to {}", source, destination);
     let _ = validate_path(&source)?;
@@ -600,7 +609,7 @@ pub async fn copy_file(source: String, destination: String) -> Result<FileOperat
 }
 
 /// Check if file exists
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn file_exists(path: String) -> Result<serde_json::Value, String> {
     println!("[Files] Checking if exists: {}", path);
     let _ = validate_path(&path)?;
@@ -628,7 +637,7 @@ pub async fn file_exists(path: String) -> Result<serde_json::Value, String> {
 }
 
 /// Get file tree
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn get_file_tree(path: String, depth: Option<u32>) -> Result<serde_json::Value, String> {
     println!("[Files] Getting file tree for: {}", path);
     let _ = validate_path(&path)?;
@@ -676,7 +685,7 @@ pub struct BinaryFileContent {
 }
 
 /// Read file as binary (base64 encoded)
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn read_file_binary(path: String) -> Result<BinaryFileContent, String> {
     println!("[Files] Reading binary file: {}", path);
     let _ = validate_path(&path)?;
@@ -732,7 +741,7 @@ pub async fn read_file_binary(path: String) -> Result<BinaryFileContent, String>
 }
 
 /// Write binary file (base64 encoded content)
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn write_file_binary(
     path: String,
     content: String,

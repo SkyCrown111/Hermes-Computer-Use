@@ -183,7 +183,7 @@ else:
 }
 
 /// Get all memory data
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn get_memories() -> Result<MemoryData, String> {
     println!("[Memory] Getting memories...");
 
@@ -202,7 +202,7 @@ pub fn get_memories() -> Result<MemoryData, String> {
 }
 
 /// Save memory content - uses base64 encoding for safe shell transport
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn save_memory(file_type: String, content: String) -> Result<serde_json::Value, String> {
     let filename = if file_type == "user_profile" {
         "USER.md"
@@ -257,7 +257,7 @@ print(json.dumps({{"success": True}}))
 }
 
 /// Get memory directory path
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn get_memories_path() -> Result<String, String> {
     Ok("~/.hermes/memories".to_string())
 }
@@ -273,7 +273,7 @@ pub struct MemorySearchResult {
 }
 
 /// Search memories for a query
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn search_memories(query: String, case_sensitive: bool) -> Result<Vec<MemorySearchResult>, String> {
     if query.is_empty() {
         return Err("Query cannot be empty".to_string());
@@ -339,7 +339,7 @@ print(json.dumps(results))
 }
 
 /// Delete a section from memory by ID
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn delete_memory_section(file_type: String, section_id: String) -> Result<serde_json::Value, String> {
     let filename = if file_type == "user_profile" {
         "USER.md"
@@ -404,7 +404,7 @@ print('ok')
 }
 
 /// Append content to memory
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn append_memory(file_type: String, content: String, section_title: Option<String>) -> Result<serde_json::Value, String> {
     let filename = if file_type == "user_profile" {
         "USER.md"

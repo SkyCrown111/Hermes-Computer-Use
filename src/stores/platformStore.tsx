@@ -1,9 +1,19 @@
 // Platform Store - 平台接入状态管理
 
 import { create } from 'zustand';
-import type { Platform, PlatformType } from '../types/platform';
+import type { ReactNode } from 'react';
+import type { Platform, PlatformConnectionCheckResult, PlatformType } from '../types/platform';
 import { getErrorMessage } from '../lib/errorUtils';
 import { platformApi } from '../services/platformApi';
+import {
+  SmartphoneIcon,
+  ChatIcon,
+  BriefcaseIcon,
+  PlugIcon,
+  GlobeIcon,
+  BotIcon,
+  ZapIcon,
+} from '../components/ui/Icons';
 
 // 默认平台配置（纯数据，不含 UI 元素）
 const defaultPlatforms: Platform[] = [
@@ -14,6 +24,9 @@ const defaultPlatforms: Platform[] = [
   { type: 'weixin', name: '微信', description: 'WeChat Personal', status: 'disconnected', enabled: false },
   { type: 'wechat', name: '企业微信', description: 'WeChat Work', status: 'disconnected', enabled: false },
   { type: 'lark', name: '飞书', description: 'Lark Bot', status: 'disconnected', enabled: false },
+  { type: 'feishu', name: 'Feishu', description: 'Lark Bot', status: 'disconnected', enabled: false },
+  { type: 'qqbot', name: 'QQ Bot', description: 'QQ Bot', status: 'disconnected', enabled: false },
+  { type: 'api_server', name: 'API Server', description: 'REST API', status: 'disconnected', enabled: false },
   { type: 'api', name: 'API Gateway', description: 'REST API', status: 'disconnected', enabled: false },
   { type: 'webhook', name: 'Webhook', description: 'Custom Webhook', status: 'disconnected', enabled: false },
 ];
@@ -33,8 +46,14 @@ interface PlatformState {
   updateConfig: (type: PlatformType, config: Record<string, unknown>) => Promise<boolean>;
   enablePlatform: (type: PlatformType) => Promise<boolean>;
   disablePlatform: (type: PlatformType) => Promise<boolean>;
-  testConnection: (type: PlatformType) => Promise<{ ok: boolean; message?: string; details?: string }>;
+  testConnection: (type: PlatformType) => Promise<PlatformConnectionCheckResult>;
   reconnect: (type: PlatformType) => Promise<boolean>;
+}
+
+function replacePlatform(platforms: Platform[], type: PlatformType, updates: Partial<Platform>): Platform[] {
+  return platforms.map((platform) =>
+    platform.type === type ? { ...platform, ...updates } : platform
+  );
 }
 
 export const usePlatformStore = create<PlatformState>((set, get) => ({
@@ -49,7 +68,10 @@ export const usePlatformStore = create<PlatformState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const platforms = await platformApi.getPlatforms();
-      set({ platforms, isLoading: false });
+      set({
+        platforms: Array.isArray(platforms) && platforms.length > 0 ? platforms : get().platforms,
+        isLoading: false,
+      });
     } catch {
       set({ platforms: defaultPlatforms, isLoading: false });
     }
@@ -89,15 +111,23 @@ export const usePlatformStore = create<PlatformState>((set, get) => ({
   // 启用平台
   enablePlatform: async (type) => {
     try {
-      await platformApi.enablePlatform(type);
       const { platforms } = get();
-      const updated = platforms.map(p =>
-        p.type === type ? { ...p, enabled: true, status: 'pending' as const } : p
-      );
+      const updated = replacePlatform(platforms, type, { enabled: true, status: 'pending' });
       set({ platforms: updated });
+
+      await platformApi.enablePlatform(type);
+      await get().fetchPlatforms();
+
+      const refreshed = get().platforms;
+      if (!refreshed.some((platform) => platform.type === type && platform.enabled)) {
+        set({ platforms: updated });
+      }
       return true;
     } catch (err) {
       set({ error: getErrorMessage(err) });
+      const { platforms } = get();
+      const reverted = replacePlatform(platforms, type, { enabled: false, status: 'disconnected' });
+      set({ platforms: reverted });
       return false;
     }
   },
@@ -105,12 +135,17 @@ export const usePlatformStore = create<PlatformState>((set, get) => ({
   // 禁用平台
   disablePlatform: async (type) => {
     try {
-      await platformApi.disablePlatform(type);
       const { platforms } = get();
-      const updated = platforms.map(p =>
-        p.type === type ? { ...p, enabled: false, status: 'disconnected' as const } : p
-      );
+      const updated = replacePlatform(platforms, type, { enabled: false, status: 'disconnected', error: undefined });
       set({ platforms: updated });
+
+      await platformApi.disablePlatform(type);
+      await get().fetchPlatforms();
+
+      const refreshed = get().platforms;
+      if (!refreshed.some((platform) => platform.type === type && platform.enabled === false)) {
+        set({ platforms: updated });
+      }
       return true;
     } catch (err) {
       set({ error: getErrorMessage(err) });
@@ -124,10 +159,25 @@ export const usePlatformStore = create<PlatformState>((set, get) => ({
       const result = await platformApi.testConnection(type);
       if (result.ok) {
         const { platforms } = get();
-        const updated = platforms.map(p =>
-          p.type === type ? { ...p, status: 'connected' as const } : p
-        );
+        const updated = replacePlatform(platforms, type, {
+          status: result.status ?? 'connected',
+          enabled: true,
+          error: undefined,
+        });
         set({ platforms: updated });
+        await get().fetchPlatforms();
+        const refreshed = get().platforms;
+        if (!refreshed.some((platform) => platform.type === type && platform.status === 'connected')) {
+          set({ platforms: updated });
+        }
+      } else if (result.status) {
+        const { platforms } = get();
+        set({
+          platforms: replacePlatform(platforms, type, {
+            status: result.status,
+            error: result.details ?? result.message,
+          }),
+        });
       }
       return result;
     } catch (err) {
@@ -138,31 +188,27 @@ export const usePlatformStore = create<PlatformState>((set, get) => ({
   // 重连
   reconnect: async (type) => {
     try {
-      await platformApi.reconnect(type);
       const { platforms } = get();
-      const updated = platforms.map(p =>
-        p.type === type ? { ...p, status: 'pending' as const } : p
-      );
+      const updated = replacePlatform(platforms, type, { enabled: true, status: 'pending', error: undefined });
       set({ platforms: updated });
+
+      await platformApi.reconnect(type);
+      await get().fetchPlatforms();
+
+      const refreshed = get().platforms;
+      if (!refreshed.some((platform) => platform.type === type && platform.status !== 'error')) {
+        set({ platforms: updated });
+      }
       return true;
     } catch (err) {
       set({ error: getErrorMessage(err) });
+      const { platforms } = get();
+      const reverted = replacePlatform(platforms, type, { status: 'error' });
+      set({ platforms: reverted });
       return false;
     }
   },
 }));
-
-// Helper: get icon component for a platform type (use in rendering layer)
-import type { ReactNode } from 'react';
-import {
-  SmartphoneIcon,
-  ChatIcon,
-  BriefcaseIcon,
-  PlugIcon,
-  GlobeIcon,
-  BotIcon,
-  ZapIcon,
-} from '../components/ui/Icons';
 
 const PLATFORM_ICON_MAP: Record<PlatformType, ReactNode> = {
   telegram: <SmartphoneIcon size={18} />,
@@ -171,7 +217,10 @@ const PLATFORM_ICON_MAP: Record<PlatformType, ReactNode> = {
   whatsapp: <ChatIcon size={18} />,
   weixin: <ChatIcon size={18} />,
   wechat: <BotIcon size={18} />,
+  feishu: <ZapIcon size={18} />,
   lark: <ZapIcon size={18} />,
+  qqbot: <ChatIcon size={18} />,
+  api_server: <PlugIcon size={18} />,
   api: <PlugIcon size={18} />,
   webhook: <GlobeIcon size={18} />,
 };

@@ -257,28 +257,22 @@ const MessageListComponent: React.FC<MessageListProps> = ({
               );
             })}
           </div>
-        ) : (
-          messages.map((msg, idx) => {
-            // Check if message has any visible content
+        ) : (() => {
+          // Single-pass scan: compute visible messages and group boundaries in O(n)
+          const rendered: React.ReactNode[] = [];
+          let lastVisibleRole: string | null = null;
+
+          for (const msg of messages) {
             const { cleanContent } = msg.content ? parseToolJson(msg.content) : { cleanContent: '' };
             const hasVisibleContent = cleanContent || (msg.tools && msg.tools.length > 0);
-            if (!hasVisibleContent) return null;
+            if (!hasVisibleContent) continue;
 
-            let prevVisibleIdx = idx - 1;
-            while (prevVisibleIdx >= 0) {
-              const prevMsg = messages[prevVisibleIdx];
-              const prevClean = prevMsg.content ? parseToolJson(prevMsg.content).cleanContent : '';
-              if (prevClean || prevMsg.reasoning || (prevMsg.tools && prevMsg.tools.length > 0)) {
-                break;
-              }
-              prevVisibleIdx--;
-            }
+            const isFirstInGroup = lastVisibleRole !== msg.role;
+            lastVisibleRole = msg.role;
 
-            const isFirstInGroup = prevVisibleIdx < 0 || messages[prevVisibleIdx].role !== msg.role;
-
-            return (
+            rendered.push(
               <MessageContent
-                key={idx}
+                key={msg.id}
                 message={msg}
                 isFirstInGroup={isFirstInGroup}
                 messageSearchQuery={messageSearchQuery}
@@ -299,8 +293,9 @@ const MessageListComponent: React.FC<MessageListProps> = ({
                 t={t}
               />
             );
-          })
-        )}
+          }
+          return rendered;
+        })()}
 
         {/* Streaming message — live display during generation */}
         {isStreaming && (streamingText || reasoningText || streamingTools.length > 0) && (

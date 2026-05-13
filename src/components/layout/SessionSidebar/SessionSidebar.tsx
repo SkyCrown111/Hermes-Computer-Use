@@ -170,7 +170,7 @@ export const SessionSidebar: React.FC = () => {
       sessionId: session.id,
       sessionName: session.chat_name || t('sessions.untitled').replace('{id}', session.id.slice(0, 12)),
     });
-  }, []);
+  }, [t]);
 
   // Close context menu when clicking outside
   useEffect(() => {

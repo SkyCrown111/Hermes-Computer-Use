@@ -3,6 +3,7 @@
 
 import { create } from 'zustand';
 import { logger } from '../lib/logger';
+import { getSession } from '../services/sessionApi';
 
 // LocalStorage key for message persistence
 const CHAT_MESSAGES_KEY = 'hermes-chat-messages';
@@ -775,7 +776,6 @@ export function initializeChatStore() {
   // This handles the case where localStorage was cleared but sessions still exist.
   setTimeout(async () => {
     try {
-      const { getSession } = await import('../services/sessionApi');
       const { openTabs } = (await import('./navigationStore')).useNavigationStore.getState();
       const currentSessions = useChatStore.getState().sessions;
 

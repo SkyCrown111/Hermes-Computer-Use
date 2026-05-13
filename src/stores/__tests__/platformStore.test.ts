@@ -138,6 +138,7 @@ describe('PlatformStore', () => {
       });
 
       vi.mocked(platformApi.platformApi.enablePlatform).mockResolvedValue(undefined);
+      vi.mocked(platformApi.platformApi.getPlatforms).mockResolvedValue([]);
 
       const result = await usePlatformStore.getState().enablePlatform('telegram');
 
@@ -155,6 +156,7 @@ describe('PlatformStore', () => {
       });
 
       vi.mocked(platformApi.platformApi.disablePlatform).mockResolvedValue(undefined);
+      vi.mocked(platformApi.platformApi.getPlatforms).mockResolvedValue([]);
 
       const result = await usePlatformStore.getState().disablePlatform('telegram');
 
@@ -171,7 +173,8 @@ describe('PlatformStore', () => {
         platforms: [createMockPlatform({ type: 'telegram', status: 'pending', enabled: true })],
       });
 
-      vi.mocked(platformApi.platformApi.testConnection).mockResolvedValue({ ok: true });
+      vi.mocked(platformApi.platformApi.testConnection).mockResolvedValue({ ok: true, status: 'connected' });
+      vi.mocked(platformApi.platformApi.getPlatforms).mockResolvedValue([]);
 
       const result = await usePlatformStore.getState().testConnection('telegram');
 
@@ -197,6 +200,7 @@ describe('PlatformStore', () => {
       });
 
       vi.mocked(platformApi.platformApi.reconnect).mockResolvedValue(undefined);
+      vi.mocked(platformApi.platformApi.getPlatforms).mockResolvedValue([]);
 
       const result = await usePlatformStore.getState().reconnect('telegram');
 
