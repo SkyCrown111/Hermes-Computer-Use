@@ -15,6 +15,45 @@ import {
   ZapIcon,
 } from '../components/ui/Icons';
 
+const PLATFORM_TYPE_ALIASES: Partial<Record<PlatformType, PlatformType>> = {
+  feishu: 'lark',
+  api_server: 'api',
+};
+
+function toCanonicalPlatformType(type: PlatformType): PlatformType {
+  return PLATFORM_TYPE_ALIASES[type] ?? type;
+}
+
+function normalizePlatform(platform: Platform): Platform {
+  return {
+    ...platform,
+    type: toCanonicalPlatformType(platform.type),
+  };
+}
+
+function dedupePlatforms(platforms: Platform[]): Platform[] {
+  const deduped = new Map<PlatformType, Platform>();
+
+  for (const platform of platforms.map(normalizePlatform)) {
+    const existing = deduped.get(platform.type);
+    if (!existing) {
+      deduped.set(platform.type, platform);
+      continue;
+    }
+
+    deduped.set(platform.type, {
+      ...existing,
+      ...platform,
+      config: { ...(existing.config ?? {}), ...(platform.config ?? {}) },
+      enabled: existing.enabled || platform.enabled,
+      error: platform.error ?? existing.error,
+      lastConnected: platform.lastConnected ?? existing.lastConnected,
+    });
+  }
+
+  return Array.from(deduped.values());
+}
+
 // 默认平台配置（纯数据，不含 UI 元素）
 const defaultPlatforms: Platform[] = [
   { type: 'telegram', name: 'Telegram', description: 'Telegram Bot', status: 'disconnected', enabled: false },
@@ -24,9 +63,6 @@ const defaultPlatforms: Platform[] = [
   { type: 'weixin', name: '微信', description: 'WeChat Personal', status: 'disconnected', enabled: false },
   { type: 'wechat', name: '企业微信', description: 'WeChat Work', status: 'disconnected', enabled: false },
   { type: 'lark', name: '飞书', description: 'Lark Bot', status: 'disconnected', enabled: false },
-  { type: 'feishu', name: 'Feishu', description: 'Lark Bot', status: 'disconnected', enabled: false },
-  { type: 'qqbot', name: 'QQ Bot', description: 'QQ Bot', status: 'disconnected', enabled: false },
-  { type: 'api_server', name: 'API Server', description: 'REST API', status: 'disconnected', enabled: false },
   { type: 'api', name: 'API Gateway', description: 'REST API', status: 'disconnected', enabled: false },
   { type: 'webhook', name: 'Webhook', description: 'Custom Webhook', status: 'disconnected', enabled: false },
 ];
@@ -69,7 +105,7 @@ export const usePlatformStore = create<PlatformState>((set, get) => ({
     try {
       const platforms = await platformApi.getPlatforms();
       set({
-        platforms: Array.isArray(platforms) && platforms.length > 0 ? platforms : get().platforms,
+        platforms: Array.isArray(platforms) && platforms.length > 0 ? dedupePlatforms(platforms) : get().platforms,
         isLoading: false,
       });
     } catch {
@@ -210,21 +246,18 @@ export const usePlatformStore = create<PlatformState>((set, get) => ({
   },
 }));
 
-const PLATFORM_ICON_MAP: Record<PlatformType, ReactNode> = {
+const PLATFORM_ICON_MAP: Partial<Record<PlatformType, ReactNode>> = {
   telegram: <SmartphoneIcon size={18} />,
   discord: <ChatIcon size={18} />,
   slack: <BriefcaseIcon size={18} />,
   whatsapp: <ChatIcon size={18} />,
   weixin: <ChatIcon size={18} />,
   wechat: <BotIcon size={18} />,
-  feishu: <ZapIcon size={18} />,
   lark: <ZapIcon size={18} />,
-  qqbot: <ChatIcon size={18} />,
-  api_server: <PlugIcon size={18} />,
   api: <PlugIcon size={18} />,
   webhook: <GlobeIcon size={18} />,
 };
 
 export function getPlatformIcon(type: PlatformType): ReactNode {
-  return PLATFORM_ICON_MAP[type] ?? <PlugIcon size={18} />;
+  return PLATFORM_ICON_MAP[toCanonicalPlatformType(type)] ?? <PlugIcon size={18} />;
 }

@@ -21,7 +21,7 @@ interface ChatInputProps {
   onSendMessage: (text: string, attachedFiles: AttachedFile[]) => void;
   onStop: () => void;
   isStreaming: boolean;
-  hasPendingPermission?: boolean;
+  hasPendingInput?: boolean;
   disabled?: boolean;
 }
 
@@ -45,7 +45,7 @@ const getHermesCommands = (t: (key: string) => string) => [
 // ---- Component ----
 
 export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
-  ({ onSendMessage, onStop, isStreaming, hasPendingPermission, disabled }, ref) => {
+  ({ onSendMessage, onStop, isStreaming, hasPendingInput, disabled }, ref) => {
     const { t } = useTranslation();
     const HERMES_COMMANDS = useMemo(() => getHermesCommands(t), [t]);
 
@@ -225,7 +225,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 
     // ---- Derived ----
     const canSend = inputValue.trim().length > 0;
-    const showStop = isStreaming && !hasPendingPermission;
+    const showStop = isStreaming && !hasPendingInput;
 
     // ---- Render ----
     return (

@@ -2,6 +2,7 @@ import React, { useState, memo, useMemo } from 'react';
 import { logger } from '../../lib/logger';
 import { useSettingsStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
+import { AlertIcon, CheckIcon, ChevronDownIcon, ChevronUpIcon, InfoIcon, ShieldIcon, SparklesIcon, XIcon } from '../ui/Icons';
 
 type ApprovalChoice = 'once' | 'session' | 'always' | 'deny';
 
@@ -79,9 +80,7 @@ const PermissionCardComponent: React.FC<PermissionCardProps> = ({ approval, onRe
     <div className={`permission-card ${commandStatus}`}>
       <div className="permission-card-header">
         <div className="permission-card-icon">
-          <span className="material-symbols-outlined">
-            {commandStatus === 'safe' ? 'verified_user' : commandStatus === 'dangerous' ? 'warning' : 'shield'}
-          </span>
+          {commandStatus === 'safe' ? <SparklesIcon size={18} /> : commandStatus === 'dangerous' ? <AlertIcon size={18} /> : <ShieldIcon size={18} />}
         </div>
         <div className="permission-card-title">
           <span className="permission-card-label">
@@ -110,7 +109,7 @@ const PermissionCardComponent: React.FC<PermissionCardProps> = ({ approval, onRe
               className="permission-show-more"
               onClick={() => setShowCommand(v => !v)}
             >
-              <span className="material-symbols-outlined">{showCommand ? 'expand_less' : 'expand_more'}</span>
+              {showCommand ? <ChevronUpIcon size={16} /> : <ChevronDownIcon size={16} />}
               {showCommand ? t('permission.collapse') : t('permission.viewFullCommand')}
             </button>
           )}
@@ -122,25 +121,25 @@ const PermissionCardComponent: React.FC<PermissionCardProps> = ({ approval, onRe
       <div className="permission-card-actions">
         {hasChoice('once') && (
           <button className="permission-btn allow" onClick={() => handleRespond('once')} disabled={responding}>
-            <span className="material-symbols-outlined">check</span>
+            <CheckIcon size={16} />
             {t('permission.allow')}
           </button>
         )}
         {hasChoice('session') && (
           <button className="permission-btn session" onClick={() => handleRespond('session')} disabled={responding}>
-            <span className="material-symbols-outlined">verified</span>
+            <InfoIcon size={16} />
             {t('permission.thisSession')}
           </button>
         )}
         {hasChoice('always') && (
           <button className="permission-btn always" onClick={() => handleRespond('always')} disabled={responding}>
-            <span className="material-symbols-outlined">done_all</span>
+            <SparklesIcon size={16} />
             {t('permission.always')}
           </button>
         )}
         {hasChoice('deny') && (
           <button className="permission-btn deny" onClick={() => handleRespond('deny')} disabled={responding}>
-            <span className="material-symbols-outlined">close</span>
+            <XIcon size={16} />
             {t('permission.deny')}
           </button>
         )}

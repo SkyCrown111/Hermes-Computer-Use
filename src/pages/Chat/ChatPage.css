@@ -156,6 +156,37 @@
   opacity: 0.6;
 }
 
+.chat-status-primary,
+.chat-status-secondary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.chat-status-dot.streaming {
+  background: var(--chat-accent);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.chat-status-dot.ready {
+  background: var(--chat-success);
+}
+
+.chat-status-dot.offline {
+  background: var(--chat-error);
+}
+
+.chat-status-separator {
+  opacity: 0.4;
+}
+
 /* ================================================================
    Messages
    ================================================================ */
@@ -311,6 +342,17 @@
   font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace;
   transition: background 0.1s ease, box-shadow 0.15s ease;
   margin: 8px 0;
+}
+
+.tool-calls-chevron,
+.tool-calls-icon,
+.tool-calls-title {
+  display: inline-flex;
+  align-items: center;
+}
+
+.tool-calls-title {
+  font-weight: 600;
 }
 
 .tool-calls-toggle:hover {
@@ -1017,6 +1059,35 @@
   color: var(--chat-text-muted);
   margin: 0 0 24px;
   max-width: 400px;
+}
+
+.empty-hints {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.empty-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  background: var(--chat-surface);
+  border: 1px solid var(--chat-border);
+  font-size: 12px;
+  color: var(--chat-text-muted);
+}
+
+.empty-hint-icon {
+  display: inline-flex;
+  align-items: center;
+}
+
+.chat-bottom-spacer {
+  height: 20px;
 }
 
 /* ================================================================

@@ -1,6 +1,7 @@
 import React, { useState, memo } from 'react';
 import { logger } from '../../lib/logger';
 import { useTranslation } from '../../hooks/useTranslation';
+import { InfoIcon, SendIcon } from '../ui/Icons';
 
 interface ClarifyCardProps {
   clarify: {
@@ -44,7 +45,7 @@ const ClarifyCardComponent: React.FC<ClarifyCardProps> = ({ clarify, onRespond }
     <div className="clarify-card">
       <div className="clarify-card-header">
         <div className="clarify-card-icon">
-          <span className="material-symbols-outlined">help</span>
+          <InfoIcon size={18} />
         </div>
         <div className="clarify-card-title">
           <span className="clarify-card-label">{t('clarify.needsConfirm')}</span>
@@ -93,7 +94,7 @@ const ClarifyCardComponent: React.FC<ClarifyCardProps> = ({ clarify, onRespond }
               onClick={handleCustomSubmit}
               disabled={responding}
             >
-              <span className="material-symbols-outlined">send</span>
+              <SendIcon size={16} />
             </button>
           )}
         </div>

@@ -1,6 +1,6 @@
 import './styles/globals.css';
 import { useEffect, Suspense, lazy } from 'react';
-import { useNavigationStore, useThemeStore, useSessionStore } from './stores';
+import { useNavigationStore, useThemeStore, useSessionStore, resolveTheme } from './stores';
 import { initializeChatStore } from './stores/chatStore';
 import { Layout, ToastContainer, ErrorBoundary, CommandPalette, GlobalSearch } from './components';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -58,12 +58,29 @@ function App() {
   // Apply theme and display preferences to document
   useEffect(() => {
     const root = document.documentElement;
-    root.setAttribute('data-theme', mode);
+    const applyTheme = () => {
+      root.setAttribute('data-theme', resolveTheme(mode));
+    };
+
+    applyTheme();
+
+    if (mode === 'system' && window.matchMedia) {
+      const media = window.matchMedia('(prefers-color-scheme: dark)');
+      const handleChange = () => applyTheme();
+      media.addEventListener('change', handleChange);
+      return () => media.removeEventListener('change', handleChange);
+    }
+
+    return;
+  }, [mode]);
+
+  useEffect(() => {
+    const root = document.documentElement;
     // Apply compact mode
     root.classList.toggle('compact-mode', displayPreferences.compactMode);
     // Apply sidebar position
     root.setAttribute('data-sidebar-position', displayPreferences.sidebarPosition);
-  }, [mode, displayPreferences.compactMode, displayPreferences.sidebarPosition]);
+  }, [displayPreferences.compactMode, displayPreferences.sidebarPosition]);
 
   // Restore tabs and fetch sessions on mount
   useEffect(() => {

@@ -1,4 +1,4 @@
-// Internationalization (i18n) System
+﻿// Internationalization (i18n) System
 import { logger } from './logger';
 
 type Language = 'zh' | 'en';

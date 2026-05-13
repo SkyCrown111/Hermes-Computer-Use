@@ -1,4 +1,4 @@
-// ChatPage — Claude Code desktop style: full-width messages, role labels, clean terminal aesthetic
+// ChatPage - Claude Code desktop style: full-width messages, role labels, clean terminal aesthetic
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { streamChatRealtime, checkHermesApiHealth, respondApproval, respondClarify, respondSecret, abortChat } from '../../services/hermesChat';
 import { useSessionStore, useNavigationStore, useChatStore, resolveSessionId } from '../../stores';
@@ -8,6 +8,17 @@ import { cleanErrorMessage } from '../../lib/errorUtils';
 import { normalizeContent } from '../../lib/contentUtils';
 import { parseToolJson } from '../../components/chat/parseToolJson';
 import type { ChatMessage, ToolCallInfo } from '../../stores/chatStore';
+import {
+  ChevronDownIcon,
+  ChevronUpIcon,
+  CopyIcon,
+  FileTextIcon,
+  RefreshIcon,
+  SearchIcon,
+  TerminalIcon,
+  ToolIcon,
+  TrashIcon,
+} from '../../components';
 import { requestNotificationPermission } from '../../services/notifications';
 import { toast } from '../../stores/toastStore';
 import { ChatInput, PermissionCard, ClarifyCard, SecretCard } from '../../components/chat';
@@ -19,7 +30,7 @@ import './ChatPage.css';
 
 // ---- Tool Calls Block ----
 
-const ToolCallsBlock: React.FC<{ tools: ToolCallInfo[]; isStreaming?: boolean }> = ({ tools, isStreaming }) => {
+const ToolCallsBlock: React.FC<{ tools: ToolCallInfo[]; isStreaming?: boolean; lang: 'zh' | 'en' }> = ({ tools, isStreaming, lang }) => {
   const [expanded, setExpanded] = useState(false);
   if (!tools || tools.length === 0) return null;
 
@@ -27,24 +38,31 @@ const ToolCallsBlock: React.FC<{ tools: ToolCallInfo[]; isStreaming?: boolean }>
   const completedCount = tools.filter(t => t.duration || (!isStreaming && !t.is_error)).length;
   const errorCount = tools.filter(t => t.is_error).length;
 
+  const labels = {
+    toolCalls: lang === 'zh' ? '工具调用' : 'tool calls',
+    running: lang === 'zh' ? '进行中' : 'running',
+    error: lang === 'zh' ? '错误' : 'error',
+    done: lang === 'zh' ? '完成' : 'done',
+  };
+
   return (
     <div className="tool-calls-block">
       <button className="tool-calls-toggle" onClick={() => setExpanded(!expanded)}>
-        <span className="material-symbols-outlined" style={{ fontSize: 10, transition: 'transform 0.15s', transform: expanded ? 'rotate(90deg)' : 'none' }}>
-          chevron_right
+        <span className="tool-calls-chevron" aria-hidden="true">
+          {expanded ? <ChevronDownIcon size={12} /> : <ChevronUpIcon size={12} className="tool-calls-chevron-collapsed" />}
         </span>
-        <span className="material-symbols-outlined" style={{ fontSize: 14 }}>build</span>
-        <span style={{ fontWeight: 600 }}>
-          {tools.length} tool call{tools.length !== 1 ? 's' : ''}
+        <span className="tool-calls-icon" aria-hidden="true"><ToolIcon size={14} /></span>
+        <span className="tool-calls-title">
+          {tools.length} {labels.toolCalls}
         </span>
         {runningCount > 0 && (
-          <span className="tool-call-status running">{runningCount} running</span>
+          <span className="tool-call-status running">{runningCount} {labels.running}</span>
         )}
         {errorCount > 0 && (
-          <span className="tool-call-status error">{errorCount} error{errorCount !== 1 ? 's' : ''}</span>
+          <span className="tool-call-status error">{errorCount} {labels.error}</span>
         )}
         {completedCount > 0 && !runningCount && (
-          <span className="tool-call-status success">{completedCount} done</span>
+          <span className="tool-call-status success">{completedCount} {labels.done}</span>
         )}
       </button>
       {expanded && (
@@ -58,7 +76,7 @@ const ToolCallsBlock: React.FC<{ tools: ToolCallInfo[]; isStreaming?: boolean }>
   );
 };
 
-// ---- Message Block (Claude Code style) ----
+// ---- Message Block ----
 
 interface MessageBlockProps {
   message: ChatMessage;
@@ -66,27 +84,26 @@ interface MessageBlockProps {
   onDelete: (messageId: string) => void;
   onRegenerate?: () => void;
   isLast: boolean;
+  lang: 'zh' | 'en';
+  t: (key: string) => string;
 }
 
-const MessageBlock: React.FC<MessageBlockProps> = React.memo(({ message, onCopy, onDelete, onRegenerate, isLast }) => {
+const MessageBlock: React.FC<MessageBlockProps> = React.memo(({ message, onCopy, onDelete, onRegenerate, isLast, lang, t }) => {
   const content = normalizeContent(message.content);
   const isAssistant = message.role === 'assistant';
+  const thinkingLabel = t('chat.thinking').replace('...', '');
 
   return (
     <div className={`chat-message ${message.role}`}>
-      {/* Message content card */}
       <div className="chat-message-content">
-        {/* Thinking / Reasoning */}
         {message.reasoning && (
-          <ThinkingBlock content={message.reasoning} label="Thinking" />
+          <ThinkingBlock content={message.reasoning} label={thinkingLabel} />
         )}
 
-        {/* Tool calls */}
         {message.tools && message.tools.length > 0 && (
-          <ToolCallsBlock tools={message.tools} />
+          <ToolCallsBlock tools={message.tools} lang={lang} />
         )}
 
-        {/* Message body */}
         {content && (
           isAssistant ? (
             <MarkdownRenderer content={content} />
@@ -96,32 +113,30 @@ const MessageBlock: React.FC<MessageBlockProps> = React.memo(({ message, onCopy,
         )}
       </div>
 
-      {/* Meta row: timestamp + token usage */}
       {(message.timestamp || message.inputTokens) && (
         <div className="chat-message-meta">
           {message.timestamp && (
             <span>{new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
           )}
           {message.inputTokens != null && (
-            <span>{message.inputTokens}↑ {message.outputTokens}↓ {message.totalTokens} tok</span>
+            <span>{`${message.inputTokens}->${message.outputTokens}->${message.totalTokens} tok`}</span>
           )}
           {message.thinkingTime != null && message.thinkingTime > 0 && (
-            <span>think {Math.round(message.thinkingTime)}s</span>
+            <span>{t('chat.thinkingTime')} {Math.round(message.thinkingTime)}s</span>
           )}
         </div>
       )}
 
-      {/* Action buttons (CSS hover reveal) */}
       <div className="chat-message-actions">
-        <button className="action-btn" onClick={() => onCopy(content)} title="Copy">
-          <span className="material-symbols-outlined" style={{ fontSize: 14 }}>content_copy</span>
+        <button className="action-btn" onClick={() => onCopy(content)} title={t('common.copy')}>
+          <CopyIcon size={14} />
         </button>
-        <button className="action-btn" onClick={() => onDelete(message.id)} title="Delete">
-          <span className="material-symbols-outlined" style={{ fontSize: 14 }}>delete</span>
+        <button className="action-btn" onClick={() => onDelete(message.id)} title={t('common.delete')}>
+          <TrashIcon size={14} />
         </button>
         {isAssistant && isLast && onRegenerate && (
-          <button className="action-btn" onClick={onRegenerate} title="Regenerate">
-            <span className="material-symbols-outlined" style={{ fontSize: 14 }}>refresh</span>
+          <button className="action-btn" onClick={onRegenerate} title={t('message.regenerate')}>
+            <RefreshIcon size={14} />
           </button>
         )}
       </div>
@@ -135,30 +150,27 @@ interface StreamingBlockProps {
   streamingText: string;
   reasoningText: string;
   streamingTools: ToolCallInfo[];
+  lang: 'zh' | 'en';
 }
 
-const StreamingBlock: React.FC<StreamingBlockProps> = React.memo(({ streamingText, reasoningText, streamingTools }) => {
+const StreamingBlock: React.FC<StreamingBlockProps> = React.memo(({ streamingText, reasoningText, streamingTools, lang }) => {
   return (
     <div className="chat-message assistant chat-message-streaming">
       <div className="chat-message-content">
-        {/* Streaming tools */}
         {streamingTools.length > 0 && (
-          <ToolCallsBlock tools={streamingTools} isStreaming />
+          <ToolCallsBlock tools={streamingTools} isStreaming lang={lang} />
         )}
 
-        {/* Streaming reasoning */}
         {reasoningText && (
-          <ThinkingBlock content={reasoningText} isActive label="Thinking" />
+          <ThinkingBlock content={reasoningText} isActive label={lang === 'zh' ? '思考' : 'Thinking'} />
         )}
 
-        {/* Streaming text with cursor */}
         {streamingText ? (
           <div>
             <MarkdownRenderer content={streamingText} />
             <span className="streaming-cursor" />
           </div>
         ) : (
-          /* Thinking dots when no text yet */
           reasoningText === '' && streamingTools.length === 0 && (
             <div className="streaming-dots">
               <span /><span /><span />
@@ -167,11 +179,10 @@ const StreamingBlock: React.FC<StreamingBlockProps> = React.memo(({ streamingTex
         )}
       </div>
 
-      {/* Streaming badge in meta area */}
       <div className="chat-message-meta">
         <span className="streaming-badge">
           <span className="streaming-dot" />
-          streaming
+          {lang === 'zh' ? '流式输出中' : 'streaming'}
         </span>
       </div>
     </div>
@@ -180,28 +191,26 @@ const StreamingBlock: React.FC<StreamingBlockProps> = React.memo(({ streamingTex
 
 // ---- Empty State ----
 
-const EmptyState: React.FC = () => (
+const EmptyState: React.FC<{ lang: 'zh' | 'en' }> = ({ lang }) => (
   <div className="chat-empty">
     <div className="empty-icon">
-      <span className="material-symbols-outlined">terminal</span>
+      <TerminalIcon size={28} />
     </div>
     <h2 className="empty-title">Hermes Agent</h2>
-    <p className="empty-subtitle">Start a conversation below</p>
-    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center', marginTop: 4 }}>
-      {[
-        { icon: 'code', label: 'Write code, debug, and build projects' },
-        { icon: 'search', label: 'Search and analyze files' },
-        { icon: 'terminal', label: 'Run commands and tools' },
-      ].map((hint) => (
-        <div key={hint.icon} style={{
-          display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px',
-          borderRadius: 8, background: 'var(--chat-surface)', border: '1px solid var(--chat-border)',
-          fontSize: 12, color: 'var(--chat-text-muted)',
-        }}>
-          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>{hint.icon}</span>
-          <span>{hint.label}</span>
-        </div>
-      ))}
+    <p className="empty-subtitle">{lang === 'zh' ? '在下方开始一段对话' : 'Start a conversation below'}</p>
+    <div className="empty-hints">
+      <div className="empty-hint">
+        <span className="empty-hint-icon" aria-hidden="true"><FileTextIcon size={16} /></span>
+        <span>{lang === 'zh' ? '写代码、调试并构建项目' : 'Write code, debug, and build projects'}</span>
+      </div>
+      <div className="empty-hint">
+        <span className="empty-hint-icon" aria-hidden="true"><SearchIcon size={16} /></span>
+        <span>{lang === 'zh' ? '搜索并分析文件' : 'Search and analyze files'}</span>
+      </div>
+      <div className="empty-hint">
+        <span className="empty-hint-icon" aria-hidden="true"><TerminalIcon size={16} /></span>
+        <span>{lang === 'zh' ? '运行命令和工具' : 'Run commands and tools'}</span>
+      </div>
     </div>
   </div>
 );
@@ -213,21 +222,18 @@ interface StatusBarProps {
   apiAvailable: boolean | null;
   sessionId: string;
   messageCount: number;
+  lang: 'zh' | 'en';
 }
 
-const StatusBar: React.FC<StatusBarProps> = ({ isStreaming, apiAvailable, sessionId, messageCount }) => (
+const StatusBar: React.FC<StatusBarProps> = ({ isStreaming, apiAvailable, sessionId, messageCount, lang }) => (
   <div className="chat-status-bar">
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <span style={{
-        width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
-        background: isStreaming ? 'var(--chat-accent)' : apiAvailable ? 'var(--chat-success)' : 'var(--chat-error)',
-        animation: isStreaming ? 'pulse 1.5s ease-in-out infinite' : undefined,
-      }} />
-      <span>{isStreaming ? 'Streaming' : apiAvailable ? 'Ready' : 'Offline'}</span>
+    <div className="chat-status-primary">
+      <span className={`chat-status-dot ${isStreaming ? 'streaming' : apiAvailable ? 'ready' : 'offline'}`} />
+      <span>{isStreaming ? (lang === 'zh' ? '流式输出中' : 'Streaming') : apiAvailable ? (lang === 'zh' ? '就绪' : 'Ready') : (lang === 'zh' ? '离线' : 'Offline')}</span>
     </div>
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-      <span>{messageCount} messages</span>
-      <span style={{ opacity: 0.4 }}>·</span>
+    <div className="chat-status-secondary">
+      <span>{messageCount} {lang === 'zh' ? '条消息' : 'messages'}</span>
+      <span className="chat-status-separator">.</span>
       <span>{sessionId?.slice(0, 8)}</span>
     </div>
   </div>
@@ -240,7 +246,7 @@ interface ChatPageProps {
 }
 
 export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
 
   // Navigation
   const { chatContext, activeTabId } = useNavigationStore();
@@ -409,12 +415,30 @@ export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
   const handleSendMessage = useCallback(async (text: string, files: AttachedFile[]) => {
     const currentIsStreaming = useChatStore.getState().sessions[effectiveSessionId || '']?.isStreaming;
     const currentPendingPermission = useChatStore.getState().sessions[effectiveSessionId || '']?.pendingPermission;
+    const currentPendingClarify = useChatStore.getState().sessions[effectiveSessionId || '']?.pendingClarify;
+    const currentPendingSecret = useChatStore.getState().sessions[effectiveSessionId || '']?.pendingSecret;
     if (!text.trim() || !effectiveSessionId) return;
 
     if (currentPendingPermission) {
       const choice = text.trim().toLowerCase();
-      await respondApproval(currentPendingPermission.id, choice === 'y' || choice === 'yes');
+      const normalizedChoice =
+        choice === 'y' || choice === 'yes' || choice === 'approve' || choice === 'approved' ? 'once' :
+        choice === 'once' || choice === 'session' || choice === 'always' || choice === 'deny' ? choice :
+        'deny';
+      await respondApproval(currentPendingPermission.id, normalizedChoice);
       clearPendingPermission(effectiveSessionId);
+      return;
+    }
+
+    if (currentPendingClarify) {
+      await respondClarify(currentPendingClarify.id, text.trim());
+      clearPendingClarify(effectiveSessionId);
+      return;
+    }
+
+    if (currentPendingSecret) {
+      await respondSecret(currentPendingSecret.id, text.trim());
+      clearPendingSecret(effectiveSessionId);
       return;
     }
 
@@ -584,7 +608,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
         }
       }
     }
-  }, [effectiveSessionId, addMessage, updateMessage, setStreaming, setStreamingText, setReasoningText, clearReasoningText, clearStreamingTools, updateSessionActivity, clearPendingPermission, setPendingPermission, setPendingClarify, setPendingSecret, t]);
+  }, [effectiveSessionId, addMessage, updateMessage, setStreaming, setStreamingText, setReasoningText, clearReasoningText, clearStreamingTools, updateSessionActivity, clearPendingPermission, clearPendingClarify, clearPendingSecret, setPendingPermission, setPendingClarify, setPendingSecret, t]);
 
   const handleApprovalResponse = useCallback(async (choice: 'once' | 'session' | 'always' | 'deny') => {
     if (!effectiveSessionId || !sessionPendingPermission) return;
@@ -659,7 +683,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
       {/* Messages area */}
       <div className="chat-messages" ref={scrollContainerRef} onScroll={handleScroll}>
         {messages.length === 0 && !isStreaming ? (
-          <EmptyState />
+          <EmptyState lang={lang} />
         ) : (
           <>
             {messages
@@ -672,6 +696,8 @@ export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
                 onDelete={deleteMessageHandler}
                 onRegenerate={idx === filtered.length - 1 && msg.role === 'assistant' ? regenerateLast : undefined}
                 isLast={idx === filtered.length - 1}
+                lang={lang}
+                t={t}
               />
             ))}
 
@@ -681,6 +707,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
                 streamingText={streamingText}
                 reasoningText={reasoningText}
                 streamingTools={streamingTools}
+                lang={lang}
               />
             )}
 
@@ -701,7 +728,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
             )}
 
             {/* Bottom spacer for scrolling */}
-            <div style={{ height: 20 }} />
+            <div className="chat-bottom-spacer" />
           </>
         )}
       </div>
@@ -713,7 +740,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
           onSendMessage={handleSendMessage}
           onStop={handleStop}
           isStreaming={isStreaming}
-          hasPendingPermission={!!sessionPendingPermission}
+          hasPendingInput={!!sessionPendingPermission || !!sessionPendingClarify || !!sessionPendingSecret}
         />
         {/* Status bar - moved below input */}
         <StatusBar
@@ -721,6 +748,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
           apiAvailable={apiAvailable}
           sessionId={effectiveSessionId || ''}
           messageCount={messages.length}
+          lang={lang}
         />
       </div>
     </div>

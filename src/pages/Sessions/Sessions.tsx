@@ -108,9 +108,10 @@ const SessionCard: React.FC<SessionCardProps> = React.memo(({ session, isSelecte
 interface MessageItemProps {
   message: SessionMessage;
   t: (key: string) => string;
+  lang: 'zh' | 'en';
 }
 
-const MessageItem: React.FC<MessageItemProps> = React.memo(({ message, t }) => {
+const MessageItem: React.FC<MessageItemProps> = React.memo(({ message, t, lang }) => {
   const getRoleName = (role: string, lang: 'zh' | 'en'): string => {
     const names: Record<string, { zh: string; en: string }> = {
       user: { zh: '用户', en: 'User' },
@@ -123,7 +124,7 @@ const MessageItem: React.FC<MessageItemProps> = React.memo(({ message, t }) => {
   return (
     <div className={`message-item message-${message.role}`}>
       <div className="message-content-wrapper">
-        <div className="message-role">{getRoleName(message.role, t('nav.home') === 'Home' ? 'en' : 'zh')}</div>
+        <div className="message-role">{getRoleName(message.role, lang)}</div>
         <div className="message-content">{message.content}</div>
         {message.tool_calls && message.tool_calls.length > 0 && (
           <div className="tool-calls">
@@ -184,7 +185,7 @@ const ExportModal: React.FC<ExportModalProps> = ({ session, onClose, onExport, t
 
 // Main Sessions Page Component
 export const Sessions: React.FC = () => {
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
 
   // Get store state and actions - only subscribe to what's needed for the list view
   const sessions = useSessionStore(s => s.sessions);
@@ -694,7 +695,7 @@ export const Sessions: React.FC = () => {
                     </div>
                   ) : messages.length > 0 ? (
                     messages.map((message: SessionMessage) => (
-                      <MessageItem key={`${message.timestamp}-${message.role}`} message={message} t={t} />
+                      <MessageItem key={`${message.timestamp}-${message.role}`} message={message} t={t} lang={lang} />
                     ))
                   ) : (
                     <div className="empty-state">

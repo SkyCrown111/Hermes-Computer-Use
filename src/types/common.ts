@@ -21,4 +21,17 @@ export type ChatType = 'dm' | 'group' | 'channel' | 'thread';
 
 export type SessionStatus = 'active' | 'completed' | 'error';
 
-export type PlatformName = 'telegram' | 'discord' | 'slack' | 'whatsapp' | 'weixin' | 'wechat' | 'lark' | 'api' | 'webhook' | 'cli' | 'cron';
+export type PlatformName =
+  | 'telegram'
+  | 'discord'
+  | 'slack'
+  | 'whatsapp'
+  | 'weixin'
+  | 'wechat'
+  | 'feishu'
+  | 'lark'
+  | 'api_server'
+  | 'api'
+  | 'webhook'
+  | 'cli'
+  | 'cron';

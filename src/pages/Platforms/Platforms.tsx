@@ -8,7 +8,7 @@ import type { Platform, PlatformType } from '../../types/platform';
 import './Platforms.css';
 
 // 平台配置表单字段
-const platformConfigFields: Record<PlatformType, { key: string; label: string; type: string; placeholder: string; hint?: string }[]> = {
+const platformConfigFields: Partial<Record<PlatformType, { key: string; label: string; type: string; placeholder: string; hint?: string }[]>> = {
   telegram: [
     { key: 'bot_token', label: 'Bot Token', type: 'password', placeholder: 'Enter Telegram Bot Token' },
     { key: 'webhook_url', label: 'Webhook URL', type: 'text', placeholder: 'Optional: Webhook URL' },
@@ -40,19 +40,9 @@ const platformConfigFields: Record<PlatformType, { key: string; label: string; t
   weixin: [
     // 个人微信使用扫码登录，allowed_users 在扫码成功后自动添加
   ],
-  feishu: [
-    { key: 'app_id', label: 'App ID', type: 'text', placeholder: 'Feishu App ID' },
-    { key: 'app_secret', label: 'App Secret', type: 'password', placeholder: 'Feishu App Secret' },
-  ],
   lark: [
     { key: 'app_id', label: 'App ID', type: 'text', placeholder: 'Lark App ID' },
     { key: 'app_secret', label: 'App Secret', type: 'password', placeholder: 'Lark App Secret' },
-  ],
-  qqbot: [],
-  api_server: [
-    { key: 'port', label: 'Port', type: 'number', placeholder: '8080' },
-    { key: 'host', label: 'Host', type: 'text', placeholder: '0.0.0.0' },
-    { key: 'api_key', label: 'API Key', type: 'password', placeholder: 'Optional: API access key' },
   ],
   api: [
     { key: 'port', label: 'Port', type: 'number', placeholder: '8080' },

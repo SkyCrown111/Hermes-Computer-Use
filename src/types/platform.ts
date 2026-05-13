@@ -9,7 +9,6 @@ export type PlatformType =
   | 'weixin'
   | 'feishu'
   | 'lark'
-  | 'qqbot'
   | 'api_server'
   | 'api'
   | 'webhook';

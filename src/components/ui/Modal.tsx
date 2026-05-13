@@ -1,6 +1,6 @@
 import React from 'react';
 import { Button } from './Button';
-import { AlertIcon, ZapIcon } from './Icons';
+import { AlertIcon, InfoIcon, ZapIcon } from './Icons';
 import './Modal.css';
 
 interface ConfirmModalProps {
@@ -30,7 +30,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
     switch (variant) {
       case 'danger': return <AlertIcon size={24} />;
       case 'warning': return <ZapIcon size={24} />;
-      case 'info': return <span style={{ fontSize: '24px', fontWeight: 'bold', lineHeight: 1 }}>i</span>;
+      case 'info': return <InfoIcon size={24} />;
       default: return <AlertIcon size={24} />;
     }
   };
