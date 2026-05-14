@@ -658,8 +658,6 @@ export const ChatPage: React.FC<ChatPageProps> = ({
 
   return (
     <div className="chat-page">
-      <ChatSessionHeader />
-
       <MessageList
         messages={sessionState.messages}
         visibleMessages={visibleMessages}
@@ -700,6 +698,9 @@ export const ChatPage: React.FC<ChatPageProps> = ({
         isStreaming={sessionState.isStreaming}
         hasPendingPermission={!!sessionState.pendingPermission}
       />
+
+      {/* Status bar below input - simplified text only */}
+      <ChatSessionHeader />
     </div>
   );
 };

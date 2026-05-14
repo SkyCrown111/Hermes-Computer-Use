@@ -35,6 +35,40 @@ export interface MessageContentProps {
 
 // ---- Helpers ----
 
+function hasCodeBlocks(content: string): boolean {
+  return /```[\s\S]*?```/.test(content);
+}
+
+function extractCodeBlocks(content: string): string {
+  const blocks = content.match(/```(?:\w+)?\n([\s\S]*?)```/g);
+  if (!blocks) return content;
+  return blocks
+    .map(b => b.replace(/```\w*\n?/g, '').replace(/```$/g, '').trim())
+    .join('\n\n');
+}
+
+function hasTerminalCommands(content: string): boolean {
+  return /```(?:bash|sh|shell|terminal|console)\n[\s\S]*?```/.test(content)
+      || /^\$\s+.+$/m.test(content)
+      || /^\s*(?:npm|yarn|pnpm|git|docker|curl|wget|pip|cargo|go)\s+.+$/m.test(content);
+}
+
+function extractTerminalCommands(content: string): string {
+  // Extract from fenced code blocks with shell language
+  const shellBlocks = content.match(/```(?:bash|sh|shell|terminal|console)\n([\s\S]*?)```/g);
+  if (shellBlocks) {
+    return shellBlocks
+      .map(b => b.replace(/```\w*\n?/g, '').replace(/```$/g, '').trim())
+      .join('\n');
+  }
+  // Extract lines starting with $
+  const dollarLines = content.split('\n')
+    .filter(l => /^\$\s+.+$/.test(l.trim()))
+    .map(l => l.replace(/^\$\s+/, '').trim());
+  if (dollarLines.length > 0) return dollarLines.join('\n');
+  return content;
+}
+
 // ---- Component ----
 
 const MessageContentComponent: React.FC<MessageContentProps> = ({
@@ -189,9 +223,31 @@ const MessageContentComponent: React.FC<MessageContentProps> = ({
               <span className="material-symbols-outlined">content_copy</span>
             </button>
             {msg.role === 'assistant' && (
-              <button className="message-action-btn" onClick={onRegenerate} title={t('message.regenerate')}>
-                <span className="material-symbols-outlined">replay</span>
-              </button>
+              <>
+                <button className="message-action-btn" onClick={onRegenerate} title={t('message.regenerate')}>
+                  <span className="material-symbols-outlined">replay</span>
+                </button>
+                {hasCodeBlocks(msg.content) && (
+                  <button
+                    className="message-action-btn apply-changes"
+                    onClick={() => onCopyMessage(extractCodeBlocks(msg.content))}
+                    title="Copy code"
+                  >
+                    <span className="material-symbols-outlined">content_paste</span>
+                    <span className="action-label">Code</span>
+                  </button>
+                )}
+                {hasTerminalCommands(msg.content) && (
+                  <button
+                    className="message-action-btn run-command"
+                    onClick={() => onCopyMessage(extractTerminalCommands(msg.content))}
+                    title="Copy commands"
+                  >
+                    <span className="material-symbols-outlined">terminal</span>
+                    <span className="action-label">Command</span>
+                  </button>
+                )}
+              </>
             )}
             <button className="message-action-btn delete" onClick={() => onDeleteMessage(msg.id)} title={t('message.delete')}>
               <span className="material-symbols-outlined">delete</span>

@@ -1,4 +1,4 @@
-/* Markdown Renderer - Terminal-style clean rendering */
+/* Markdown Renderer - VS Code Dark+ code blocks */
 
 .markdown-content {
   font-size: 13px;
@@ -54,7 +54,7 @@
   border-radius: 6px;
   overflow: hidden;
   border: 1px solid var(--color-border);
-  background: #1a1a2e;
+  background: var(--chat-code-bg, #1e1e1e);
 }
 
 .markdown-content .md-code-header {
@@ -62,7 +62,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 4px 10px;
-  background: #16162a;
+  background: var(--chat-code-header, #2d2d2d);
   border-bottom: 1px solid rgba(255,255,255,0.06);
 }
 
@@ -107,25 +107,34 @@
   font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.55;
-  color: #e4e4e7;
+  color: #d4d4d4;
   tab-size: 2;
 }
 
-/* highlight.js theme overrides for dark code blocks */
+/* highlight.js theme overrides — VS Code Dark+ */
 .markdown-content .hljs {
   background: transparent !important;
-  color: #e4e4e7 !important;
+  color: #d4d4d4 !important;
   padding: 0 !important;
   overflow: visible !important;
 }
 
-.markdown-content .hljs-keyword { color: #c792ea !important; }
-.markdown-content .hljs-string { color: #c3e88d !important; }
-.markdown-content .hljs-number { color: #f78c6c !important; }
-.markdown-content .hljs-comment { color: #546e7a !important; font-style: italic !important; }
-.markdown-content .hljs-built_in { color: #82aaff !important; }
-.markdown-content .hljs-function { color: #82aaff !important; }
-.markdown-content .hljs-title { color: #82aaff !important; }
+.markdown-content .hljs-keyword { color: #569cd6 !important; }
+.markdown-content .hljs-string { color: #ce9178 !important; }
+.markdown-content .hljs-number { color: #b5cea8 !important; }
+.markdown-content .hljs-comment { color: #6a9955 !important; font-style: italic !important; }
+.markdown-content .hljs-built_in { color: #4ec9b0 !important; }
+.markdown-content .hljs-function { color: #dcdcaa !important; }
+.markdown-content .hljs-title { color: #dcdcaa !important; }
+.markdown-content .hljs-type { color: #4ec9b0 !important; }
+.markdown-content .hljs-attr { color: #9cdcfe !important; }
+.markdown-content .hljs-variable { color: #9cdcfe !important; }
+.markdown-content .hljs-literal { color: #569cd6 !important; }
+.markdown-content .hljs-meta { color: #c586c0 !important; }
+.markdown-content .hljs-selector-class { color: #d7ba7d !important; }
+.markdown-content .hljs-tag { color: #569cd6 !important; }
+.markdown-content .hljs-name { color: #569cd6 !important; }
+.markdown-content .hljs-attribute { color: #9cdcfe !important; }
 
 /* ─── Links ─── */
 .markdown-content .md-link {

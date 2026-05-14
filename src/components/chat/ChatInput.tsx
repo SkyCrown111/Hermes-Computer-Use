@@ -3,6 +3,8 @@ import { useTranslation } from '../../hooks/useTranslation';
 import { PlusIcon, PlayIcon, StopIcon, XIcon } from '../ui/Icons';
 import { logger } from '../../lib/logger';
 
+type InputMode = 'agent' | 'normal';
+
 // ---- Types ----
 
 export interface AttachedFile {
@@ -49,6 +51,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 
     // ---- State ----
     const [inputValue, setInputValue] = useState('');
+    const [mode, setMode] = useState<InputMode>('agent');
     const [showAddMenu, setShowAddMenu] = useState(false);
     const [showCommands, setShowCommands] = useState(false);
     const [filteredCommands, setFilteredCommands] = useState(HERMES_COMMANDS);
@@ -292,6 +295,22 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           {/* Bottom Toolbar */}
           <div className="chat-input-toolbar">
             <div className="toolbar-left">
+              <div className="mode-toggle">
+                <button
+                  className={`mode-toggle-btn ${mode === 'agent' ? 'active' : ''}`}
+                  onClick={() => setMode('agent')}
+                >
+                  <span className="material-symbols-outlined mode-icon">smart_toy</span>
+                  <span>Agent</span>
+                </button>
+                <button
+                  className={`mode-toggle-btn ${mode === 'normal' ? 'active' : ''}`}
+                  onClick={() => setMode('normal')}
+                >
+                  <span className="material-symbols-outlined mode-icon">chat</span>
+                  <span>Normal</span>
+                </button>
+              </div>
               <div className="add-button-wrapper" ref={addMenuRef}>
                 <button
                   className="toolbar-add-btn"

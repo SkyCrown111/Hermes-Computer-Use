@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useMemo, memo } from 'react';
+import React, { useRef, useEffect, useMemo, useState, memo } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { MessageContent } from './MessageContent';
 import { ThinkingBlock } from './ThinkingBlock';
@@ -52,6 +52,35 @@ export interface MessageListProps {
   t: (key: string) => string;
 }
 
+// ---- Streaming Timer Hook ----
+
+function useStreamingTimer(isStreaming: boolean) {
+  const [elapsed, setElapsed] = useState(0);
+  const startTimeRef = useRef<number>(0);
+
+  useEffect(() => {
+    if (isStreaming) {
+      startTimeRef.current = Date.now();
+      setElapsed(0);
+      const interval = setInterval(() => {
+        setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
+      }, 1000);
+      return () => clearInterval(interval);
+    } else {
+      setElapsed(0);
+    }
+  }, [isStreaming]);
+
+  return elapsed;
+}
+
+function formatElapsed(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}m${s}s`;
+}
+
 // ---- Component ----
 
 const MessageListComponent: React.FC<MessageListProps> = ({
@@ -88,6 +117,7 @@ const MessageListComponent: React.FC<MessageListProps> = ({
 }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const streamingElapsed = useStreamingTimer(isStreaming);
 
   // Track if we're in the middle of a window focus event to prevent layout shifts
   const isWindowFocusingRef = useRef(false);
@@ -308,7 +338,7 @@ const MessageListComponent: React.FC<MessageListProps> = ({
             <div className="message-avatar">
               <BotIcon size={16} />
             </div>
-            <div className="message-body">
+            <div className="message-content">
               {/* Streaming tools */}
               {streamingTools.length > 0 && (
                 <div className="streaming-tools">
@@ -345,6 +375,15 @@ const MessageListComponent: React.FC<MessageListProps> = ({
                     <span></span>
                     <span></span>
                   </span>
+                </div>
+              )}
+
+              {/* Streaming indicator with elapsed time */}
+              {streamingElapsed > 0 && (
+                <div className="streaming-indicator">
+                  <span className="star material-symbols-outlined">auto_awesome</span>
+                  <span className="verb">generating</span>
+                  <span className="elapsed">{formatElapsed(streamingElapsed)}</span>
                 </div>
               )}
             </div>
