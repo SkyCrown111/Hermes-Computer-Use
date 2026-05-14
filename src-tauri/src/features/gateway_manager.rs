@@ -4,6 +4,7 @@
 
 use crate::core::{HermesCli, EventBus};
 use crate::core::event_bus::Event;
+use crate::core::errors::Result;
 use std::sync::Arc;
 
 /// Gateway Manager
@@ -21,7 +22,7 @@ impl GatewayManager {
     }
 
     /// Start Gateway
-    pub async fn start_gateway(&self) -> Result<(), String> {
+    pub async fn start_gateway(&self) -> Result<()> {
         println!("[GatewayManager] Starting Gateway...");
 
         self.hermes_cli.start_gateway().await?;
@@ -33,7 +34,7 @@ impl GatewayManager {
     }
 
     /// Stop Gateway
-    pub async fn stop_gateway(&self) -> Result<(), String> {
+    pub async fn stop_gateway(&self) -> Result<()> {
         println!("[GatewayManager] Stopping Gateway...");
 
         self.hermes_cli.stop_gateway().await?;
@@ -45,7 +46,7 @@ impl GatewayManager {
     }
 
     /// Restart Gateway
-    pub async fn restart_gateway(&self) -> Result<(), String> {
+    pub async fn restart_gateway(&self) -> Result<()> {
         println!("[GatewayManager] Restarting Gateway...");
 
         self.stop_gateway().await?;

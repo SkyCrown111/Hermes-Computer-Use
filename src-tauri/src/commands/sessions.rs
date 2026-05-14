@@ -3168,3 +3168,80 @@ print(json.dumps({
 
 }
 
+
+
+// ============================================================================
+// V2 Checkpoint Commands - Using CheckpointManager
+// ============================================================================
+
+use crate::features::checkpoint_manager::{CheckpointManager, CheckpointMetadata, CreateCheckpointOptions, RestoreCheckpointOptions};
+use std::sync::Arc;
+
+/// Create a checkpoint using CheckpointManager (v2)
+#[tauri::command(rename_all = "snake_case")]
+pub async fn create_checkpoint_v2(
+    session_id: String,
+    description: Option<String>,
+    checkpoint_manager: tauri::State<'_, Arc<CheckpointManager>>,
+) -> Result<CheckpointMetadata, String> {
+    println!("[CheckpointV2] Creating checkpoint for session: {}", session_id);
+    
+    let name = format!("Checkpoint {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S"));
+    
+    let options = CreateCheckpointOptions {
+        session_id,
+        name,
+        description,
+        tags: None,
+        include_files: None,
+    };
+    
+    checkpoint_manager.create_checkpoint(options).await
+}
+
+/// List all checkpoints using CheckpointManager (v2)
+#[tauri::command(rename_all = "snake_case")]
+pub async fn list_checkpoints_v2(
+    session_id: String,
+    checkpoint_manager: tauri::State<'_, Arc<CheckpointManager>>,
+) -> Result<Vec<CheckpointMetadata>, String> {
+    println!("[CheckpointV2] Listing checkpoints for session: {}", session_id);
+    checkpoint_manager.list_checkpoints(&session_id).await
+}
+
+/// Get checkpoint info using CheckpointManager (v2)
+#[tauri::command(rename_all = "snake_case")]
+pub async fn get_checkpoint_info_v2(
+    checkpoint_id: String,
+    checkpoint_manager: tauri::State<'_, Arc<CheckpointManager>>,
+) -> Result<CheckpointMetadata, String> {
+    println!("[CheckpointV2] Getting checkpoint info: {}", checkpoint_id);
+    checkpoint_manager.get_checkpoint_info(&checkpoint_id).await
+}
+
+/// Restore a checkpoint using CheckpointManager (v2)
+#[tauri::command(rename_all = "snake_case")]
+pub async fn restore_checkpoint_v2(
+    checkpoint_id: String,
+    checkpoint_manager: tauri::State<'_, Arc<CheckpointManager>>,
+) -> Result<(), String> {
+    println!("[CheckpointV2] Restoring checkpoint: {}", checkpoint_id);
+    
+    let options = RestoreCheckpointOptions {
+        checkpoint_id,
+        target_session_id: None,
+        restore_files: None,
+    };
+    
+    checkpoint_manager.restore_checkpoint(options).await.map(|_| ())
+}
+
+/// Delete a checkpoint using CheckpointManager (v2)
+#[tauri::command(rename_all = "snake_case")]
+pub async fn delete_checkpoint_v2(
+    checkpoint_id: String,
+    checkpoint_manager: tauri::State<'_, Arc<CheckpointManager>>,
+) -> Result<(), String> {
+    println!("[CheckpointV2] Deleting checkpoint: {}", checkpoint_id);
+    checkpoint_manager.delete_checkpoint(&checkpoint_id).await
+}

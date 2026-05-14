@@ -42,7 +42,9 @@ use commands::{
     delete_skill,
     disable_platform,
     enable_platform,
+    execute_skill,
     export_config,
+    export_logs,
     export_session,
     file_exists,
     get_checkpoint_info,
@@ -113,8 +115,12 @@ use commands::{
     save_memory,
     save_skill,
     set_kanban_board_archived,
+    start_log_stream,
+    stop_log_stream,
+    test_skill,
     update_skill,
     get_skill_execution_history,
+    get_skill_execution_history_v2,
     search_memories,
     search_sessions,
     send_chat_message,
@@ -147,6 +153,12 @@ use commands::{
     list_toolsets,
     // Chat interrupt
     interrupt_session,
+    // Checkpoint V2 commands
+    create_checkpoint_v2,
+    list_checkpoints_v2,
+    get_checkpoint_info_v2,
+    restore_checkpoint_v2,
+    delete_checkpoint_v2,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -163,6 +175,11 @@ pub fn run() {
             let config_lock = Arc::new(core::ConfigLock::new(
                 std::path::PathBuf::from(shellexpand::tilde("~/.hermes/config.yaml").to_string())
             ));
+            
+            // Initialize performance cache (default TTL: 10 seconds)
+            let performance_cache = Arc::new(core::PerformanceCache::new(
+                std::time::Duration::from_secs(10)
+            ));
 
             // Initialize feature modules
             let mcp_manager = Arc::new(features::McpServerManager::new(
@@ -177,13 +194,34 @@ pub fn run() {
                 event_bus.clone(),
             ));
 
+            // Initialize checkpoint manager
+            let checkpoint_manager = Arc::new(features::CheckpointManager::new(
+                std::path::PathBuf::from(shellexpand::tilde("~/.hermes/checkpoints").to_string()),
+                event_bus.clone(),
+            ));
+
+            // Initialize skill executor
+            let skill_executor = Arc::new(features::SkillExecutor::new(
+                hermes_cli.clone(),
+                event_bus.clone(),
+            ));
+
+            // Initialize log stream manager
+            let log_stream_manager = Arc::new(features::LogStreamManager::new(
+                event_bus.clone(),
+            ));
+
             // Store managers in app state
             app.manage(mcp_manager);
             app.manage(gateway_manager);
+            app.manage(checkpoint_manager);
+            app.manage(skill_executor);
+            app.manage(log_stream_manager);
             app.manage(process_manager);
             app.manage(hermes_cli);
             app.manage(config_lock);
             app.manage(event_bus);
+            app.manage(performance_cache);
 
             // Auto-start Hermes Gateway on app launch
             println!("[HermesApp] Auto-starting Gateway...");
@@ -296,6 +334,9 @@ pub fn run() {
             toggle_skill,
             get_skills_path,
             get_skill_execution_history,
+            execute_skill,
+            test_skill,
+            get_skill_execution_history_v2,
             list_cron_jobs,
             get_cron_job,
             save_cron_job,
@@ -346,6 +387,9 @@ pub fn run() {
             get_log_components,
             clear_logs,
             reload_gateway_config,
+            start_log_stream,
+            stop_log_stream,
+            export_logs,
             list_directory,
             read_file,
             write_file,
@@ -394,6 +438,12 @@ pub fn run() {
             remove_kanban_link,
             // Chat interrupt
             interrupt_session,
+            // Checkpoint V2 commands
+            create_checkpoint_v2,
+            list_checkpoints_v2,
+            get_checkpoint_info_v2,
+            restore_checkpoint_v2,
+            delete_checkpoint_v2,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

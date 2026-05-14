@@ -6,6 +6,7 @@
 use super::utils::create_command;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 /// Skill metadata - matches frontend Skill type exactly
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -895,4 +896,52 @@ print(json.dumps(filtered))
     }
 
     Ok(vec![])
+}
+
+// ============================================================================
+// Skill Execution Commands
+// ============================================================================
+
+use crate::features::SkillExecutor;
+
+/// Execute a skill with arguments
+#[tauri::command(rename_all = "snake_case")]
+pub async fn execute_skill(
+    skill_name: String,
+    args: Vec<String>,
+    skill_executor: tauri::State<'_, Arc<SkillExecutor>>,
+) -> Result<crate::features::skill_executor::SkillExecution, String> {
+    println!("[Command] execute_skill: {} with args: {:?}", skill_name, args);
+    
+    // Convert Vec<String> to Vec<&str>
+    let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    
+    skill_executor.execute_skill(&skill_name, &args_refs).await
+}
+
+/// Test a skill with dry-run
+#[tauri::command(rename_all = "snake_case")]
+pub async fn test_skill(
+    skill_name: String,
+    args: Vec<String>,
+    skill_executor: tauri::State<'_, Arc<SkillExecutor>>,
+) -> Result<crate::features::skill_executor::SkillExecution, String> {
+    println!("[Command] test_skill: {} with args: {:?}", skill_name, args);
+    
+    // Convert Vec<String> to Vec<&str>
+    let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    
+    skill_executor.test_skill(&skill_name, &args_refs).await
+}
+
+/// Get skill execution history
+#[tauri::command(rename_all = "snake_case")]
+pub async fn get_skill_execution_history_v2(
+    limit: Option<usize>,
+    skill_executor: tauri::State<'_, Arc<SkillExecutor>>,
+) -> Result<Vec<crate::features::skill_executor::SkillExecution>, String> {
+    println!("[Command] get_skill_execution_history_v2 with limit: {:?}", limit);
+    
+    let limit = limit.unwrap_or(20);
+    Ok(skill_executor.get_execution_history(limit).await)
 }
