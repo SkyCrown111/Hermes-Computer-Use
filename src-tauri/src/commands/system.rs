@@ -82,9 +82,23 @@ conn.close()
 
 /// Get system status - reads real data from Hermes database and gateway state
 #[tauri::command(rename_all = "snake_case")]
-pub async fn get_system_status() -> Result<SystemStatus, String> {
+pub async fn get_system_status(
+    performance_cache: tauri::State<'_, std::sync::Arc<crate::core::PerformanceCache>>,
+) -> Result<SystemStatus, String> {
     println!("[System] Getting system status...");
 
+    // Try to get from cache first
+    let cache_key = "system_status";
+    if let Some(cached) = performance_cache.get(cache_key).await {
+        if let Ok(status) = serde_json::from_value::<SystemStatus>(cached) {
+            println!("[System] Returning cached system status");
+            return Ok(status);
+        }
+    }
+
+    // Cache miss - compute fresh data
+    println!("[System] Computing fresh system status...");
+    
     let result = tokio::task::spawn_blocking(|| {
         // Get session count from database
         let active_sessions: usize = match query_db_single("SELECT COUNT(*) FROM sessions") {
@@ -245,7 +259,7 @@ pub async fn get_system_status() -> Result<SystemStatus, String> {
         result.3, result.4, result.5, result.6, result.7
     );
 
-    Ok(SystemStatus {
+    let status = SystemStatus {
         gateway: GatewayStatus {
             status: gateway_status,
             uptime_seconds: start_time,
@@ -261,7 +275,14 @@ pub async fn get_system_status() -> Result<SystemStatus, String> {
         },
         active_sessions: result.0,
         pending_tasks: result.1,
-    })
+    };
+
+    // Cache the result (TTL: 10 seconds)
+    if let Ok(status_json) = serde_json::to_value(&status) {
+        performance_cache.set(cache_key, status_json, None).await;
+    }
+
+    Ok(status)
 }
 
 /// Get system metrics (CPU, memory, disk) via WSL
@@ -430,12 +451,24 @@ pub struct UsageAnalytics {
 
 /// Get usage analytics - reads real data from database
 #[tauri::command(rename_all = "snake_case")]
-pub async fn get_usage_analytics(days: Option<u32>) -> Result<UsageAnalytics, String> {
-    println!(
-        "[Analytics] Getting usage analytics for {} days...",
-        days.unwrap_or(30)
-    );
+pub async fn get_usage_analytics(
+    days: Option<u32>,
+    performance_cache: tauri::State<'_, std::sync::Arc<crate::core::PerformanceCache>>,
+) -> Result<UsageAnalytics, String> {
     let days = days.unwrap_or(30);
+    println!("[Analytics] Getting usage analytics for {} days...", days);
+
+    // Try to get from cache first
+    let cache_key = format!("usage_analytics_{}", days);
+    if let Some(cached) = performance_cache.get(&cache_key).await {
+        if let Ok(analytics) = serde_json::from_value::<UsageAnalytics>(cached) {
+            println!("[Analytics] Returning cached usage analytics");
+            return Ok(analytics);
+        }
+    }
+
+    // Cache miss - compute fresh data
+    println!("[Analytics] Computing fresh usage analytics...");
 
     let result = tokio::task::spawn_blocking(move || {
         // Query database for real stats
@@ -626,7 +659,7 @@ print(json.dumps({
                 .unwrap_or(0)
         );
 
-        return Ok(UsageAnalytics {
+        let analytics = UsageAnalytics {
             period_days: days,
             totals: UsageTotals {
                 total_sessions: totals.get("sessions").and_then(|v| v.as_u64()).unwrap_or(0),
@@ -657,10 +690,17 @@ print(json.dumps({
             },
             daily,
             by_model,
-        });
+        };
+
+        // Cache the result (TTL: 10 seconds)
+        if let Ok(analytics_json) = serde_json::to_value(&analytics) {
+            performance_cache.set(&cache_key, analytics_json, None).await;
+        }
+
+        return Ok(analytics);
     }
 
-    Ok(UsageAnalytics {
+    let analytics = UsageAnalytics {
         period_days: days,
         totals: UsageTotals {
             total_sessions: 0,
@@ -673,7 +713,14 @@ print(json.dumps({
         },
         daily: vec![],
         by_model: vec![],
-    })
+    };
+
+    // Cache the empty result too
+    if let Ok(analytics_json) = serde_json::to_value(&analytics) {
+        performance_cache.set(&cache_key, analytics_json, None).await;
+    }
+
+    Ok(analytics)
 }
 
 /// Health check - performs actual system health verification
