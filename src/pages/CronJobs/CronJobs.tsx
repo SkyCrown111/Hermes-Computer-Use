@@ -9,9 +9,9 @@ import type { CreateCronJobParams } from '../../stores/cronJobsStore';
 import './CronJobs.css';
 
 // 格式化日期时间
-const formatDateTime = (dateString: string): string => {
+const formatDateTime = (dateString: string, lang?: string): string => {
   const date = new Date(dateString);
-  return date.toLocaleString('zh-CN', {
+  return date.toLocaleString(lang === 'zh' ? 'zh-CN' : 'en-US', {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
@@ -46,7 +46,7 @@ const formatDuration = (seconds: number): string => {
 };
 
 export const CronJobs: React.FC = () => {
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
   // Individual Zustand selectors to avoid unnecessary re-renders
   const jobs = useCronJobsStore(s => s.jobs);
   const isLoadingJobs = useCronJobsStore(s => s.isLoadingJobs);
@@ -106,14 +106,14 @@ export const CronJobs: React.FC = () => {
     // Validate schedule
     const validation = validateSchedule(formData.schedule);
     if (!validation.valid) {
-      setScheduleError(validation.error || 'Invalid schedule');
-      toast.error(validation.error || 'Invalid schedule format');
+      setScheduleError(validation.error || t('tasks.invalidSchedule'));
+      toast.error(t('tasks.invalidSchedule'), validation.error);
       return;
     }
 
     const result = await createJob(formData);
     if (result) {
-      toast.success(t('nav.home') === 'Home' ? 'Task created successfully' : '任务创建成功');
+      toast.success(t('tasks.created'));
       setShowCreateForm(false);
       setFormData({
         name: '',
@@ -132,14 +132,14 @@ export const CronJobs: React.FC = () => {
     // Validate schedule
     const validation = validateSchedule(formData.schedule);
     if (!validation.valid) {
-      setScheduleError(validation.error || 'Invalid schedule');
-      toast.error(validation.error || 'Invalid schedule format');
+      setScheduleError(validation.error || t('tasks.invalidSchedule'));
+      toast.error(t('tasks.invalidSchedule'), validation.error);
       return;
     }
 
     const result = await updateJob(editingJob.id, formData);
     if (result) {
-      toast.success(t('nav.home') === 'Home' ? 'Task updated successfully' : '任务更新成功');
+      toast.success(t('tasks.updated'));
       setScheduleError(null);
     }
   }, [editingJob, formData, updateJob, t]);
@@ -340,7 +340,7 @@ export const CronJobs: React.FC = () => {
                     </span>
                     {job.last_run_at && (
                       <span className="last-run">
-                        {t('tasks.lastRun')}: {formatDateTime(job.last_run_at)}
+                        {t('tasks.lastRun')}: {formatDateTime(job.last_run_at, lang)}
                       </span>
                     )}
                   </div>
@@ -542,7 +542,7 @@ export const CronJobs: React.FC = () => {
                               : <><span className="status-indicator status-error-dot" />{t('tasks.failed')}</>}
                           </span>
                           <span className="output-time">
-                            {formatDateTime(output.started_at)}
+                            {formatDateTime(output.started_at, lang)}
                           </span>
                           <span className="output-duration">
                             {t('tasks.duration')}: {output.duration_ms ? formatDuration(output.duration_ms / 1000) : '-'}
@@ -560,9 +560,9 @@ export const CronJobs: React.FC = () => {
                               onClick={() => toggleOutputExpand(index)}
                             >
                               {isExpanded ? (
-                                <><ChevronUpIcon size={14} /> {t('common.collapse') || (t('nav.home') === 'Home' ? 'Collapse' : '收起')}</>
+                                <><ChevronUpIcon size={14} /> {t('common.collapse')}</>
                               ) : (
-                                <><ChevronDownIcon size={14} /> {t('common.expandAll') || (t('nav.home') === 'Home' ? 'Expand All' : '展开全部')}</>
+                                <><ChevronDownIcon size={14} /> {t('common.expandAll')}</>
                               )}
                             </Button>
                           )}

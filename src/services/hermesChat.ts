@@ -5,7 +5,7 @@ import { apiClient, getErrorDetail } from './apiClient';
 import { logger } from '../lib/logger';
 
 /** Default timeout (ms) for waiting on a stream completion event. */
-const STREAM_TIMEOUT_MS = 300_000; // 5 minutes
+const STREAM_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes - long tasks like compilation can take a while
 
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system' | 'tool';
@@ -67,6 +67,7 @@ export interface StreamApprovalEvent {
   command: string;
   description: string;
   allow_permanent: boolean;
+  choices?: Array<'once' | 'session' | 'always' | 'deny'>;
 }
 
 export interface StreamClarifyEvent {
@@ -116,14 +117,13 @@ export async function sendMessage(params: SendMessageParams): Promise<SendMessag
     };
   }
 
+  // Backend expects messages: Vec<ChatMessage> + session_id: Option<String>
+  // Build the messages array from the single user message
+  const messages = [{ role: 'user' as const, content: params.message }];
+
   return apiClient.invoke<SendMessageResponse>('send_chat_message', {
-    message: params.message,
-    session_id: params.session_id,
-    platform: params.platform,
-    chat_id: params.chat_id,
-    skills: params.skills,
-    model_override: params.model_override,
-    stream: params.stream ?? true,
+    messages,
+    session_id: params.session_id ?? null,
   });
 }
 
@@ -135,21 +135,28 @@ export function createStreamSubscription(sessionId: string, handler: StreamEvent
     return () => {};
   }
 
+  let cancelled = false;
   let unlisten: (() => void) | null = null;
   const eventName = `chat-stream-${sessionId}`;
 
   (async () => {
     try {
       const { listen } = await import('@tauri-apps/api/event');
+      if (cancelled) return;
       unlisten = await listen<ChatStreamEvent>(eventName, (event) => {
         handler(event.payload);
       });
+      if (cancelled) {
+        unlisten();
+        unlisten = null;
+      }
     } catch (error) {
       logger.error(`[HermesChat] Failed to subscribe to stream: ${error}`);
     }
   })();
 
   return () => {
+    cancelled = true;
     if (unlisten) {
       unlisten();
       unlisten = null;
@@ -170,17 +177,35 @@ export async function emitChatEvent(sessionId: string, event: ChatStreamEvent): 
   }
 }
 
+export interface StreamChatRealtimeOptions {
+  history?: ChatHistoryEntry[];
+  callbacks?: StreamCallbacks;
+  modelOverride?: { provider?: string; model?: string };
+}
+
 export async function streamChatRealtime(
   message: string,
   sessionId: string | null,
-  _historyOrCallbacks?: ChatHistoryEntry[] | StreamCallbacks,
-  callbacks?: StreamCallbacks
+  historyOrOptions?: ChatHistoryEntry[] | StreamChatRealtimeOptions,
+  legacyCallbacks?: StreamCallbacks,
+  legacyModelOverride?: { provider?: string; model?: string }
 ): Promise<void> {
-  // Resolve history and callbacks from flexible parameter signature
-  const history: ChatHistoryEntry[] =
-    Array.isArray(_historyOrCallbacks) ? _historyOrCallbacks : [];
-  const resolvedCallbacks: StreamCallbacks =
-    (callbacks ?? (_historyOrCallbacks && !Array.isArray(_historyOrCallbacks) ? _historyOrCallbacks as StreamCallbacks : {})) || {};
+  // Support both new options-object and legacy positional signatures
+  let history: ChatHistoryEntry[];
+  let resolvedCallbacks: StreamCallbacks;
+  let modelOverride: { provider?: string; model?: string } | undefined;
+
+  if (Array.isArray(historyOrOptions)) {
+    // Legacy positional: (message, sessionId, history, callbacks, modelOverride)
+    history = historyOrOptions;
+    resolvedCallbacks = legacyCallbacks ?? {};
+    modelOverride = legacyModelOverride;
+  } else {
+    // New options object: (message, sessionId, options)
+    history = historyOrOptions?.history ?? [];
+    resolvedCallbacks = historyOrOptions?.callbacks ?? {};
+    modelOverride = historyOrOptions?.modelOverride;
+  }
 
   if (!isTauri()) {
     logger.warn('[HermesChat] Not in Tauri environment, stream not available');
@@ -198,53 +223,75 @@ export async function streamChatRealtime(
     unlisteners.length = 0;
   };
 
+  // Idle timer lives outside try/finally so cleanup can always clear it.
+  let idleTimer: ReturnType<typeof setTimeout> | null = null;
+
   try {
     resolvedCallbacks.onStatus?.('connecting');
 
     const { listen } = await import('@tauri-apps/api/event');
 
     // Create a promise that resolves when chat:complete or chat:error is received.
-    // Also add a timeout so the promise cannot hang forever.
+    // Also add an idle timeout that resets on every chunk so active streams don't get killed.
     let resolveCompletion: () => void;
-    const completionPromise = new Promise<void>((resolve) => {
+    let rejectCompletion: ((err: Error) => void) | null = null;
+    const completionPromise = new Promise<void>((resolve, reject) => {
       resolveCompletion = resolve;
+      rejectCompletion = reject;
     });
-    const timeoutPromise = new Promise<void>((_resolve, reject) => {
-      setTimeout(() => {
-        reject(new HermesApiError('timeout', `Stream timed out after ${STREAM_TIMEOUT_MS}ms`));
+    const resetIdleTimer = () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        rejectCompletion?.(new HermesApiError('timeout', `Stream timed out after ${STREAM_TIMEOUT_MS}ms of inactivity`));
       }, STREAM_TIMEOUT_MS);
-    });
+    };
+    resetIdleTimer();
 
     // Register event listeners BEFORE invoking the backend.
+    // Reset idle timer on any data activity so long-running active streams don't time out.
     unlisteners.push(await listen<{ content: string; accumulated: string }>('chat:chunk', (event) => {
+      resetIdleTimer();
       resolvedCallbacks.onChunk?.(event.payload.content, event.payload.accumulated);
     }));
 
     unlisteners.push(await listen<{ text: string; accumulated: string }>('chat:reasoning', (event) => {
+      resetIdleTimer();
       resolvedCallbacks.onReasoning?.(event.payload.text, event.payload.accumulated);
     }));
 
     unlisteners.push(await listen<StreamToolEvent>('chat:tool', (event) => {
+      resetIdleTimer();
       resolvedCallbacks.onTool?.(event.payload);
     }));
 
     unlisteners.push(await listen<StreamApprovalEvent>('chat:approval', (event) => {
+      resetIdleTimer();
       resolvedCallbacks.onApproval?.(event.payload);
     }));
 
     unlisteners.push(await listen<StreamClarifyEvent>('chat:clarify', (event) => {
+      resetIdleTimer();
       resolvedCallbacks.onClarify?.(event.payload);
     }));
 
     unlisteners.push(await listen<StreamSecretEvent>('chat:secret', (event) => {
+      resetIdleTimer();
       resolvedCallbacks.onSecret?.(event.payload);
     }));
 
     unlisteners.push(await listen<StreamUsageEvent>('chat:usage', (event) => {
+      resetIdleTimer();
       resolvedCallbacks.onUsage?.(event.payload);
     }));
 
+    // Listen for status events (heartbeat from long-running tool operations)
+    unlisteners.push(await listen<{ status: string; message: string }>('chat:status', (event) => {
+      resetIdleTimer();
+      resolvedCallbacks.onStatus?.(event.payload.status);
+    }));
+
     unlisteners.push(await listen<{ session_id: string }>('chat:session', (event) => {
+      resetIdleTimer();
       resolvedCallbacks.onSessionCreated?.(event.payload.session_id);
     }));
 
@@ -268,7 +315,7 @@ export async function streamChatRealtime(
 
     // Fire the backend command (do not await -- it returns immediately and
     // communicates results via Tauri events).
-    invoke('stream_chat_realtime', { messages, session_id: sessionId }).catch((error) => {
+    invoke('stream_chat_realtime', { messages, session_id: sessionId, model_override: modelOverride || null }).catch((error) => {
       const detail = getErrorDetail(error);
       logger.error(`[HermesChat] stream_chat_realtime invoke failed: ${detail}`);
       resolvedCallbacks.onError?.(detail);
@@ -277,13 +324,14 @@ export async function streamChatRealtime(
 
     resolvedCallbacks.onStatus?.('connected');
 
-    // Wait for completion OR timeout, whichever comes first.
-    await Promise.race([completionPromise, timeoutPromise]);
+    // Wait for completion (idle timer will reject if no activity for STREAM_TIMEOUT_MS).
+    await completionPromise;
   } catch (error) {
     const detail = getErrorDetail(error);
     logger.error(`[HermesChat] streamChatRealtime failed: ${detail}`);
     resolvedCallbacks.onError?.(detail);
   } finally {
+    if (idleTimer) clearTimeout(idleTimer);
     cleanupListeners();
   }
 }
@@ -293,16 +341,22 @@ export async function checkHermesApiHealth(): Promise<boolean> {
 
   try {
     const result = await invoke<{ status: string }>('check_hermes_health');
-    return result.status === 'ok' || result.status === 'healthy';
+    return result.status === 'healthy' || result.status === 'degraded';
   } catch (error) {
     logger.error(`[HermesChat] checkHermesApiHealth failed: ${error}`);
     return false;
   }
 }
 
-export async function respondApproval(approvalId: string, approved: boolean): Promise<void> {
+export type ApprovalResponseChoice = boolean | 'once' | 'session' | 'always' | 'deny' | 'approved' | 'denied';
+
+export async function respondApproval(approvalId: string, choice: ApprovalResponseChoice): Promise<void> {
   if (!isTauri()) return;
-  await apiClient.invoke('respond_approval', { approval_id: approvalId, choice: approved ? 'approved' : 'denied' });
+  const normalizedChoice =
+    choice === true ? 'approved' :
+    choice === false ? 'denied' :
+    choice;
+  await apiClient.invoke('respond_approval', { approval_id: approvalId, choice: normalizedChoice });
 }
 
 export async function respondClarify(clarifyId: string, response: string): Promise<void> {
@@ -315,9 +369,11 @@ export async function respondSecret(secretId: string, value: string): Promise<vo
   await apiClient.invoke('respond_secret', { secret_id: secretId, value });
 }
 
-export async function abortChat(_sessionId: string): Promise<void> {
+export async function abortChat(sessionId: string): Promise<void> {
   if (!isTauri()) return;
-  await apiClient.invoke('abort_chat', {});
+  // Use interrupt_session to kill only the specific session's process,
+  // not abort_chat which kills ALL running chat processes.
+  await apiClient.invoke('interrupt_session', { session_id: sessionId });
 }
 
 export async function startHermesGateway(): Promise<{ status: string; message?: string }> {

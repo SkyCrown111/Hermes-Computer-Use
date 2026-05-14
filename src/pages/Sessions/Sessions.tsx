@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Card, Button, ChatIcon, UserIcon, BotIcon, ToolIcon, ExportIcon, SearchIcon, ClockIcon, TrashIcon, SettingsIcon, AlertIcon, EditIcon, ConfirmModal, XIcon } from '../../components';
+import { Card, Button, ChatIcon, ToolIcon, ExportIcon, SearchIcon, ClockIcon, TrashIcon, SettingsIcon, AlertIcon, EditIcon, ConfirmModal, XIcon } from '../../components';
 import { useSessionStore, useNavigationStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
 import { toast } from '../../stores/toastStore';
@@ -27,7 +27,7 @@ interface SessionCardProps {
 
 const SessionCard: React.FC<SessionCardProps> = React.memo(({ session, isSelected, isBatchMode, onClick, onDetail, onDelete, onEdit, onExport, onToggleSelect, t }) => {
   return (
-    <div className={`session-card ${isSelected ? 'session-card-selected' : ''}`} onClick={isBatchMode ? onToggleSelect : onClick} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); isBatchMode ? onToggleSelect() : onClick(); } }}>
+    <div className={`session-card ${isSelected ? 'session-card-selected' : ''}`} onClick={isBatchMode ? onToggleSelect : onClick} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (isBatchMode) { onToggleSelect(); } else { onClick(); } } }}>
       {isBatchMode && (
         <div className="session-checkbox" onClick={(e) => e.stopPropagation()}>
           <input type="checkbox" checked={isSelected} onChange={onToggleSelect} />
@@ -61,7 +61,7 @@ const SessionCard: React.FC<SessionCardProps> = React.memo(({ session, isSelecte
       <div className="session-actions">
         <button
           className="action-btn"
-          title={t('sessions.detail') || '详情'}
+          title={t('sessions.detail') || 'Details'}
           onClick={(e) => {
             e.stopPropagation();
             onDetail();
@@ -107,30 +107,23 @@ const SessionCard: React.FC<SessionCardProps> = React.memo(({ session, isSelecte
 // Message Item Component
 interface MessageItemProps {
   message: SessionMessage;
-  t: (key: string) => string;
+  lang: 'zh' | 'en';
 }
 
-const MessageItem: React.FC<MessageItemProps> = React.memo(({ message, t }) => {
-  const getRoleIcon = (role: string) => {
-    if (role === 'user') return <UserIcon size={16} />;
-    if (role === 'assistant') return <BotIcon size={16} />;
-    return <SettingsIcon size={16} />;
-  };
-
+const MessageItem: React.FC<MessageItemProps> = React.memo(({ message, lang }) => {
   const getRoleName = (role: string, lang: 'zh' | 'en'): string => {
     const names: Record<string, { zh: string; en: string }> = {
-      user: { zh: '用户', en: 'User' },
-      assistant: { zh: '助手', en: 'Assistant' },
-      system: { zh: '系统', en: 'System' },
+      user: { zh: '\u7528\u6237', en: 'User' },
+      assistant: { zh: '\u52a9\u624b', en: 'Assistant' },
+      system: { zh: '\u7cfb\u7edf', en: 'System' },
     };
     return names[role]?.[lang] || role;
   };
 
   return (
     <div className={`message-item message-${message.role}`}>
-      <div className="message-avatar">{getRoleIcon(message.role)}</div>
       <div className="message-content-wrapper">
-        <div className="message-role">{getRoleName(message.role, t('nav.home') === 'Home' ? 'en' : 'zh')}</div>
+        <div className="message-role">{getRoleName(message.role, lang)}</div>
         <div className="message-content">{message.content}</div>
         {message.tool_calls && message.tool_calls.length > 0 && (
           <div className="tool-calls">
@@ -138,7 +131,7 @@ const MessageItem: React.FC<MessageItemProps> = React.memo(({ message, t }) => {
               <div key={index} className="tool-call-item">
                 <span className="tool-call-icon"><ToolIcon size={14} /></span>
                 <span>{tool.name}</span>
-                <span style={{ color: 'var(--text-tertiary)' }}>
+                <span style={{ color: 'var(--color-text-tertiary)' }}>
                   {JSON.stringify(tool.args).slice(0, 50)}...
                 </span>
               </div>
@@ -191,7 +184,7 @@ const ExportModal: React.FC<ExportModalProps> = ({ session, onClose, onExport, t
 
 // Main Sessions Page Component
 export const Sessions: React.FC = () => {
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
 
   // Get store state and actions - only subscribe to what's needed for the list view
   const sessions = useSessionStore(s => s.sessions);
@@ -289,9 +282,14 @@ export const Sessions: React.FC = () => {
     const succeeded = results.filter(r => r.status === 'fulfilled');
 
     if (failed.length > 0) {
-      toast.error(`Deleted ${succeeded.length}/${ids.length} sessions. ${failed.length} failed.`);
+      toast.error(
+        t('sessions.batchDeletePartial')
+          .replace('{success}', String(succeeded.length))
+          .replace('{total}', String(ids.length))
+          .replace('{fail}', String(failed.length)),
+      );
     } else {
-      toast.success(`Successfully deleted ${succeeded.length} sessions`);
+      toast.success(t('sessions.batchDeleteSuccess').replace('{count}', String(succeeded.length)));
     }
 
     clearSelection();
@@ -306,7 +304,7 @@ export const Sessions: React.FC = () => {
       return;
     }
 
-    toast.info(`Exporting ${ids.length} sessions...`);
+    toast.info(t('sessions.exporting').replace('{count}', String(ids.length)));
 
     try {
       const zip = new JSZip();
@@ -356,9 +354,14 @@ export const Sessions: React.FC = () => {
       URL.revokeObjectURL(url);
 
       if (failed.length > 0) {
-        toast.warning(`Exported ${succeeded.length}/${ids.length} sessions. ${failed.length} failed.`);
+        toast.warning(
+          t('sessions.exportSomeFailed')
+            .replace('{success}', String(succeeded.length))
+            .replace('{total}', String(ids.length))
+            .replace('{fail}', String(failed.length)),
+        );
       } else {
-        toast.success(`Successfully exported ${succeeded.length} sessions as ZIP`);
+        toast.success(t('sessions.exportSuccess').replace('{count}', String(succeeded.length)));
       }
     } catch (err) {
       logger.error('[Sessions] Batch export failed:', err);
@@ -464,17 +467,23 @@ export const Sessions: React.FC = () => {
 
     try {
       const exportData = await sessionApi.exportSessions({ format: format as 'jsonl' | 'json' | 'markdown', session_id: selectedSessionForExport.id });
-      const blob = new Blob([typeof exportData === 'string' ? exportData : JSON.stringify(exportData)], { type: 'application/json' });
+      const mimeType =
+        format === 'markdown'
+          ? 'text/markdown;charset=utf-8'
+          : format === 'jsonl'
+            ? 'application/x-ndjson;charset=utf-8'
+            : 'application/json;charset=utf-8';
+      const blob = new Blob([typeof exportData === 'string' ? exportData : JSON.stringify(exportData)], { type: mimeType });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = `session-${selectedSessionForExport.id}.${format}`;
       a.click();
       URL.revokeObjectURL(url);
-      toast.success('Session exported successfully');
+      toast.success(t('sessions.exportSingleSuccess'));
     } catch (err) {
       logger.error('[Sessions] Export failed:', err);
-      toast.error('Failed to export session');
+      toast.error(t('sessions.exportSingleFailed'));
     }
 
     setShowExportModal(false);
@@ -502,7 +511,7 @@ export const Sessions: React.FC = () => {
       setCheckpointDescription('');
       // Refresh checkpoints
       await fetchCheckpoints(createCheckpointModal.id);
-    } catch (err) {
+    } catch {
       toast.error(t('checkpoint.createFailed'));
     } finally {
       setIsCreatingCheckpoint(false);
@@ -519,7 +528,7 @@ export const Sessions: React.FC = () => {
       if (currentSession?.id === restoreConfirm.session.id) {
         await fetchSession(restoreConfirm.session.id);
       }
-    } catch (err) {
+    } catch {
       toast.error(t('checkpoint.restoreFailed'));
     }
   };
@@ -530,7 +539,7 @@ export const Sessions: React.FC = () => {
       await deleteCheckpoint(deleteCheckpointConfirm.checkpoint.id, deleteCheckpointConfirm.sessionId);
       toast.success(t('checkpoint.deleteSuccess'));
       setDeleteCheckpointConfirm(null);
-    } catch (err) {
+    } catch {
       toast.error(t('checkpoint.deleteFailed'));
     }
   };
@@ -667,17 +676,19 @@ export const Sessions: React.FC = () => {
             disabled={currentPage === 0}
             onClick={() => handlePageChange(currentPage - 1)}
           >
-            ← {t('sessions.prevPage')}
+            {'< '}
+            {t('sessions.prevPage')}
           </button>
           <span className="pagination-info">
-            {t('sessions.page')} {currentPage + 1} / {totalPages} · {t('sessions.total')} {total} {t('sessions.items')}
+            {t('sessions.page')} {currentPage + 1} / {totalPages} | {t('sessions.total')} {total} {t('sessions.items')}
           </span>
           <button
             className="pagination-btn"
             disabled={currentPage >= totalPages - 1}
             onClick={() => handlePageChange(currentPage + 1)}
           >
-            {t('sessions.nextPage')} →
+            {' >'}
+            {t('sessions.nextPage')}
           </button>
         </div>
       )}
@@ -701,11 +712,11 @@ export const Sessions: React.FC = () => {
                     </div>
                   ) : messages.length > 0 ? (
                     messages.map((message: SessionMessage) => (
-                      <MessageItem key={`${message.timestamp}-${message.role}`} message={message} t={t} />
+                      <MessageItem key={`${message.timestamp}-${message.role}`} message={message} lang={lang} />
                     ))
                   ) : (
                     <div className="empty-state">
-                      <span style={{ color: 'var(--text-tertiary)' }}>{t('common.noData')}</span>
+                      <span style={{ color: 'var(--color-text-tertiary)' }}>{t('common.noData')}</span>
                     </div>
                   )}
                 </div>
@@ -808,7 +819,7 @@ export const Sessions: React.FC = () => {
                             <div className="checkpoint-meta">
                               <span>{formatDateTime(cp.created_at)}</span>
                               <span>{cp.message_count} {t('checkpoint.messageCount')}</span>
-                              <span>{formatBytes(cp.size_bytes)}</span>
+                              <span>{formatBytes(cp.size_bytes ?? 0)}</span>
                             </div>
                           </div>
                           <div className="checkpoint-actions">

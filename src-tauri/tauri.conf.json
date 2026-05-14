@@ -20,13 +20,13 @@
         "center": true,
         "resizable": true,
         "fullscreen": false,
-        "decorations": true,
+        "decorations": false,
         "transparent": false,
         "devtools": true
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' http://localhost:* http://127.0.0.1:* http://ipc.localhost ws://localhost:*; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:;"
+      "csp": "default-src 'self'; connect-src 'self' http://localhost:* http://127.0.0.1:* http://ipc.localhost ws://localhost:*; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:;"
     }
   },
   "bundle": {
@@ -41,12 +41,5 @@
       "icons/icon.ico"
     ]
   },
-  "plugins": {
-    "updater": {
-      "endpoints": [
-        "https://github.com/Crown-22/Hermes-Computer-Use/releases/latest/download/update.json"
-      ],
-      "pubkey": ""
-    }
-  }
+  "plugins": {}
 }

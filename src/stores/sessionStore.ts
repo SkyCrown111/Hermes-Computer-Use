@@ -5,6 +5,7 @@ import { create } from 'zustand';
 import type { Session, SessionMessage } from '../types';
 import type { Checkpoint } from '../types/checkpoint';
 import { sessionApi } from '../services';
+import * as sessionApiRaw from '../services/sessionApi';
 import { useNavigationStore } from './navigationStore';
 import { useChatStore } from './chatStore';
 import { logger } from '../lib/logger';
@@ -49,7 +50,7 @@ interface SessionState {
   // Actions - 会话列表
   fetchSessions: (platform?: string, limit?: number, offset?: number) => Promise<void>;
   refreshSessions: () => void; // 强制刷新
-  deleteSession: (id: string) => Promise<void>;
+  deleteSession: (id: string) => Promise<boolean>;
   updateSessionTitle: (id: string, title: string) => Promise<void>;
   updateSessionActivity: (sessionId: string) => void; // 实时更新会话活动
   addSessionOptimistic: (sessionId: string) => void; // 乐观添加新会话（立即显示在列表中）
@@ -219,7 +220,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
             mergedSessions.unshift(sessionWithTitle);
             logger.debug('[SessionStore] Fetched missing session:', tab.id, 'title:', sessionWithTitle.chat_name);
           }
-        } catch (err) {
+        } catch {
           // Session does not exist on server - close the stale tab
           logger.warn('[SessionStore] Session not found, closing tab:', tab.id);
           newOptimisticIds.delete(tab.id);
@@ -246,6 +247,20 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
       if (deduplicatedSessions.length !== mergedSessions.length) {
         logger.debug('[SessionStore] Removed duplicates:', mergedSessions.length - deduplicatedSessions.length);
+      }
+
+      // Apply user-renamed titles from localStorage (overrides Hermes Agent auto-titles)
+      let storedTitles: Record<string, string> = {};
+      try {
+        storedTitles = JSON.parse(localStorage.getItem('hermes-session-titles') || '{}');
+      } catch { /* non-critical: titles from localStorage */ }
+      if (Object.keys(storedTitles).length > 0) {
+        for (let i = 0; i < deduplicatedSessions.length; i++) {
+          const session = deduplicatedSessions[i];
+          if (storedTitles[session.id] && session.chat_name !== storedTitles[session.id]) {
+            deduplicatedSessions[i] = { ...session, chat_name: storedTitles[session.id] };
+          }
+        }
       }
 
       set({
@@ -514,9 +529,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         messageCache: newCache,
         isLoading: false,
       });
+      return true;
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       set({ error: errorMsg || 'Unknown error', isLoading: false });
+      return false;
     }
   },
 
@@ -536,6 +553,13 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       if (currentSession?.id === id) {
         set({ currentSession: { ...currentSession, chat_name: title } });
       }
+
+      // Save user-renamed titles to localStorage so they survive Hermes Agent overwrites
+      try {
+        const stored = JSON.parse(localStorage.getItem('hermes-session-titles') || '{}');
+        stored[id] = title;
+        localStorage.setItem('hermes-session-titles', JSON.stringify(stored));
+      } catch { /* non-critical: persisting renamed title */ }
 
       // Update the tab title in navigation store
       useNavigationStore.getState().updateTabTitle(id, title);
@@ -581,9 +605,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
 
   // ============================================
-  // Checkpoint Actions
-  // Note: Checkpoint API endpoints are not available in the current sessionApi.
-  // These actions manage checkpoint state locally only.
+  // Checkpoint Actions (using real backend API)
   // ============================================
 
   // 获取会话的检查点列表
@@ -591,16 +613,20 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     set({ isLoadingCheckpoints: true, error: null });
 
     try {
-      // Checkpoint API not available - return local state
-      const { checkpointsBySession } = get();
-      const checkpoints = checkpointsBySession[sessionId] || [];
+      const checkpoints = await sessionApiRaw.listCheckpoints(sessionId);
 
+      // Cache checkpoints locally
+      const { checkpointsBySession } = get();
       set({
         checkpoints,
+        checkpointsBySession: {
+          ...checkpointsBySession,
+          [sessionId]: checkpoints,
+        },
         isLoadingCheckpoints: false,
       });
 
-      logger.debug('[SessionStore] Fetched checkpoints (local):', checkpoints.length, 'for session:', sessionId);
+      logger.debug('[SessionStore] Fetched checkpoints:', checkpoints.length, 'for session:', sessionId);
       return checkpoints;
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
@@ -614,16 +640,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     set({ isLoadingCheckpoints: true, error: null });
 
     try {
-      // Create a local checkpoint since API is not available
-      const checkpoint: Checkpoint = {
-        id: `checkpoint-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        session_id: sessionId,
-        name: name || null,
-        created_at: new Date().toISOString(),
-        message_count: get().messages.length,
-        size_bytes: 0,
-        description: description || null,
-      };
+      const checkpoint = await sessionApiRaw.createCheckpoint(sessionId, name, description);
+
+      if (!checkpoint) {
+        throw new Error('Failed to create checkpoint');
+      }
 
       const { checkpointsBySession } = get();
       const sessionCheckpoints = checkpointsBySession[sessionId] || [];
@@ -637,7 +658,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         isLoadingCheckpoints: false,
       });
 
-      logger.debug('[SessionStore] Created checkpoint (local):', checkpoint.id, 'for session:', sessionId);
+      logger.debug('[SessionStore] Created checkpoint:', checkpoint.id, 'for session:', sessionId);
       return checkpoint;
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
@@ -647,16 +668,17 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
 
   // 恢复检查点
-  restoreCheckpoint: async (sessionId: string, _checkpointId: string): Promise<void> => {
+  restoreCheckpoint: async (sessionId: string, checkpointId: string): Promise<void> => {
     set({ isLoading: true, error: null });
 
     try {
-      // Checkpoint restore API not available - clear cache and refresh messages
+      await sessionApiRaw.restoreCheckpoint(sessionId, checkpointId);
+
+      // Clear message cache and refresh messages for this session
       const { messageCache } = get();
       const newCache = { ...messageCache };
       delete newCache[sessionId];
 
-      // Refresh messages if this is the current session
       const { currentSession } = get();
       if (currentSession?.id === sessionId) {
         await get().fetchMessages(sessionId);
@@ -667,7 +689,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         isLoading: false,
       });
 
-      logger.debug('[SessionStore] Restored checkpoint (local):', _checkpointId, 'for session:', sessionId);
+      logger.debug('[SessionStore] Restored checkpoint:', checkpointId, 'for session:', sessionId);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       set({ error: errorMsg || 'Unknown error', isLoading: false });
@@ -678,7 +700,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   // 删除检查点
   deleteCheckpoint: async (checkpointId: string, sessionId: string): Promise<void> => {
     try {
-      // Checkpoint delete API not available - remove from local state only
+      await sessionApiRaw.deleteCheckpoint(checkpointId);
+
       const { checkpointsBySession } = get();
       const sessionCheckpoints = checkpointsBySession[sessionId] || [];
       const updatedSessionCheckpoints = sessionCheckpoints.filter(c => c.id !== checkpointId);
@@ -691,7 +714,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         },
       });
 
-      logger.debug('[SessionStore] Deleted checkpoint (local):', checkpointId);
+      logger.debug('[SessionStore] Deleted checkpoint:', checkpointId);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       set({ error: errorMsg || 'Unknown error' });

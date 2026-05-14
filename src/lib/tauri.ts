@@ -51,28 +51,80 @@ export async function safeInvoke<T>(cmd: string, args?: Record<string, unknown>)
   const inTauri = isTauri();
   logger.debug(`[Tauri] isTauri() = ${inTauri}, command: ${cmd}`);
 
-  if (inTauri || typeof window !== 'undefined') {
-    try {
-      const result = await invoke<T>(cmd, args);
-      logger.debug(`[Tauri] Command ${cmd} succeeded`);
-      return result;
-    } catch (error) {
-      const code = classifyErrorCode(error);
-      const detail = error instanceof Error ? error.message : String(error);
-      logger.warn(`[Tauri] Command ${cmd} failed: ${detail}`);
-      if (inTauri) {
-        throw new HermesApiError(code, detail);
-      }
-      logger.warn(`[Tauri] Falling back to mock data for: ${cmd}`);
-      return getMockData(cmd, args) as T;
-    }
+  if (!inTauri) {
+    logger.warn(`[Tauri] Not in Tauri environment, returning mock data for: ${cmd}`);
+    return getMockData(cmd, args) as T;
   }
 
-  logger.warn(`[Tauri] Not in Tauri environment, returning mock data for: ${cmd}`);
-  return getMockData(cmd, args) as T;
+  try {
+    const result = await invoke<T>(cmd, args);
+    logger.debug(`[Tauri] Command ${cmd} succeeded`);
+    return result;
+  } catch (error) {
+    const code = classifyErrorCode(error);
+    const detail = error instanceof Error ? error.message : String(error);
+    logger.warn(`[Tauri] Command ${cmd} failed: ${detail}`);
+    throw new HermesApiError(code, detail);
+  }
 }
 
 let mockQRCodeCreatedAt = Date.now();
+const mockKanbanNow = new Date().toISOString();
+let mockCurrentKanbanBoard = 'default';
+const mockKanbanBoards = [
+  { slug: 'default', name: 'Default', description: 'Shared default board', icon: 'H', color: '#0a84ff', archived: false },
+  { slug: 'ui-refresh', name: 'UI Refresh', description: 'Frontend polish stream', icon: 'UI', color: '#bf5af2', archived: false },
+];
+const mockKanbanTasks = [
+  {
+    id: 'task_mock_1',
+    title: 'Review gateway reconnect flow',
+    description: 'Check recent gateway reconnect failures and confirm retry behaviour.',
+    status: 'running',
+    priority: 'high',
+    tenant: 'core',
+    assignee: 'Hermes',
+    parent_id: null,
+    created_at: mockKanbanNow,
+    updated_at: mockKanbanNow,
+    due_date: null,
+    completed_at: null,
+    comments_count: 2,
+    links_count: 1,
+  },
+  {
+    id: 'task_mock_2',
+    title: 'Polish sidebar dark mode',
+    description: 'Replace hard-coded light tokens in the navigation chrome.',
+    status: 'todo',
+    priority: 'medium',
+    tenant: 'ui',
+    assignee: 'Codex',
+    parent_id: null,
+    created_at: mockKanbanNow,
+    updated_at: mockKanbanNow,
+    due_date: null,
+    completed_at: null,
+    comments_count: 1,
+    links_count: 0,
+  },
+  {
+    id: 'task_mock_3',
+    title: 'Document command palette entries',
+    description: 'Make sure new pages are reachable from Ctrl+K and More Pages.',
+    status: 'done',
+    priority: 'low',
+    tenant: 'docs',
+    assignee: null,
+    parent_id: null,
+    created_at: mockKanbanNow,
+    updated_at: mockKanbanNow,
+    due_date: null,
+    completed_at: mockKanbanNow,
+    comments_count: 0,
+    links_count: 0,
+  },
+];
 
 function getMockData(cmd: string, args?: Record<string, unknown>): unknown {
   switch (cmd) {
@@ -127,6 +179,64 @@ function getMockData(cmd: string, args?: Record<string, unknown>): unknown {
         { name: 'software-development', description: 'Software development workflows', skill_count: 8 },
         { name: 'coding', description: 'Coding skills', skill_count: 1 },
       ];
+    case 'get_kanban_board':
+      return {
+        triage: [],
+        todo: mockKanbanTasks.filter(task => task.status === 'todo'),
+        ready: [],
+        running: mockKanbanTasks.filter(task => task.status === 'running'),
+        blocked: [],
+        done: mockKanbanTasks.filter(task => task.status === 'done'),
+        archived: [],
+      };
+    case 'list_kanban_boards':
+      return mockKanbanBoards.map(board => ({
+        ...board,
+        is_current: board.slug === mockCurrentKanbanBoard,
+      }));
+    case 'get_current_kanban_board':
+      return mockCurrentKanbanBoard;
+    case 'get_kanban_stats':
+      return {
+        total: mockKanbanTasks.length,
+        triage: 0,
+        todo: 1,
+        ready: 0,
+        running: 1,
+        blocked: 0,
+        done: 1,
+        archived: 0,
+      };
+    case 'get_kanban_tenants':
+      return ['core', 'ui', 'docs'];
+    case 'get_kanban_task': {
+      const taskId = String(args?.task_id ?? '');
+      const task = mockKanbanTasks.find(item => item.id === taskId) ?? mockKanbanTasks[0];
+      return {
+        ...task,
+        comments: [
+          {
+            id: 'comment_mock_1',
+            task_id: task.id,
+            author: 'Hermes',
+            content: 'Initial note for browser-mode preview.',
+            created_at: mockKanbanNow,
+          },
+        ],
+        events: [
+          {
+            id: 'event_mock_1',
+            task_id: task.id,
+            actor: 'system',
+            action: 'created',
+            detail: 'Mock kanban task created for browser preview',
+            created_at: mockKanbanNow,
+          },
+        ],
+        parent_links: [],
+        child_links: [],
+      };
+    }
     case 'get_toolsets':
       return [
         { name: 'default', label: 'Default', description: 'Standard toolset for most tasks', enabled: true, available: true, configured: true, tools: ['read_file', 'write_file', 'patch', 'search_files', 'terminal', 'process'] },
@@ -174,6 +284,55 @@ function getMockData(cmd: string, args?: Record<string, unknown>): unknown {
     case 'trigger_cron_job':
     case 'pause_cron_job':
     case 'resume_cron_job':
+    case 'create_kanban_task':
+    case 'update_kanban_task':
+    case 'delete_kanban_task':
+    case 'move_kanban_task':
+    case 'add_kanban_comment':
+    case 'add_kanban_link':
+    case 'remove_kanban_link':
+      return { ok: true };
+    case 'switch_kanban_board':
+      mockCurrentKanbanBoard = String(args?.slug ?? 'default');
+      return { ok: true };
+    case 'create_kanban_board': {
+      const slug = String(args?.slug ?? '').trim();
+      if (slug && !mockKanbanBoards.some(board => board.slug === slug)) {
+        mockKanbanBoards.push({
+          slug,
+          name: String(args?.name ?? slug),
+          description: String(args?.description ?? ''),
+          icon: String(args?.icon ?? ''),
+          color: String(args?.color ?? ''),
+          archived: false,
+        });
+      }
+      mockCurrentKanbanBoard = slug || mockCurrentKanbanBoard;
+      return { ok: true, slug: mockCurrentKanbanBoard };
+    }
+    case 'update_kanban_board': {
+      const slug = String(args?.slug ?? '').trim();
+      const board = mockKanbanBoards.find(item => item.slug === slug);
+      if (board) {
+        if (typeof args?.name === 'string') board.name = args.name;
+        if (typeof args?.description === 'string') board.description = args.description;
+        if (typeof args?.icon === 'string') board.icon = args.icon;
+        if (typeof args?.color === 'string') board.color = args.color;
+      }
+      return { ok: true, slug };
+    }
+    case 'set_kanban_board_archived': {
+      const slug = String(args?.slug ?? '').trim();
+      const archived = Boolean(args?.archived);
+      const board = mockKanbanBoards.find(item => item.slug === slug);
+      if (board) {
+        board.archived = archived;
+      }
+      if (archived && slug === mockCurrentKanbanBoard && slug !== 'default') {
+        mockCurrentKanbanBoard = 'default';
+      }
+      return { ok: true, slug, current_board: mockCurrentKanbanBoard };
+    }
     case 'save_config':
     case 'update_config_section':
     case 'update_config_raw':

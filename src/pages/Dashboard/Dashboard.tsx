@@ -144,6 +144,13 @@ export const Dashboard: React.FC = () => {
     }
   }, [t]);
 
+  // Memoize new session handler — must be before any early returns (Rules of Hooks)
+  const handleNewSession = useCallback(() => {
+    const sessionId = `new_${Date.now()}`;
+    openTab(sessionId, t('dashboard.newSession'), 'new');
+    setActiveItem('chat');
+  }, [openTab, setActiveItem, t]);
+
   // 正在检测状态
   if (isChecking) {
     return (
@@ -175,13 +182,6 @@ export const Dashboard: React.FC = () => {
 
   // 获取最近会话（从统计中获取）
   const recentSessions = usageAnalytics?.daily.slice(-5).reverse() ?? [];
-
-  // Memoize new session handler
-  const handleNewSession = useCallback(() => {
-    const sessionId = `new_${Date.now()}`;
-    openTab(sessionId, t('dashboard.newSession'), 'new');
-    setActiveItem('chat');
-  }, [openTab, setActiveItem, t]);
 
   return (
     <div className="dashboard">
@@ -295,7 +295,7 @@ export const Dashboard: React.FC = () => {
               </div>
             ) : (
               <div className="loading-container">
-                <span className="empty-text">{t('dashboard.todayTasks')}</span>
+                <span className="empty-text">{t('dashboard.noTodayTasks')}</span>
               </div>
             )}
           </Card>

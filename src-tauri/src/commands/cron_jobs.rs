@@ -96,7 +96,7 @@ fn write_jobs_json(data: &serde_json::Value) -> Result<(), String> {
     }
     Ok(())
 }
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn list_cron_jobs() -> Result<Vec<CronJob>, String> {
     println!("[Cron] Listing cron jobs...");
 
@@ -235,7 +235,7 @@ pub fn list_cron_jobs() -> Result<Vec<CronJob>, String> {
 }
 
 /// Get a cron job by ID
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn get_cron_job(id: String) -> Result<CronJob, String> {
     let data = read_jobs_json()?;
 
@@ -358,7 +358,7 @@ pub fn get_cron_job(id: String) -> Result<CronJob, String> {
 }
 
 /// Delete a cron job
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn delete_cron_job(id: String) -> Result<(), String> {
     println!("[Cron] Deleting job: {}", id);
 
@@ -376,7 +376,7 @@ pub fn delete_cron_job(id: String) -> Result<(), String> {
 }
 
 /// Save (create or update) a cron job
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn save_cron_job(job: CronJob) -> Result<(), String> {
     println!("[Cron] Saving job: {}", job.id);
 
@@ -402,7 +402,7 @@ pub fn save_cron_job(job: CronJob) -> Result<(), String> {
 }
 
 /// Toggle a cron job's enabled state
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn toggle_cron_job(id: String, enabled: bool) -> Result<(), String> {
     println!("[Cron] Toggling job {} to enabled={}", id, enabled);
 
@@ -426,14 +426,14 @@ pub fn toggle_cron_job(id: String, enabled: bool) -> Result<(), String> {
 }
 
 /// Get cron directory path
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn get_cron_path() -> Result<String, String> {
     Ok("~/.hermes/cron".to_string())
 }
 
 /// Trigger a cron job manually
-/// Uses base64 encoding to safely pass job ID through shell
-#[tauri::command]
+/// Tries hermes CLI first, falls back to direct stream_agent.py invocation
+#[tauri::command(rename_all = "snake_case")]
 pub fn trigger_cron_job(id: String) -> Result<(), String> {
     println!("[Cron] Triggering job: {}", id);
 
@@ -446,37 +446,59 @@ pub fn trigger_cron_job(id: String) -> Result<(), String> {
         return Err(format!("Invalid id: {}", id));
     }
 
-    // Verify job exists
+    // Verify job exists and get its details
     let jobs = list_cron_jobs()?;
-    if !jobs.iter().any(|j| j.id == id) {
-        return Err(format!("Job not found: {}", id));
-    }
+    let job = jobs.iter().find(|j| j.id == id)
+        .ok_or_else(|| format!("Job not found: {}", id))?;
 
-    // Use base64 encoding to safely pass job ID
+    let job_prompt = job.prompt.clone();
     let id_b64 = STANDARD.encode(&id);
 
+    // Try hermes CLI first, fall back to direct agent invocation
     let script = format!(
         r#"
 import os
 import subprocess
 import base64
+import json
 
-job_id = base64.b64decode("{}").decode('utf-8')
+job_id = base64.b64decode("{id_b64}").decode('utf-8')
+job_prompt = base64.b64decode("{prompt_b64}").decode('utf-8')
 
-# Run hermes cron trigger
-result = subprocess.run(
-    [os.path.expanduser("~/.hermes/hermes-agent/venv/bin/python"), '-m', 'hermes_cli.main', 'cron', 'run', job_id],
-    capture_output=True,
-    text=True
-)
+# Try hermes CLI cron run first
+venv_python = os.path.expanduser("~/.hermes/hermes-agent/venv/bin/python")
 
-if result.returncode != 0:
-    print(f"ERROR: {{result.stderr}}")
-    exit(1)
+if os.path.isfile(venv_python):
+    result = subprocess.run(
+        [venv_python, '-m', 'hermes_cli.main', 'cron', 'run', job_id],
+        capture_output=True, text=True, timeout=60
+    )
+    if result.returncode == 0:
+        print(f"Triggered job via CLI: {{job_id}}")
+        exit(0)
+    # CLI failed, fall through to direct invocation
+
+# Fallback: invoke stream_agent.py directly with the job prompt
+stream_agent = os.path.expanduser("~/.hermes/hermes-agent/stream_agent.py")
+if os.path.isfile(stream_agent):
+    skills_json = json.dumps({{}})
+    result = subprocess.run(
+        [venv_python if os.path.isfile(venv_python) else 'python3', stream_agent, '--stdin'],
+        input=json.dumps({{"message": job_prompt, "session_id": "cron_" + job_id, "skills": []}}),
+        capture_output=True, text=True, timeout=300
+    )
+    if result.returncode == 0:
+        print(f"Triggered job via stream_agent: {{job_id}}")
+        exit(0)
+    else:
+        print(f"ERROR: stream_agent failed: {{result.stderr}}")
+        exit(1)
 else:
-    print(f"Triggered job: {{job_id}}")
+    print(f"ERROR: Neither hermes CLI nor stream_agent.py found")
+    exit(1)
 "#,
-        id_b64
+        id_b64 = id_b64,
+        prompt_b64 = STANDARD.encode(&job_prompt),
     );
 
     let output = create_command("wsl")
@@ -509,7 +531,7 @@ pub struct CronJobOutput {
 }
 
 /// Get cron job execution outputs
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn get_cron_outputs(
     job_id: String,
     limit: Option<usize>,
@@ -592,7 +614,7 @@ pub fn get_cron_outputs(
 }
 
 /// Pause a cron job (sets enabled = false and records paused_at)
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn pause_cron_job(id: String) -> Result<serde_json::Value, String> {
     println!("[Cron] Pausing job: {}", id);
 
@@ -621,7 +643,7 @@ pub fn pause_cron_job(id: String) -> Result<serde_json::Value, String> {
 }
 
 /// Resume a paused cron job (sets enabled = true and records resumed_at)
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn resume_cron_job(id: String) -> Result<serde_json::Value, String> {
     println!("[Cron] Resuming job: {}", id);
 

@@ -1,6 +1,7 @@
 // Monitor Store Tests
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useMonitorStore } from '../monitorStore';
+import type { LogLine } from '../../types/monitor';
 
 // Mock the monitor API
 vi.mock('../../services/monitorApi', () => ({
@@ -219,7 +220,7 @@ describe('MonitorStore', () => {
 
   describe('clearLogs', () => {
     it('should clear logs', () => {
-      useMonitorStore.setState({ logs: [{} as any], rawLines: ['test'] });
+      useMonitorStore.setState({ logs: [{ raw: 'test', level: 'INFO' } satisfies LogLine], rawLines: ['test'] });
       useMonitorStore.getState().clearLogs();
       expect(useMonitorStore.getState().logs).toHaveLength(0);
       expect(useMonitorStore.getState().rawLines).toHaveLength(0);

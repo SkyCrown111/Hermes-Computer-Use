@@ -1,4 +1,4 @@
-// Global Status Bar — shows gateway status, model, token usage, background tasks
+// Global Status Bar - shows gateway status, model, token usage, background tasks
 import React, { useEffect, useState, useRef } from 'react';
 import { statusApi } from '../../../services/statusApi';
 import { useNavigationStore, useChatStore, useSessionStore } from '../../../stores';
@@ -20,21 +20,11 @@ export const StatusBar: React.FC = () => {
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const { t } = useTranslation();
 
-  // Active tab / session
   const activeTabId = useNavigationStore((s) => s.activeTabId);
-
-  // Token usage for active session
-  const tokenUsage = useChatStore(
-    (s) => (activeTabId ? s.sessions[activeTabId]?.tokenUsage : undefined)
-  );
-
-  // Session list for model lookup
+  const tokenUsage = useChatStore((s) => (activeTabId ? s.sessions[activeTabId]?.tokenUsage : undefined));
   const sessions = useSessionStore((s) => s.sessions);
-  const activeSessionModel = activeTabId
-    ? sessions.find((s) => s.id === activeTabId)?.model
-    : undefined;
+  const activeSessionModel = activeTabId ? sessions.find((s) => s.id === activeTabId)?.model : undefined;
 
-  // Poll system status every 30s
   useEffect(() => {
     const poll = async () => {
       try {
@@ -45,9 +35,7 @@ export const StatusBar: React.FC = () => {
       }
     };
 
-    // Initial fetch
     poll();
-
     pollingRef.current = setInterval(poll, 30_000);
     return () => {
       if (pollingRef.current) clearInterval(pollingRef.current);
@@ -65,19 +53,19 @@ export const StatusBar: React.FC = () => {
   const hasTokenUsage = totalTokens > 0;
 
   const statusDotClass = isOnline ? 'online' : isDegraded ? 'degraded' : 'offline';
-  const statusLabel = isOnline
-    ? t('status.connected')
-    : isDegraded
-      ? t('status.degraded')
-      : t('status.offline');
+  const statusLabel = isOnline ? t('status.connected') : isDegraded ? t('status.degraded') : t('status.offline');
 
   const handleGatewayClick = async () => {
     try {
       const status = await statusApi.getSystemStatus();
       setSystemStatus(status);
       const gw = status.gateway;
-      const platforms = gw.connected_platforms?.map((p) => p.name).join(', ') || 'none';
-      toast.info('Hermes Gateway', `Status: ${gw.status}\nPlatforms: ${platforms}\nUptime: ${Math.floor(gw.uptime_seconds / 60)}m`);
+      const platforms = gw.connected_platforms?.map((p) => p.name).join(', ') || t('status.none');
+      const uptimeMinutes = Math.floor(gw.uptime_seconds / 60);
+      toast.info(
+        'Hermes Gateway',
+        `${t('status.gateway')}: ${gw.status}\n${t('status.platforms')}: ${platforms}\n${t('status.uptime')}: ${uptimeMinutes}${t('status.minutes')}`,
+      );
     } catch {
       toast.error(t('status.checkFailed'), t('status.cannotReach'));
     }
@@ -86,19 +74,13 @@ export const StatusBar: React.FC = () => {
   return (
     <div className="status-bar">
       <div className="status-bar-left">
-        {/* Gateway status */}
-        <div
-          className="status-gateway"
-          onClick={handleGatewayClick}
-          title={t('status.clickRefresh')}
-        >
+        <div className="status-gateway" onClick={handleGatewayClick} title={t('status.clickRefresh')}>
           <span className={`status-dot ${statusDotClass}`} />
           <span className="status-label">{t('status.gateway')}: {statusLabel}</span>
         </div>
 
         <span className="status-separator" />
 
-        {/* Active model */}
         {activeSessionModel && (
           <>
             <div className="status-model" title={t('status.currentModel')}>
@@ -109,14 +91,11 @@ export const StatusBar: React.FC = () => {
           </>
         )}
 
-        {/* Token usage for active session */}
         {hasTokenUsage && (
           <>
             <div className="status-tokens" title={t('status.tokenUsage')}>
               <TokenIcon size={12} />
-              <span className="status-tokens-value">
-                ↑{formatTokens(inputTokens)} ↓{formatTokens(outputTokens)}
-              </span>
+              <span className="status-tokens-value">In {formatTokens(inputTokens)} / Out {formatTokens(outputTokens)}</span>
             </div>
             <span className="status-separator" />
           </>
@@ -124,14 +103,12 @@ export const StatusBar: React.FC = () => {
       </div>
 
       <div className="status-bar-right">
-        {/* Active sessions count */}
         {activeSessions > 0 && (
           <span className="status-tokens" title={t('status.activeSessions')}>
             {activeSessions} {t('status.sessions')}
           </span>
         )}
 
-        {/* Pending background tasks */}
         {pendingTasks > 0 && (
           <>
             <span className="status-separator" />

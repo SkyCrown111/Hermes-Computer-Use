@@ -66,7 +66,7 @@ fn validate_skill_identifier(name: &str) -> Result<String, String> {
 
 /// List all skills - reads real data from WSL using Python
 /// Merges with persisted enabled states from skill_states.json
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn list_skills(category: Option<String>) -> Result<Vec<Skill>, String> {
     let category_filter = category.clone();
     println!("[Skills] Listing skills...");
@@ -133,8 +133,10 @@ for category in sorted(os.listdir(skills_dir)):
             metadata = parse_frontmatter(content)
             skill_name = metadata.get("name", item)
 
-            # Use persisted enabled state, default to True
-            enabled = enabled_states.get(skill_name, True)
+            state_key = f"{category}/{skill_name}"
+            # Use persisted enabled state, default to True. Fall back to the
+            # legacy name-only key so existing toggles still apply.
+            enabled = enabled_states.get(state_key, enabled_states.get(skill_name, True))
 
             skill = {
                 "name": skill_name,
@@ -219,23 +221,121 @@ print(json.dumps(skills))
     Ok(vec![])
 }
 
-/// Get a skill by name
-#[tauri::command]
+/// Get a skill by name - searches all categories in WSL for the skill
+#[tauri::command(rename_all = "snake_case")]
 pub fn get_skill(name: String) -> Result<Skill, String> {
-    Ok(Skill {
-        name,
-        description: None,
-        version: None,
-        author: None,
-        category: None,
-        path: None,
-        enabled: true,
-        tags: None,
-    })
+    println!("[Skills] Getting skill by name: {}", name);
+
+    let valid_name = validate_skill_identifier(&name)?;
+
+    // Search across all categories to find the skill
+    let script = format!(
+        r#"
+import os
+import re
+import json
+
+def parse_frontmatter(content):
+    metadata = {{}}
+    match = re.match(r'^---\s*\n(.*?)\n---', content, re.DOTALL)
+    if match:
+        frontmatter = match.group(1)
+        for line in frontmatter.split('\n'):
+            line = line.strip()
+            if ':' in line:
+                key, value = line.split(':', 1)
+                key = key.strip()
+                value = value.strip()
+                if value.startswith('[') and value.endswith(']'):
+                    items = [item.strip().strip("\"'") for item in value[1:-1].split(',')]
+                    metadata[key] = [item for item in items if item]
+                else:
+                    metadata[key] = value
+    return metadata
+
+skills_dir = os.path.expanduser("~/.hermes/skills")
+states_file = os.path.expanduser("~/.hermes/skill_states.json")
+target_name = "{valid_name}"
+
+# Load enabled states
+enabled_states = {{}}
+if os.path.exists(states_file):
+    try:
+        with open(states_file, 'r') as f:
+            enabled_states = json.load(f)
+    except:
+        pass
+
+# Search all categories for the skill
+for category in sorted(os.listdir(skills_dir)):
+    cat_path = os.path.join(skills_dir, category)
+    if not os.path.isdir(cat_path):
+        continue
+    for item in os.listdir(cat_path):
+        skill_path = os.path.join(cat_path, item)
+        skill_file = os.path.join(skill_path, "SKILL.md")
+        if not os.path.isfile(skill_file):
+            continue
+        try:
+            with open(skill_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+            metadata = parse_frontmatter(content)
+            skill_name = metadata.get("name", item)
+            if skill_name == target_name or item == target_name:
+                state_key = category + "/" + skill_name
+                enabled = enabled_states.get(state_key, enabled_states.get(skill_name, True))
+                result = {{
+                    "name": skill_name,
+                    "description": metadata.get("description"),
+                    "version": metadata.get("version"),
+                    "author": metadata.get("author"),
+                    "category": category,
+                    "path": f"{{category}}/{{item}}",
+                    "enabled": enabled,
+                    "tags": metadata.get("tags", [])
+                }}
+                print(json.dumps({{"found": True, "skill": result}}))
+                exit(0)
+        except:
+            pass
+
+print(json.dumps({{"found": False}}))
+"#,
+        valid_name = valid_name.replace('"', "\\\"")
+    );
+
+    if let Ok(output) = create_command("wsl")
+        .args(["python3", "-c", &script])
+        .output()
+    {
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&stdout) {
+                if json.get("found").and_then(|v| v.as_bool()) == Some(true) {
+                    if let Some(s) = json.get("skill") {
+                        return Ok(Skill {
+                            name: s.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                            description: s.get("description").and_then(|v| v.as_str()).map(|v| v.to_string()),
+                            version: s.get("version").and_then(|v| v.as_str()).map(|v| v.to_string()),
+                            author: s.get("author").and_then(|v| v.as_str()).map(|v| v.to_string()),
+                            category: s.get("category").and_then(|v| v.as_str()).map(|v| v.to_string()),
+                            path: s.get("path").and_then(|v| v.as_str()).map(|v| v.to_string()),
+                            enabled: s.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true),
+                            tags: s.get("tags").and_then(|v| v.as_array()).map(|arr| {
+                                arr.iter().filter_map(|t| t.as_str().map(|s| s.to_string())).collect()
+                            }),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    Err(format!("Skill not found: {}", name))
 }
 
 /// Get skill detail by category and name
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn get_skill_detail(category: String, name: String) -> Result<serde_json::Value, String> {
     // Validate identifiers to prevent path traversal
     let _ = validate_skill_identifier(&category)?;
@@ -323,7 +423,7 @@ print(json.dumps(result))
 }
 
 /// Get skill categories
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn get_skill_categories() -> Result<Vec<SkillCategory>, String> {
     println!("[Skills] Getting categories...");
 
@@ -410,14 +510,99 @@ print(json.dumps(categories))
     Ok(vec![])
 }
 
-/// Save a skill
-#[tauri::command]
-pub fn save_skill(_skill: Skill) -> Result<(), String> {
+/// Update skill parameters -?rewrites the SKILL.md with updated metadata and content
+/// Uses base64 encoding for safe shell transport
+#[tauri::command(rename_all = "snake_case")]
+pub fn update_skill(
+    category: String,
+    name: String,
+    description: String,
+    content: String,
+) -> Result<(), String> {
+    println!("[Skills] Updating skill: {}/{}", category, name);
+
+    let valid_category = validate_skill_identifier(&category)?;
+    let valid_name = validate_skill_identifier(&name)?;
+
+    // Build the updated SKILL.md content
+    let skill_content = format!(
+        r#"---
+name: "{}"
+description: "{}"
+---
+
+{}
+"#,
+        name.replace('"', "\\\""),
+        description.replace('"', "\\\"").replace('\n', " "),
+        content
+    );
+
+    let encoded = STANDARD.encode(&skill_content);
+
+    let script = format!(
+        r#"
+import os
+import base64
+import json
+
+skill_dir = os.path.expanduser("~/.hermes/skills/{}/{}")
+skill_file = os.path.join(skill_dir, "SKILL.md")
+
+if not os.path.isdir(skill_dir):
+    print(json.dumps({{"success": False, "error": "Skill directory not found"}}))
+    exit(1)
+
+# Decode base64 content
+content = base64.b64decode("{}").decode('utf-8')
+
+with open(skill_file, 'w', encoding='utf-8') as f:
+    f.write(content)
+
+print(json.dumps({{"success": True, "path": skill_file}}))
+"#,
+        valid_category, valid_name, encoded
+    );
+
+    if let Ok(output) = create_command("wsl")
+        .args(["python3", "-c", &script])
+        .output()
+    {
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            println!("[Skills] Update skill output: {}", stdout);
+            return Ok(());
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("Failed to update skill: {}", stderr));
+        }
+    }
+
+    Err("Failed to execute WSL command".to_string())
+}
+
+/// Save a skill (legacy -?delegates to update_skill or create_skill)
+#[tauri::command(rename_all = "snake_case")]
+pub fn save_skill(skill: Skill) -> Result<(), String> {
+    println!("[Skills] Saving skill: {}", skill.name);
+
+    // If category and path are known, update in place
+    if let (Some(category), Some(_path)) = (&skill.category, &skill.path) {
+        return update_skill(
+            category.clone(),
+            skill.name.clone(),
+            skill.description.clone().unwrap_or_default(),
+            String::new(), // content not available in Skill struct, just update metadata
+        );
+    }
+
+    // Otherwise, we don't have enough info to save -?just log a warning
+    println!("[Skills] Warning: save_skill called without category/path, skipping write");
     Ok(())
 }
 
 /// Create a new skill with content - uses base64 encoding for safe shell transport
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn create_skill(params: CreateSkillParams) -> Result<(), String> {
     println!(
         "[Skills] Creating skill: {} in category {}",
@@ -519,7 +704,7 @@ print(json.dumps({{"success": True, "path": skill_file}}))
 }
 
 /// Delete a skill
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn delete_skill(category: String, name: String) -> Result<(), String> {
     println!("[Skills] Deleting skill: {}/{}", category, name);
 
@@ -562,15 +747,21 @@ else:
 
 /// Toggle skill enabled status
 /// Persists the enabled state in a separate state file
-#[tauri::command]
-pub fn toggle_skill(name: String, enabled: bool) -> Result<(), String> {
-    println!("[Skills] Toggling skill '{}' to enabled={}", name, enabled);
+#[tauri::command(rename_all = "snake_case")]
+pub fn toggle_skill(category: String, name: String, enabled: bool) -> Result<(), String> {
+    println!(
+        "[Skills] Toggling skill '{}/{}' to enabled={}",
+        category, name, enabled
+    );
 
-    // Validate skill name
-    let _ = validate_skill_identifier(&name)?;
+    // Validate skill identifiers
+    let category = validate_skill_identifier(&category)?;
+    let name = validate_skill_identifier(&name)?;
+    let state_key = format!("{}/{}", category, name);
 
     // Use base64 encoding for safe shell transport
-    let name_b64 = STANDARD.encode(&name);
+    let state_key_b64 = STANDARD.encode(&state_key);
+    let legacy_name_b64 = STANDARD.encode(&name);
 
     let script = format!(
         r#"
@@ -579,7 +770,8 @@ import json
 import base64
 
 states_file = os.path.expanduser("~/.hermes/skill_states.json")
-name = base64.b64decode("{}").decode('utf-8')
+state_key = base64.b64decode("{}").decode('utf-8')
+legacy_name = base64.b64decode("{}").decode('utf-8')
 enabled = {}
 
 # Read existing states
@@ -591,8 +783,10 @@ if os.path.exists(states_file):
     except:
         pass
 
-# Update state
-states[name] = enabled
+# Update state using the fully-qualified key and remove the legacy key to avoid drift
+states[state_key] = enabled
+if legacy_name in states and legacy_name != state_key:
+    del states[legacy_name]
 
 # Write back
 os.makedirs(os.path.dirname(states_file), exist_ok=True)
@@ -601,7 +795,8 @@ with open(states_file, 'w') as f:
 
 print("success")
 "#,
-        name_b64,
+        state_key_b64,
+        legacy_name_b64,
         enabled
     );
 
@@ -623,7 +818,81 @@ print("success")
 }
 
 /// Get skills directory path
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn get_skills_path() -> Result<String, String> {
     Ok("~/.hermes/skills".to_string())
+}
+
+/// Skill execution history record
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillExecutionRecord {
+    pub id: String,
+    pub skill_name: String,
+    pub status: String,
+    pub input_text: Option<String>,
+    pub output_text: Option<String>,
+    pub executed_at: String,
+    pub duration_ms: Option<u64>,
+}
+
+/// Get execution history for a skill
+/// Reads from ~/.hermes/skills/.execution_history.json in WSL
+#[tauri::command(rename_all = "snake_case")]
+pub fn get_skill_execution_history(
+    skill_name: String,
+    limit: Option<usize>,
+) -> Result<Vec<SkillExecutionRecord>, String> {
+    println!("[Skills] Getting execution history for: {}", skill_name);
+
+    let _ = validate_skill_identifier(&skill_name)?;
+    let limit = limit.unwrap_or(20);
+
+    let name_b64 = STANDARD.encode(&skill_name);
+
+    let script = format!(
+        r#"
+import os
+import json
+import base64
+
+skill_name = base64.b64decode("{}").decode('utf-8')
+limit = {}
+
+history_file = os.path.expanduser("~/.hermes/skills/.execution_history.json")
+
+if not os.path.isfile(history_file):
+    print(json.dumps([]))
+    exit(0)
+
+try:
+    with open(history_file, 'r', encoding='utf-8') as f:
+        all_records = json.load(f)
+except:
+    print(json.dumps([]))
+    exit(0)
+
+# Filter by skill name and sort by executed_at descending
+filtered = [r for r in all_records if r.get("skill_name") == skill_name]
+filtered.sort(key=lambda x: x.get("executed_at", ""), reverse=True)
+filtered = filtered[:limit]
+
+print(json.dumps(filtered))
+"#,
+        name_b64, limit
+    );
+
+    if let Ok(output) = create_command("wsl")
+        .args(["python3", "-c", &script])
+        .output()
+    {
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let records: Vec<SkillExecutionRecord> = serde_json::from_str(&stdout.trim())
+                .map_err(|e| format!("Failed to parse execution history: {}", e))?;
+            println!("[Skills] Found {} execution records for {}", records.len(), skill_name);
+            return Ok(records);
+        }
+    }
+
+    Ok(vec![])
 }

@@ -1,6 +1,6 @@
 import { apiClient, getErrorDetail } from './apiClient';
 import { logger } from '../lib/logger';
-import type { Platform, PlatformType } from '../types/platform';
+import type { Platform, PlatformConnectionCheckResult, PlatformType } from '../types/platform';
 
 export interface PlatformStatusResponse {
   type: PlatformType;
@@ -67,7 +67,7 @@ export const platformApi = {
     await apiClient.invoke('disable_platform', { platform_type: type });
   },
 
-  testConnection: async (type: PlatformType): Promise<{ ok: boolean; message?: string; details?: string }> => {
+  testConnection: async (type: PlatformType): Promise<PlatformConnectionCheckResult> => {
     return apiClient.invoke('test_platform_connection', { platform_type: type });
   },
 

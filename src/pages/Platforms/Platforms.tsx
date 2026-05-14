@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { ConfirmModal, AlertIcon, WarningIcon, CheckIcon } from '../../components';
-import { usePlatformStore } from '../../stores';
+import { usePlatformStore, getPlatformIcon } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
 import { toast } from '../../stores/toastStore';
 import { platformApi } from '../../services/platformApi';
@@ -8,7 +8,7 @@ import type { Platform, PlatformType } from '../../types/platform';
 import './Platforms.css';
 
 // 平台配置表单字段
-const platformConfigFields: Record<PlatformType, { key: string; label: string; type: string; placeholder: string; hint?: string }[]> = {
+const platformConfigFields: Partial<Record<PlatformType, { key: string; label: string; type: string; placeholder: string; hint?: string }[]>> = {
   telegram: [
     { key: 'bot_token', label: 'Bot Token', type: 'password', placeholder: 'Enter Telegram Bot Token' },
     { key: 'webhook_url', label: 'Webhook URL', type: 'text', placeholder: 'Optional: Webhook URL' },
@@ -57,14 +57,15 @@ const platformConfigFields: Record<PlatformType, { key: string; label: string; t
 
 // 状态徽章
 const StatusBadge = ({ status, t }: { status: Platform['status']; t: (key: string) => string }) => {
-  const statusConfig = {
+  const statusConfig: Record<string, { label: string; className: string }> = {
     connected: { label: t('platforms.connected'), className: 'status-connected' },
     disconnected: { label: t('platforms.disconnected'), className: 'status-disconnected' },
     error: { label: t('platforms.error'), className: 'status-error' },
+    connecting: { label: t('platforms.connecting'), className: 'status-pending' },
     pending: { label: t('platforms.connecting'), className: 'status-pending' },
   };
 
-  const config = statusConfig[status];
+  const config = statusConfig[status] || statusConfig.disconnected;
   return <span className={`status-badge ${config.className}`}>{config.label}</span>;
 };
 
@@ -84,7 +85,7 @@ export function Platforms() {
   const reconnect = usePlatformStore(s => s.reconnect);
 
   // Controlled form state for config modal
-  const [configForm, setConfigForm] = useState<Record<string, string>>({});
+  const [configForm, setConfigForm] = useState<Record<string, string | boolean>>({});
 
   useEffect(() => {
     fetchPlatforms();
@@ -94,10 +95,15 @@ export function Platforms() {
   useEffect(() => {
     if (isConfigModalOpen && selectedPlatform) {
       const platformData = platforms.find(p => p.type === selectedPlatform);
-      const initialConfig: Record<string, string> = {};
+      const initialConfig: Record<string, string | boolean> = {};
       const fields = platformConfigFields[selectedPlatform] || [];
       for (const field of fields) {
-        initialConfig[field.key] = (platformData?.config?.[field.key] as string) || '';
+        const rawValue = platformData?.config?.[field.key];
+        if (field.type === 'checkbox') {
+          initialConfig[field.key] = rawValue === true || rawValue === 'true';
+        } else {
+          initialConfig[field.key] = rawValue == null ? '' : String(rawValue);
+        }
       }
       setConfigForm(initialConfig);
     }
@@ -128,20 +134,25 @@ export function Platforms() {
     setConnectionError(null);
     const result = await testConnection(type);
     if (result.ok) {
-      toast.success(t('platforms.testConnection') + ' ' + (t('nav.home') === 'Home' ? 'successful!' : '成功！'));
+      toast.success(t('platforms.testSuccess'));
     } else {
-      toast.error(`${t('platforms.testConnection')} ${t('nav.home') === 'Home' ? 'failed' : '失败'}`);
+      toast.error(t('platforms.testFailed'));
       setConnectionError({
         platform: type,
-        error: result.message || (t('nav.home') === 'Home' ? 'Unknown error' : '未知错误'),
+        error: result.message || t('platforms.unknownError'),
         details: result.details,
       });
     }
   }, [testConnection, t]);
 
   const handleConfigChange = useCallback((key: string, value: string | boolean) => {
-    setConfigForm(prev => ({ ...prev, [key]: String(value) }));
+    setConfigForm(prev => ({ ...prev, [key]: value }));
   }, []);
+
+  const getTextConfigValue = useCallback((key: string): string => {
+    const value = configForm[key];
+    return typeof value === 'string' ? value : '';
+  }, [configForm]);
 
   const handleSaveConfig = useCallback(async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -176,7 +187,7 @@ export function Platforms() {
     if (isConfigModalOpen && selectedPlatform === 'weixin') {
       loadQRCode();
     }
-  }, [isConfigModalOpen, selectedPlatform]);
+  }, [isConfigModalOpen, selectedPlatform, loadQRCode]);
 
   // Poll QR code scan status
   useEffect(() => {
@@ -188,7 +199,7 @@ export function Platforms() {
             setQrcodeStatus('scanned');
             clearInterval(pollRef.current ?? undefined);
           }
-        } catch (error) {
+        } catch {
           // QR code polling failed silently
         }
       }, 3000);
@@ -213,7 +224,7 @@ export function Platforms() {
         {platforms.map(platform => (
           <div key={platform.type} className="platform-card glass-card">
             <div className="platform-header">
-              <span className="platform-icon">{platform.icon}</span>
+              <span className="platform-icon">{getPlatformIcon(platform.type)}</span>
               <div className="platform-info">
                 <h3>{platform.name}</h3>
                 <p>{platform.description}</p>
@@ -279,7 +290,7 @@ export function Platforms() {
           <div className="modal-content glass-card" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2>
-                {selectedPlatformData.icon} {selectedPlatformData.name} {t('platforms.configure')}
+                {getPlatformIcon(selectedPlatformData.type)} {selectedPlatformData.name} {t('platforms.configure')}
               </h2>
               <button className="modal-close" onClick={closeConfigModal}>
                 ×
@@ -336,7 +347,7 @@ export function Platforms() {
                             id={field.key}
                             name={field.key}
                             type="checkbox"
-                            checked={configForm[field.key] === 'true'}
+                            checked={configForm[field.key] === true}
                             onChange={(e) => handleConfigChange(field.key, e.target.checked)}
                           />
                           <span className="checkbox-text">{field.label}</span>
@@ -350,7 +361,7 @@ export function Platforms() {
                             name={field.key}
                             type={field.type}
                             placeholder={field.placeholder}
-                            value={configForm[field.key] || ''}
+                            value={getTextConfigValue(field.key)}
                             onChange={(e) => handleConfigChange(field.key, e.target.value)}
                           />
                           {field.hint && <span className="field-hint">{field.hint}</span>}
@@ -391,31 +402,26 @@ export function Platforms() {
         <div className="modal-overlay" onClick={() => setConnectionError(null)}>
           <div className="modal-content glass-card connection-error-modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h2><WarningIcon size={18} /> {t('platforms.testConnection')} {t('nav.home') === 'Home' ? 'Failed' : '失败'}</h2>
+              <h2><WarningIcon size={18} /> {t('platforms.testFailedTitle')}</h2>
               <button className="modal-close" onClick={() => setConnectionError(null)}>×</button>
             </div>
             <div className="modal-body">
               <div className="connection-error-platform">
-                <strong>Platform:</strong> {connectionError.platform}
+                <strong>{t('sessions.platform')}:</strong> {connectionError.platform}
               </div>
               <div className="connection-error-message">
-                <strong>Error:</strong>
+                <strong>{t('platforms.error')}:</strong>
                 <pre>{connectionError.error}</pre>
               </div>
               {connectionError.details && (
                 <div className="connection-error-details">
-                  <strong>Details:</strong>
+                  <strong>{t('monitor.logFile')}:</strong>
                   <pre>{connectionError.details}</pre>
                 </div>
               )}
               <div className="connection-error-tips">
-                <strong>Troubleshooting:</strong>
-                <ul>
-                  <li>Check that your API credentials are correct</li>
-                  <li>Verify network connectivity</li>
-                  <li>Ensure the service is not rate-limiting your requests</li>
-                  <li>Check the service status page for outages</li>
-                </ul>
+                <strong>{t('platforms.troubleshooting')}:</strong>
+                <p>{t('platforms.troubleshootingTips')}</p>
               </div>
             </div>
             <div className="modal-footer">

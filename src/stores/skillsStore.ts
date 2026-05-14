@@ -34,8 +34,8 @@ interface SkillsState {
   fetchSkills: (category?: string) => Promise<void>;
   fetchCategories: () => Promise<void>;
   fetchSkillDetail: (category: string, name: string) => Promise<void>;
-  fetchExecutionHistory: (skillName?: string) => Promise<void>;
-  toggleSkill: (name: string, enabled: boolean) => Promise<void>;
+  fetchExecutionHistory: (skillName?: string, skillCategory?: string) => Promise<void>;
+  toggleSkill: (category: string, name: string, enabled: boolean) => Promise<void>;
   createSkill: (skill: { name: string; category: string; description: string; content: string }) => Promise<boolean>;
   updateSkill: (category: string, originalName: string, skill: { name: string; category: string; description: string; content: string }) => Promise<boolean>;
   deleteSkill: (category: string, name: string) => Promise<boolean>;
@@ -96,11 +96,18 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
   },
 
   // 获取执行历史
-  fetchExecutionHistory: async (_skillName?: string) => {
+  fetchExecutionHistory: async (skillName?: string, skillCategory?: string) => {
     set({ isLoadingHistory: true });
     try {
-      // Execution history is not available in the current API
-      set({ executionHistory: [], isLoadingHistory: false });
+      if (skillName) {
+        const history = await skillsApi.getSkillExecutionHistory(skillName, 20, skillCategory);
+        const filteredHistory = skillCategory
+          ? history.filter((record) => record.skill_category === skillCategory)
+          : history;
+        set({ executionHistory: filteredHistory, isLoadingHistory: false });
+      } else {
+        set({ executionHistory: [], isLoadingHistory: false });
+      }
     } catch (err) {
       logger.error('[SkillsStore] Failed to fetch execution history:', err);
       set({ executionHistory: [], isLoadingHistory: false });
@@ -108,12 +115,12 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
   },
 
   // 切换 Skill 启用状态
-  toggleSkill: async (name: string, enabled: boolean) => {
+  toggleSkill: async (category: string, name: string, enabled: boolean) => {
     try {
-      await skillsApi.toggleSkill({ name, enabled });
+      await skillsApi.toggleSkill({ category, name, enabled });
       // 更新本地状态
       const skills = get().skills.map((skill) =>
-        skill.name === name ? { ...skill, enabled } : skill
+        skill.name === name && skill.category === category ? { ...skill, enabled } : skill
       );
       set({ skills });
     } catch (err) {
@@ -152,23 +159,35 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
   updateSkill: async (category: string, originalName: string, skillData: { name: string; category: string; description: string; content: string }) => {
     set({ error: null });
     try {
-      // If name or category changed, need to delete old and create new
-      if (skillData.name !== originalName || skillData.category !== category) {
-        await skillsApi.deleteSkill(originalName, category);
-      }
+      const renamed = skillData.name !== originalName || skillData.category !== category;
 
-      // Create/update the skill
-      await skillsApi.createSkill({
-        name: skillData.name,
-        category: skillData.category,
-        description: skillData.description,
-        content: skillData.content,
-        metadata: {
-          version: '1.0.0',
-          author: 'User',
-          tags: [],
-        },
-      });
+      if (renamed) {
+        await skillsApi.createSkill({
+          name: skillData.name,
+          category: skillData.category,
+          description: skillData.description,
+          content: skillData.content,
+          metadata: {
+            version: '1.0.0',
+            author: 'User',
+            tags: [],
+          },
+        });
+
+        await skillsApi.deleteSkill(originalName, category);
+      } else {
+        await skillsApi.createSkill({
+          name: skillData.name,
+          category: skillData.category,
+          description: skillData.description,
+          content: skillData.content,
+          metadata: {
+            version: '1.0.0',
+            author: 'User',
+            tags: [],
+          },
+        });
+      }
 
       // Refresh the skills list
       await get().fetchSkills(get().selectedCategory || undefined);

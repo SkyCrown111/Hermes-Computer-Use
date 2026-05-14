@@ -13,6 +13,7 @@ export * from './platformStore';
 export * from './filesStore';
 export * from './chatStore';
 export * from './mcpStore';
+export * from './kanbanStore';
 
 // Re-export helper functions from themeStore
 export { resolveTheme, getSystemTheme } from './themeStore';

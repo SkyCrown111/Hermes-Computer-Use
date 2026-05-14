@@ -1,5 +1,4 @@
 // Platform Types - 平台接入类型定义
-import type { ReactNode } from 'react';
 
 export type PlatformType =
   | 'telegram'
@@ -8,18 +7,26 @@ export type PlatformType =
   | 'whatsapp'
   | 'wechat'
   | 'weixin'
+  | 'feishu'
   | 'lark'
+  | 'api_server'
   | 'api'
   | 'webhook';
 
-export type PlatformStatus = 'connected' | 'disconnected' | 'error' | 'pending';
+export type PlatformStatus = 'connected' | 'disconnected' | 'error' | 'connecting' | 'pending';
+
+export interface PlatformConnectionCheckResult {
+  ok: boolean;
+  message?: string;
+  details?: string;
+  status?: PlatformStatus;
+}
 
 export interface Platform {
   type: PlatformType;
   name: string;
   description: string;
   status: PlatformStatus;
-  icon: ReactNode;
   enabled: boolean;
   config?: Record<string, unknown>;
   lastConnected?: string;

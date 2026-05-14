@@ -3,11 +3,11 @@
 export interface Checkpoint {
   id: string;
   session_id: string;
-  name: string | null;
+  name?: string | null;
   created_at: string;
   message_count: number;
-  size_bytes: number;
-  description: string | null;
+  size_bytes?: number;
+  description?: string | null;
 }
 
 export interface CreateCheckpointParams {

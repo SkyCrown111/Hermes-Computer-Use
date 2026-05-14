@@ -2,6 +2,7 @@
 //! Direct tool calling without chat conversation
 
 use super::utils::create_command;
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
 
 /// Tool information schema
@@ -23,37 +24,56 @@ pub struct ToolResult {
     pub duration_ms: Option<u64>,
 }
 
+/// Check if hermes-agent Python modules are available
+fn hermes_agent_available() -> bool {
+    let output = create_command("wsl")
+        .args(["bash", "-c", "test -d ~/.hermes/hermes-agent && echo 'available' || echo 'not_found'"])
+        .output();
+
+    match output {
+        Ok(o) if o.status.success() => {
+            String::from_utf8_lossy(&o.stdout).trim() == "available"
+        }
+        _ => false,
+    }
+}
+
 /// List all available tools from Hermes Agent
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn list_available_tools() -> Result<Vec<ToolInfo>, String> {
+    if !hermes_agent_available() {
+        return Ok(vec![]);
+    }
+
     let script = r#"
-import sys
-sys.path.insert(0, str(__import__('pathlib').Path.home() / '.hermes' / 'hermes-agent'))
-from tools.registry import registry
-from tools import discover_builtin_tools
-discover_builtin_tools()
-tools = registry.get_all_tools()
-import json
-result = []
-for t in tools:
-    result.append({
-        'name': t.name,
-        'toolset': t.toolset,
-        'description': t.description,
-        'emoji': t.emoji,
-        'is_async': t.is_async
-    })
-print(json.dumps(result))
+import sys, json
+try:
+    sys.path.insert(0, str(__import__('pathlib').Path.home() / '.hermes' / 'hermes-agent'))
+    from tools.registry import registry
+    from tools import discover_builtin_tools
+    discover_builtin_tools()
+    tools = registry.get_all_tools()
+    result = []
+    for t in tools:
+        result.append({
+            'name': t.name,
+            'toolset': t.toolset,
+            'description': t.description,
+            'emoji': t.emoji,
+            'is_async': t.is_async
+        })
+    print(json.dumps(result))
+except Exception as e:
+    print(json.dumps([]))
 "#;
 
     let output = create_command("wsl")
-        .args(["-e", "python3", "-c", script])
+        .args(["python3", "-c", script])
         .output()
         .map_err(|e| format!("Failed to list tools: {}", e))?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Failed to list tools: {}", stderr));
+        return Ok(vec![]);
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -63,26 +83,57 @@ print(json.dumps(result))
     Ok(tools)
 }
 
-/// Get schema for a specific tool
-#[tauri::command]
+/// Get schema for a specific tool.
+/// Uses base64-encoded tool_name passed via stdin to prevent shell injection.
+#[tauri::command(rename_all = "snake_case")]
 pub fn get_tool_schema(tool_name: String) -> Result<serde_json::Value, String> {
-    let script = format!(r#"
-import sys
-sys.path.insert(0, str(__import__('pathlib').Path.home() / '.hermes' / 'hermes-agent'))
-from tools.registry import registry
-from tools import discover_builtin_tools
-discover_builtin_tools()
-entry = registry.get_entry('{}')
-if entry:
-    import json
-    print(json.dumps({{'schema': entry.schema, 'description': entry.description}}))
-else:
-    print('{{"error": "Tool not found"}}')
-"#, tool_name);
+    // Validate tool_name: only allow alphanumeric, underscores, hyphens, and dots
+    if tool_name.chars().any(|c| !c.is_alphanumeric() && c != '_' && c != '-' && c != '.') {
+        return Err(format!("Invalid tool name: {}", tool_name));
+    }
 
-    let output = create_command("wsl")
-        .args(["-e", "python3", "-c", &script])
-        .output()
+    if !hermes_agent_available() {
+        return Err("Hermes Agent is not installed".to_string());
+    }
+
+    let script = r#"
+import sys, json, base64
+try:
+    sys.path.insert(0, str(__import__('pathlib').Path.home() / '.hermes' / 'hermes-agent'))
+    from tools.registry import registry
+    from tools import discover_builtin_tools
+    discover_builtin_tools()
+
+    tool_name = base64.b64decode(sys.stdin.read().strip()).decode('utf-8')
+    entry = registry.get_entry(tool_name)
+    if entry:
+        print(json.dumps({'schema': entry.schema, 'description': entry.description}))
+    else:
+        print(json.dumps({'error': 'Tool not found'}))
+except Exception as e:
+    print(json.dumps({'error': str(e)}))
+"#;
+
+    let tool_name_b64 = STANDARD.encode(&tool_name);
+
+    // Use stdin pipe instead of echo+pipe to avoid shell escaping issues
+    let mut child = create_command("wsl")
+        .args(["python3", "-c", script])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Failed to get tool schema: {}", e))?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        use std::io::Write;
+        stdin
+            .write_all(format!("{}\n", tool_name_b64).as_bytes())
+            .map_err(|e| format!("Failed to write to stdin: {}", e))?;
+    }
+
+    let output = child
+        .wait_with_output()
         .map_err(|e| format!("Failed to get tool schema: {}", e))?;
 
     if !output.status.success() {
@@ -101,50 +152,83 @@ else:
     Ok(result)
 }
 
-/// Invoke a tool directly
-#[tauri::command]
+/// Invoke a tool directly.
+/// Uses base64-encoded payload passed via stdin to prevent shell injection.
+#[tauri::command(rename_all = "snake_case")]
 pub async fn invoke_tool(
     tool_name: String,
     args: serde_json::Value,
     session_id: Option<String>,
 ) -> Result<ToolResult, String> {
-    let args_json = serde_json::to_string(&args).map_err(|e| format!("Invalid args: {}", e))?;
+    // Validate tool_name: only allow alphanumeric, underscores, hyphens, and dots
+    if tool_name.chars().any(|c| !c.is_alphanumeric() && c != '_' && c != '-' && c != '.') {
+        return Err(format!("Invalid tool name: {}", tool_name));
+    }
+
+    if !hermes_agent_available() {
+        return Err("Hermes Agent is not installed".to_string());
+    }
+
     let _session_arg = session_id.map(|s| format!("--session-id {}", s)).unwrap_or_default();
 
-    let script = format!(r#"
-import sys
-import json
-sys.path.insert(0, str(__import__('pathlib').Path.home() / '.hermes' / 'hermes-agent'))
-from tools.registry import registry
-from tools import discover_builtin_tools
-discover_builtin_tools()
+    // Encode the entire payload as base64 and pass via stdin
+    let payload = serde_json::json!({
+        "tool_name": tool_name,
+        "args": args,
+    });
+    let payload_b64 = STANDARD.encode(serde_json::to_string(&payload).map_err(|e| format!("Failed to encode payload: {}", e))?);
 
-tool_name = '{}'
-args = json.loads('''{}''')
-
-entry = registry.get_entry(tool_name)
-if not entry:
-    print(json.dumps({{'success': False, 'output': None, 'error': 'Tool not found'}}))
-    sys.exit(0)
-
-import time
-start = time.time()
+    let script = r#"
+import sys, json, base64, time
 try:
-    if entry.is_async:
-        import asyncio
-        result = asyncio.run(entry.handler(**args))
-    else:
-        result = entry.handler(**args)
-    duration = int((time.time() - start) * 1000)
-    print(json.dumps({{'success': True, 'output': result, 'error': None, 'duration_ms': duration}}))
-except Exception as e:
-    duration = int((time.time() - start) * 1000)
-    print(json.dumps({{'success': False, 'output': None, 'error': str(e), 'duration_ms': duration}}))
-"#, tool_name, args_json);
+    sys.path.insert(0, str(__import__('pathlib').Path.home() / '.hermes' / 'hermes-agent'))
+    from tools.registry import registry
+    from tools import discover_builtin_tools
+    discover_builtin_tools()
 
-    let output = create_command("wsl")
-        .args(["-e", "python3", "-c", &script])
-        .output()
+    payload = json.loads(base64.b64decode(sys.stdin.read().strip()).decode('utf-8'))
+    tool_name = payload['tool_name']
+    args = payload.get('args', {})
+
+    entry = registry.get_entry(tool_name)
+    if not entry:
+        print(json.dumps({'success': False, 'output': None, 'error': 'Tool not found'}))
+        sys.exit(0)
+
+    start = time.time()
+    try:
+        if entry.is_async:
+            import asyncio
+            result = asyncio.run(entry.handler(**args))
+        else:
+            result = entry.handler(**args)
+        duration = int((time.time() - start) * 1000)
+        print(json.dumps({'success': True, 'output': result, 'error': None, 'duration_ms': duration}))
+    except Exception as e:
+        duration = int((time.time() - start) * 1000)
+        print(json.dumps({'success': False, 'output': None, 'error': str(e), 'duration_ms': duration}))
+except Exception as e:
+    print(json.dumps({'success': False, 'output': None, 'error': str(e)}))
+"#;
+
+    // Use stdin pipe instead of echo+pipe to avoid shell escaping issues
+    let mut child = create_command("wsl")
+        .args(["python3", "-c", script])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Failed to invoke tool: {}", e))?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        use std::io::Write;
+        stdin
+            .write_all(format!("{}\n", payload_b64).as_bytes())
+            .map_err(|e| format!("Failed to write to stdin: {}", e))?;
+    }
+
+    let output = child
+        .wait_with_output()
         .map_err(|e| format!("Failed to invoke tool: {}", e))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -155,32 +239,37 @@ except Exception as e:
 }
 
 /// Get list of toolsets
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn list_toolsets() -> Result<Vec<serde_json::Value>, String> {
+    if !hermes_agent_available() {
+        return Ok(vec![]);
+    }
+
     let script = r#"
-import sys
-sys.path.insert(0, str(__import__('pathlib').Path.home() / '.hermes' / 'hermes-agent'))
-from toolsets import TOOLSETS
-import json
-result = []
-for name, info in TOOLSETS.items():
-    result.append({
-        'name': name,
-        'description': info.get('description', ''),
-        'tools': info.get('tools', []),
-        'includes': info.get('includes', [])
-    })
-print(json.dumps(result))
+import sys, json
+try:
+    sys.path.insert(0, str(__import__('pathlib').Path.home() / '.hermes' / 'hermes-agent'))
+    from toolsets import TOOLSETS
+    result = []
+    for name, info in TOOLSETS.items():
+        result.append({
+            'name': name,
+            'description': info.get('description', ''),
+            'tools': info.get('tools', []),
+            'includes': info.get('includes', [])
+        })
+    print(json.dumps(result))
+except Exception:
+    print(json.dumps([]))
 "#;
 
     let output = create_command("wsl")
-        .args(["-e", "python3", "-c", script])
+        .args(["python3", "-c", script])
         .output()
         .map_err(|e| format!("Failed to list toolsets: {}", e))?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Failed to list toolsets: {}", stderr));
+        return Ok(vec![]);
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);

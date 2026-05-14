@@ -1,15 +1,32 @@
-import React, { memo, useMemo } from 'react';
+import React, { memo, useState, useMemo, useCallback } from 'react';
 import { ToolErrorCard } from './ToolErrorCard';
 import { SessionSearchCard } from './SessionSearchCard';
-import { ToolsBlock } from './ToolsBlock';
 import { parseToolJson } from './parseToolJson';
-import type { SessionSearchResult } from './constants';
-import type { ChatMessage } from '../../stores/chatStore';
 import { MarkdownRenderer } from '../ui/MarkdownRenderer';
-import { UserIcon, BotIcon } from '../ui/Icons';
-import { useNavigationStore } from '../../stores/navigationStore';
-
-// ---- Types ----
+import {
+  UserIcon,
+  BotIcon,
+  ToolIcon,
+  TerminalIcon,
+  SearchIcon,
+  FileTextIcon,
+  EditIcon,
+  GlobeIcon,
+  DownloadIcon,
+  SparklesIcon,
+  CheckIcon,
+  AlertIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
+  CopyIcon,
+  TrashIcon,
+  RefreshIcon,
+  ThinkingIcon,
+  ExportIcon,
+} from '../ui/Icons';
+import { SimpleDiffViewer } from './SimpleDiffViewer';
+import type { ChatMessage, ToolCallInfo } from '../../stores/chatStore';
+import type { SessionSearchResult } from './constants';
 
 export interface MessageContentProps {
   message: ChatMessage;
@@ -23,6 +40,7 @@ export interface MessageContentProps {
   onToggleSelectAll: (msgId: string, sessionIds: string[]) => void;
   onBatchDelete: (msgId: string) => void;
   onBatchExport: (msgId: string, sessions: SessionSearchResult[]) => void;
+  onOpenSessionSearchResult?: (session: SessionSearchResult) => void;
   onCopyMessage: (content: string) => void;
   onDeleteMessage: (messageId: string) => void;
   onRegenerate: () => void;
@@ -33,43 +51,158 @@ export interface MessageContentProps {
   t: (key: string) => string;
 }
 
-// ---- Helpers ----
-
-function hasCodeBlocks(content: string): boolean {
-  return /```[\s\S]*?```/.test(content);
-}
-
-function extractCodeBlocks(content: string): string {
-  const blocks = content.match(/```(?:\w+)?\n([\s\S]*?)```/g);
-  if (!blocks) return content;
-  return blocks
-    .map(b => b.replace(/```\w*\n?/g, '').replace(/```$/g, '').trim())
-    .join('\n\n');
-}
-
-function hasTerminalCommands(content: string): boolean {
-  return /```(?:bash|sh|shell|terminal|console)\n[\s\S]*?```/.test(content)
-      || /^\$\s+.+$/m.test(content)
-      || /^\s*(?:npm|yarn|pnpm|git|docker|curl|wget|pip|cargo|go)\s+.+$/m.test(content);
-}
-
-function extractTerminalCommands(content: string): string {
-  // Extract from fenced code blocks with shell language
-  const shellBlocks = content.match(/```(?:bash|sh|shell|terminal|console)\n([\s\S]*?)```/g);
-  if (shellBlocks) {
-    return shellBlocks
-      .map(b => b.replace(/```\w*\n?/g, '').replace(/```$/g, '').trim())
-      .join('\n');
+const getToolIcon = (toolName: string) => {
+  switch (toolName) {
+    case 'terminal':
+      return <TerminalIcon size={16} />;
+    case 'search_files':
+    case 'glob':
+    case 'grep':
+      return <SearchIcon size={16} />;
+    case 'read_file':
+      return <FileTextIcon size={16} />;
+    case 'write_file':
+    case 'edit_file':
+    case 'Edit':
+    case 'Write':
+      return <EditIcon size={16} />;
+    case 'web_search':
+      return <GlobeIcon size={16} />;
+    case 'web_fetch':
+      return <DownloadIcon size={16} />;
+    case 'skill':
+      return <SparklesIcon size={16} />;
+    default:
+      return <ToolIcon size={16} />;
   }
-  // Extract lines starting with $
-  const dollarLines = content.split('\n')
-    .filter(l => /^\$\s+.+$/.test(l.trim()))
-    .map(l => l.replace(/^\$\s+/, '').trim());
-  if (dollarLines.length > 0) return dollarLines.join('\n');
-  return content;
+};
+
+interface InlineToolCardProps {
+  tool: ToolCallInfo;
+  isStreaming?: boolean;
+  t: (key: string) => string;
 }
 
-// ---- Component ----
+const InlineToolCard: React.FC<InlineToolCardProps> = ({ tool, isStreaming, t }) => {
+  const [expanded, setExpanded] = useState(false);
+  const isRunning = !tool.duration && !tool.is_error && isStreaming;
+
+  const args = tool.args as Record<string, unknown> | undefined;
+  const filePath = (args?.file_path || args?.path) as string | undefined;
+  const oldString = args?.old_string as string | undefined;
+  const newString = args?.new_string as string | undefined;
+  const content = args?.content as string | undefined;
+
+  const canShowDiff =
+    (tool.name === 'edit_file' ||
+      tool.name === 'write_file' ||
+      tool.name === 'Edit' ||
+      tool.name === 'Write') &&
+    (oldString !== undefined || newString !== undefined || content !== undefined);
+
+  const formatDuration = (ms: number) => (ms < 1000 ? `${ms.toFixed(0)}ms` : `${(ms / 1000).toFixed(1)}s`);
+
+  return (
+    <div className={`mc-tool-card ${tool.is_error ? 'mc-tool-error' : ''} ${isRunning ? 'mc-tool-running' : ''}`}>
+      <div
+        className="mc-tool-card-header"
+        onClick={() => {
+          if (canShowDiff || tool.preview) setExpanded((v) => !v);
+        }}
+        role={canShowDiff || tool.preview ? 'button' : undefined}
+        tabIndex={canShowDiff || tool.preview ? 0 : undefined}
+      >
+        <span className="mc-tool-icon">{getToolIcon(tool.name)}</span>
+        <span className="mc-tool-name">{tool.name}</span>
+        {filePath && (
+          <span className="mc-tool-filepath" title={filePath}>
+            {filePath.split('/').pop()}
+          </span>
+        )}
+        {!filePath && tool.preview && (
+          <span className="mc-tool-preview-text">
+            {tool.preview.length > 60 ? `${tool.preview.slice(0, 60)}...` : tool.preview}
+          </span>
+        )}
+        <span className="mc-tool-spacer" />
+        {isRunning && (
+          <span className="mc-tool-status mc-tool-status-running">
+            <span className="mc-tool-spinner" />
+            {t('chat.running')}
+          </span>
+        )}
+        {!isRunning && !tool.is_error && (
+          <span className="mc-tool-status mc-tool-status-done">
+            <CheckIcon size={14} />
+            {tool.duration != null && formatDuration(tool.duration)}
+          </span>
+        )}
+        {tool.is_error && (
+          <span className="mc-tool-status mc-tool-status-error">
+            <AlertIcon size={14} />
+            {t('chat.error')}
+          </span>
+        )}
+        {(canShowDiff || tool.preview) && (
+          <span className="mc-tool-expand">
+            {expanded ? <ChevronUpIcon size={16} /> : <ChevronDownIcon size={16} />}
+          </span>
+        )}
+      </div>
+      {expanded && (
+        <div className="mc-tool-card-body">
+          {canShowDiff && (tool.name === 'Edit' || tool.name === 'edit_file') ? (
+            <SimpleDiffViewer oldStr={oldString || ''} newStr={newString || ''} filePath={filePath} />
+          ) : canShowDiff && (tool.name === 'Write' || tool.name === 'write_file') ? (
+            <SimpleDiffViewer oldStr="" newStr={content || ''} filePath={filePath} />
+          ) : tool.preview ? (
+            <div className="mc-tool-preview-content">
+              <MarkdownRenderer content={tool.preview} />
+            </div>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+};
+
+interface ThinkingBlockProps {
+  content: string;
+  thinkingTime?: number;
+  isStreaming?: boolean;
+  t: (key: string) => string;
+}
+
+const ThinkingBlock: React.FC<ThinkingBlockProps> = ({ content, thinkingTime, isStreaming, t }) => {
+  const [expanded, setExpanded] = useState(false);
+
+  if (!content) return null;
+
+  const preview = content.length > 120 ? `${content.slice(0, 120)}...` : content;
+  const hasContent = content.length > 0;
+
+  return (
+    <div className={`mc-thinking-block ${isStreaming && hasContent ? 'mc-thinking-active' : ''}`}>
+      <button className="mc-thinking-header" onClick={() => setExpanded((v) => !v)}>
+        <span className="mc-thinking-arrow">{expanded ? <ChevronUpIcon size={14} /> : <ChevronDownIcon size={14} />}</span>
+        <span className="mc-thinking-label">
+          <ThinkingIcon size={14} />
+          {t('chat.thinking')}
+          {isStreaming && hasContent && <span className="mc-thinking-dots" />}
+        </span>
+        {!expanded && hasContent && <span className="mc-thinking-preview">{preview}</span>}
+        {thinkingTime != null && thinkingTime > 0 && (
+          <span className="mc-thinking-time">{(thinkingTime / 1000).toFixed(1)}s</span>
+        )}
+      </button>
+      {expanded && (
+        <div className="mc-thinking-content">
+          <pre>{content}</pre>
+        </div>
+      )}
+    </div>
+  );
+};
 
 const MessageContentComponent: React.FC<MessageContentProps> = ({
   message,
@@ -83,6 +216,7 @@ const MessageContentComponent: React.FC<MessageContentProps> = ({
   onToggleSelectAll,
   onBatchDelete,
   onBatchExport,
+  onOpenSessionSearchResult,
   onCopyMessage,
   onDeleteMessage,
   onRegenerate,
@@ -92,185 +226,234 @@ const MessageContentComponent: React.FC<MessageContentProps> = ({
   onEditContentChange,
   t,
 }) => {
+  const [isHovered, setIsHovered] = useState(false);
   const msg = message;
   const role = msg.role;
+  const isUser = role === 'user';
+  const isAssistant = role === 'assistant';
 
-  const { cleanContent, errors, sessionSearchResults } = useMemo(
-    () => parseToolJson(msg.content),
-    [msg.content]
-  );
+  const { cleanContent, errors, sessionSearchResults } = useMemo(() => parseToolJson(msg.content), [msg.content]);
 
-  // Format metadata
   const hasTokens = msg.inputTokens !== undefined || msg.outputTokens !== undefined;
+
+  const handleCopy = useCallback(() => onCopyMessage(msg.content), [onCopyMessage, msg.content]);
+  const handleDelete = useCallback(() => onDeleteMessage(msg.id), [onDeleteMessage, msg.id]);
+  const handleStartEdit = useCallback(() => onStartEdit(msg.id, msg.content), [onStartEdit, msg.id, msg.content]);
+
+  if (isUser) {
+    return (
+      <div
+        id={`chat-msg-${msg.id}`}
+        className={`mc-message mc-message-user ${!isFirstInGroup ? 'mc-message-grouped' : ''}`}
+        style={style}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+      >
+        {isFirstInGroup && (
+          <div className="mc-role-label mc-role-label-user">
+            <UserIcon size={14} />
+            <span>{t('message.you')}</span>
+          </div>
+        )}
+        <div className="mc-message-bubble-user">
+          {editMessageId === msg.id ? (
+            <div className="mc-edit-mode">
+              <textarea
+                className="mc-edit-textarea"
+                value={editMessageContent}
+                onChange={(e) => onEditContentChange(e.target.value)}
+                rows={3}
+              />
+              <div className="mc-edit-actions">
+                <button className="mc-edit-save" onClick={() => onSaveEdit(msg.id)}>
+                  <CheckIcon size={14} />
+                  {t('common.confirm')}
+                </button>
+                <button className="mc-edit-cancel" onClick={onCancelEdit}>
+                  <AlertIcon size={14} />
+                  {t('common.cancel')}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="mc-message-text mc-message-text-user">{cleanContent || msg.content}</div>
+          )}
+          {isHovered && editMessageId !== msg.id && (
+            <div className="mc-hover-actions mc-hover-actions-user">
+              <button className="mc-action-btn" onClick={handleStartEdit} title={t('message.edit')}>
+                <EditIcon size={14} />
+              </button>
+              <button className="mc-action-btn" onClick={handleCopy} title={t('message.copy')}>
+                <CopyIcon size={14} />
+              </button>
+              <button className="mc-action-btn mc-action-delete" onClick={handleDelete} title={t('message.delete')}>
+                <TrashIcon size={14} />
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
       id={`chat-msg-${msg.id}`}
-      className={`chat-message ${role} ${!isFirstInGroup ? 'grouped' : ''}`}
+      className={`mc-message mc-message-assistant ${!isFirstInGroup ? 'mc-message-grouped' : ''}`}
       style={style}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
     >
       {isFirstInGroup && (
-        <div className="message-avatar">
-          {role === 'user' ? <UserIcon size={16} /> : <BotIcon size={16} />}
+        <div className="mc-role-label mc-role-label-assistant">
+          <BotIcon size={14} />
+          <span>{t('message.assistant')}</span>
         </div>
       )}
-      <div className="message-content">
-        {/* Tool calls - displayed above the message text */}
-        {msg.tools && msg.tools.length > 0 && (
-          <ToolsBlock tools={msg.tools} isStreaming={false} />
-        )}
 
-        {/* Message content */}
-        {msg.content && (
-          <>
-            {cleanContent && (
-              <div className="message-text">
-                <MarkdownRenderer content={cleanContent} searchQuery={messageSearchQuery} />
+      {(msg.reasoning || msg.thinking) && (
+        <ThinkingBlock
+          content={msg.reasoning || msg.thinking || ''}
+          thinkingTime={msg.thinkingTime}
+          isStreaming={!!msg.thinking && !msg.content}
+          t={t}
+        />
+      )}
+
+      {msg.tools && msg.tools.length > 0 && (
+        <div className="mc-tools-container">
+          {msg.tools.map((tool, idx) => (
+            <InlineToolCard key={idx} tool={tool} isStreaming={false} t={t} />
+          ))}
+        </div>
+      )}
+
+      {errors.length > 0 && (
+        <div className="mc-tool-errors">
+          {errors.map((err, i) => (
+            <ToolErrorCard key={i} error={err.error} />
+          ))}
+        </div>
+      )}
+
+      {editMessageId === msg.id ? (
+        <div className="mc-edit-mode">
+          <textarea
+            className="mc-edit-textarea"
+            value={editMessageContent}
+            onChange={(e) => onEditContentChange(e.target.value)}
+            rows={3}
+          />
+          <div className="mc-edit-actions">
+            <button className="mc-edit-save" onClick={() => onSaveEdit(msg.id)}>
+              <CheckIcon size={14} />
+              {t('common.confirm')}
+            </button>
+            <button className="mc-edit-cancel" onClick={onCancelEdit}>
+              <AlertIcon size={14} />
+              {t('common.cancel')}
+            </button>
+          </div>
+        </div>
+      ) : cleanContent ? (
+        <div className="mc-message-text mc-message-text-assistant">
+          <MarkdownRenderer content={cleanContent} searchQuery={messageSearchQuery} />
+        </div>
+      ) : null}
+
+      {sessionSearchResults && sessionSearchResults.results.length > 0 && (() => {
+        const msgSelectedIds = selectedSearchResults[msg.id] || [];
+        const allSelected = sessionSearchResults.results.every((r) => msgSelectedIds.includes(r.session_id));
+        const selectedCount = msgSelectedIds.length;
+        return (
+          <div className="mc-session-search-results">
+            <div className="mc-session-search-toolbar">
+              <label className="mc-session-search-select-all">
+                <input
+                  type="checkbox"
+                  checked={allSelected && selectedCount > 0}
+                  onChange={() => onToggleSelectAll(msg.id, sessionSearchResults.results.map((r) => r.session_id))}
+                />
+                <span>{sessionSearchResults.results.length} {t('message.sessions')}</span>
+              </label>
+              <div className="mc-session-search-toolbar-actions">
+                <button
+                  className="mc-session-search-toolbar-btn"
+                  disabled={selectedCount === 0}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onBatchDelete(msg.id);
+                  }}
+                >
+                  <TrashIcon size={14} />
+                  {t('message.deleteSelected')}{selectedCount > 0 ? ` (${selectedCount})` : ''}
+                </button>
+                <button
+                  className="mc-session-search-toolbar-btn"
+                  disabled={selectedCount === 0}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onBatchExport(msg.id, sessionSearchResults.results);
+                  }}
+                >
+                  <ExportIcon size={14} />
+                  {t('message.exportSelected')}{selectedCount > 0 ? ` (${selectedCount})` : ''}
+                </button>
               </div>
-            )}
-
-            {/* Tool errors */}
-            {errors.map((err, i) => (
-              <ToolErrorCard key={i} error={err.error} />
-            ))}
-
-            {/* Session search results */}
-            {sessionSearchResults && sessionSearchResults.results.length > 0 && (() => {
-              const msgSelectedIds = selectedSearchResults[msg.id] || [];
-              const allSelected = sessionSearchResults.results.every(r => msgSelectedIds.includes(r.session_id));
-              const selectedCount = msgSelectedIds.length;
-              return (
-                <div className="session-search-results">
-                  <div className="session-search-toolbar">
-                    <label className="session-search-select-all">
-                      <input
-                        type="checkbox"
-                        checked={allSelected && selectedCount > 0}
-                        onChange={() => onToggleSelectAll(msg.id, sessionSearchResults.results.map(r => r.session_id))}
-                      />
-                      <span>{sessionSearchResults.results.length} 个会话</span>
-                    </label>
-                    <div className="session-search-toolbar-actions">
-                      <button
-                        className="session-search-toolbar-btn"
-                        disabled={selectedCount === 0}
-                        onClick={(e) => { e.stopPropagation(); onBatchDelete(msg.id); }}
-                      >
-                        <span className="material-symbols-outlined session-search-btn-icon">delete</span>
-                        删除{selectedCount > 0 ? ` (${selectedCount})` : ''}
-                      </button>
-                      <button
-                        className="session-search-toolbar-btn"
-                        disabled={selectedCount === 0}
-                        onClick={(e) => { e.stopPropagation(); onBatchExport(msg.id, sessionSearchResults.results); }}
-                      >
-                        <span className="material-symbols-outlined session-search-btn-icon">file_download</span>
-                        导出{selectedCount > 0 ? ` (${selectedCount})` : ''}
-                      </button>
-                    </div>
-                  </div>
-                  <div className="session-search-list">
-                    {sessionSearchResults.results.map((result, i) => (
-                      <SessionSearchCard
-                        key={i}
-                        result={result}
-                        selected={msgSelectedIds.includes(result.session_id)}
-                        onToggle={() => onToggleSearchResult(msg.id, result.session_id)}
-                        onClick={() => {
-                          const { openTab } = useNavigationStore.getState();
-                          openTab(result.session_id, result.title || `会话 ${result.session_id.slice(0, 8)}`, 'session');
-                        }}
-                      />
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
-          </>
-        )}
-
-        {/* Edit mode for user messages */}
-        {editMessageId === msg.id && (
-          <div className="message-edit-mode">
-            <textarea
-              className="message-edit-textarea"
-              value={editMessageContent}
-              onChange={(e) => onEditContentChange(e.target.value)}
-              rows={3}
-            />
-            <div className="message-edit-actions">
-              <button className="message-edit-save" onClick={() => onSaveEdit(msg.id)}>
-                <span className="material-symbols-outlined">check</span>
-                {t('common.confirm')}
-              </button>
-              <button className="message-edit-cancel" onClick={onCancelEdit}>
-                <span className="material-symbols-outlined">close</span>
-                {t('common.cancel')}
-              </button>
+            </div>
+            <div className="mc-session-search-list">
+              {sessionSearchResults.results.map((result, i) => (
+                <SessionSearchCard
+                  key={i}
+                  result={result}
+                  selected={msgSelectedIds.includes(result.session_id)}
+                  onToggle={() => onToggleSearchResult(msg.id, result.session_id)}
+                  onClick={() => onOpenSessionSearchResult?.(result)}
+                />
+              ))}
             </div>
           </div>
-        )}
+        );
+      })()}
 
-        {/* Action buttons - hidden during editing */}
-        {editMessageId !== msg.id && (
-          <div className="message-actions">
-            {msg.role === 'user' && (
-              <button className="message-action-btn" onClick={() => onStartEdit(msg.id, msg.content)} title={t('message.edit')}>
-                <span className="material-symbols-outlined">edit</span>
-              </button>
-            )}
-            <button className="message-action-btn" onClick={() => onCopyMessage(msg.content)} title={t('message.copy')}>
-              <span className="material-symbols-outlined">content_copy</span>
-            </button>
-            {msg.role === 'assistant' && (
-              <>
-                <button className="message-action-btn" onClick={onRegenerate} title={t('message.regenerate')}>
-                  <span className="material-symbols-outlined">replay</span>
-                </button>
-                {hasCodeBlocks(msg.content) && (
-                  <button
-                    className="message-action-btn apply-changes"
-                    onClick={() => onCopyMessage(extractCodeBlocks(msg.content))}
-                    title="Copy code"
-                  >
-                    <span className="material-symbols-outlined">content_paste</span>
-                    <span className="action-label">Code</span>
-                  </button>
-                )}
-                {hasTerminalCommands(msg.content) && (
-                  <button
-                    className="message-action-btn run-command"
-                    onClick={() => onCopyMessage(extractTerminalCommands(msg.content))}
-                    title="Copy commands"
-                  >
-                    <span className="material-symbols-outlined">terminal</span>
-                    <span className="action-label">Command</span>
-                  </button>
-                )}
-              </>
-            )}
-            <button className="message-action-btn delete" onClick={() => onDeleteMessage(msg.id)} title={t('message.delete')}>
-              <span className="material-symbols-outlined">delete</span>
-            </button>
-          </div>
-        )}
+      {isAssistant && hasTokens && (
+        <div className="mc-token-usage">
+          {msg.inputTokens !== undefined && (
+            <span className="mc-token-item">
+              <span className="mc-token-icon">In</span>
+              {msg.inputTokens.toLocaleString()}
+            </span>
+          )}
+          {msg.outputTokens !== undefined && (
+            <span className="mc-token-item">
+              <span className="mc-token-icon">Out</span>
+              {msg.outputTokens.toLocaleString()}
+            </span>
+          )}
+          {msg.totalTokens !== undefined && (
+            <span className="mc-token-item mc-token-total">
+              <span className="mc-token-icon">Total</span>
+              {msg.totalTokens.toLocaleString()}
+            </span>
+          )}
+        </div>
+      )}
 
-        {/* Message metadata footer - CLI style */}
-        {role === 'assistant' && hasTokens && (
-          <div className="message-meta">
-            {hasTokens && (
-              <span className="message-meta-tokens">
-                {msg.inputTokens !== undefined && <span>↑{msg.inputTokens}</span>}
-                {msg.outputTokens !== undefined && <span>↓{msg.outputTokens}</span>}
-                {msg.totalTokens !== undefined && <span>Σ{msg.totalTokens}</span>}
-              </span>
-            )}
-          </div>
-        )}
-      </div>
+      {isHovered && editMessageId !== msg.id && (
+        <div className="mc-hover-actions mc-hover-actions-assistant">
+          <button className="mc-action-btn" onClick={handleCopy} title={t('message.copy')}>
+            <CopyIcon size={14} />
+          </button>
+          <button className="mc-action-btn" onClick={onRegenerate} title={t('message.regenerate')}>
+            <RefreshIcon size={14} />
+          </button>
+          <button className="mc-action-btn mc-action-delete" onClick={handleDelete} title={t('message.delete')}>
+            <TrashIcon size={14} />
+          </button>
+        </div>
+      )}
     </div>
   );
 };
 
-// Memoize to prevent re-renders
 export const MessageContent = memo(MessageContentComponent);

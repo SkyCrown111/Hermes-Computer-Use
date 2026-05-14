@@ -197,9 +197,9 @@ export function parseToolJson(content: string): {
 
   // Clean up remaining artifacts
   cleanContent = cleanContent
-    .replace(/^\s*,\s*"[^"]+"\s*:\s*[\d\[\{][^\n]*$/gm, '')
+    .replace(/^\s*,\s*"[^"]+"\s*:\s*[\d[{][^\n]*$/gm, '')
     .replace(/\}\s*\{/g, '\n')
-    .replace(/\}\s*,\s*"[^"]+"\s*:\s*[\d\[\{]/g, '}')
+    .replace(/\}\s*,\s*"[^"]+"\s*:\s*[\d[{]/g, '}')
     .replace(/\[\s*\{[^}]*"tool"[^}]*\}[\s\S]*?\]/g, '')
     .replace(/,\s*\d+\s*,\s*\}/g, '')
     .replace(/,\s*\}/g, '}')
@@ -207,6 +207,37 @@ export function parseToolJson(content: string): {
     .replace(/\[\s*\]/g, '')
     .replace(/^\s*\d+\s*,?\s*$/gm, '')
     .replace(/,\s*$/gm, '')
+    // Generic pattern: Remove any malformed Markdown links [variable.path](http://variable.path)
+    .replace(/\[[a-zA-Z_][\w.]*\]\(https?:\/\/[\w.]+\)/g, '')
+    // More specific: variable-like patterns with dots
+    .replace(/\[(?:msg|e|errors|sessionSearchResults|data|result|response|item|row|val|key|obj|arr|str|num|idx|index|count|len|length)[\w.]*\]\(https?:\/\/[\w.]+\)/gi, '')
+    // JSON tool output lines - remove entire lines that are pure JSON outputs
+    .replace(/^\s*\{"success":\s*(true|false).*\}\s*$/gm, '')
+    .replace(/^\s*\{"output":\s*".*$/gm, '')
+    .replace(/^\s*\{"bytes_written":\s*\d+.*$/gm, '')
+    .replace(/^\s*\{"total_count":.*$/gm, '')
+    .replace(/^\s*\{"content":\s*".*"total_lines".*$/gm, '')
+    .replace(/^\s*\{"session_id":.*"pid".*$/gm, '')
+    // JSON fragments like ": 0, "error": null}"
+    .replace(/^:\s*\d+,\s*"error":\s*(null|"[^"]*")\s*\}\s*$/gm, '')
+    .replace(/^:\s*\d+,\s*"error":.*"exit_code_meaning".*$/gm, '')
+    // Lines that are just JSON array continuations
+    .replace(/^\s*,\s*\{"name":.*$/gm, '')
+    .replace(/^\s*,\s*\{"session_id":.*$/gm, '')
+    // Truncated JSON
+    .replace(/^\s*\{"total_count"\s*$/gm, '')
+    .replace(/^\s*\{"output"\s*$/gm, '')
+    // File content dumps - lines with line number prefixes like " 501|"
+    .replace(/^\s*\d+\|\s*\d+\|.*$/gm, '')
+    .replace(/^\s*\d+\|.*$/gm, '')
+    // JSON metadata lines (from file read outputs)
+    .replace(/^\s*"[^"]+":\s*[^,}\n]+,?\s*$/gm, '')
+    .replace(/"total_lines":\s*\d+/g, '')
+    .replace(/"file_size":\s*\d+/g, '')
+    .replace(/"truncated":\s*(true|false)/g, '')
+    .replace(/"hint":\s*"[^"]*"/g, '')
+    .replace(/"is_binary":\s*(true|false)/g, '')
+    .replace(/"is_image":\s*(true|false)/g, '')
     .trim();
 
   const result = { cleanContent, errors, sessionSearchResults };

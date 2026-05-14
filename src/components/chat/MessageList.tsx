@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useMemo, useState, memo } from 'react';
+import React, { useRef, useEffect, useMemo, memo } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { MessageContent } from './MessageContent';
 import { ThinkingBlock } from './ThinkingBlock';
@@ -6,9 +6,16 @@ import { MarkdownRenderer } from '../ui/MarkdownRenderer/MarkdownRenderer';
 import { parseToolJson } from './parseToolJson';
 import type { SessionSearchResult } from './constants';
 import type { ChatMessage } from '../../stores/chatStore';
-import { ZapIcon, AlertIcon, BotIcon } from '../../components';
-
-// ---- Types ----
+import {
+  ZapIcon,
+  AlertIcon,
+  SearchIcon,
+  ChevronUpIcon,
+  ChevronDownIcon,
+  XIcon,
+  CheckIcon,
+  RefreshIcon,
+} from '../../components';
 
 interface ToolCallInfo {
   name: string;
@@ -42,6 +49,7 @@ export interface MessageListProps {
   onToggleSelectAll: (msgId: string, sessionIds: string[]) => void;
   onBatchDelete: (msgId: string) => void;
   onBatchExport: (msgId: string, sessions: SessionSearchResult[]) => void;
+  onOpenSessionSearchResult?: (session: SessionSearchResult) => void;
   onCopyMessage: (content: string) => void;
   onDeleteMessage: (messageId: string) => void;
   onRegenerate: () => void;
@@ -51,37 +59,6 @@ export interface MessageListProps {
   onEditContentChange: (content: string) => void;
   t: (key: string) => string;
 }
-
-// ---- Streaming Timer Hook ----
-
-function useStreamingTimer(isStreaming: boolean) {
-  const [elapsed, setElapsed] = useState(0);
-  const startTimeRef = useRef<number>(0);
-
-  useEffect(() => {
-    if (isStreaming) {
-      startTimeRef.current = Date.now();
-      setElapsed(0);
-      const interval = setInterval(() => {
-        setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
-      }, 1000);
-      return () => clearInterval(interval);
-    } else {
-      setElapsed(0);
-    }
-  }, [isStreaming]);
-
-  return elapsed;
-}
-
-function formatElapsed(seconds: number): string {
-  if (seconds < 60) return `${seconds}s`;
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}m${s}s`;
-}
-
-// ---- Component ----
 
 const MessageListComponent: React.FC<MessageListProps> = ({
   messages,
@@ -106,6 +83,7 @@ const MessageListComponent: React.FC<MessageListProps> = ({
   onToggleSelectAll,
   onBatchDelete,
   onBatchExport,
+  onOpenSessionSearchResult,
   onCopyMessage,
   onDeleteMessage,
   onRegenerate,
@@ -117,24 +95,22 @@ const MessageListComponent: React.FC<MessageListProps> = ({
 }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const streamingElapsed = useStreamingTimer(isStreaming);
-
-  // Track if we're in the middle of a window focus event to prevent layout shifts
   const isWindowFocusingRef = useRef(false);
 
-  // Virtual scrolling: only activate for large lists when NOT streaming
-  const virtualizerOptions = useMemo(() => ({
-    count: shouldVirtualize ? visibleMessages.length : 0,
-    getScrollElement: () => scrollContainerRef.current,
-    estimateSize: () => 120,
-    overscan: 5,
-    scrollPaddingStart: 0,
-    scrollPaddingEnd: 0,
-  }), [shouldVirtualize, visibleMessages.length]);
+  const virtualizerOptions = useMemo(
+    () => ({
+      count: shouldVirtualize ? visibleMessages.length : 0,
+      getScrollElement: () => scrollContainerRef.current,
+      estimateSize: () => 120,
+      overscan: 5,
+      scrollPaddingStart: 0,
+      scrollPaddingEnd: 0,
+    }),
+    [shouldVirtualize, visibleMessages.length],
+  );
 
   const virtualizer = useVirtualizer(virtualizerOptions);
 
-  // Handle window focus/blur to prevent layout shifts
   useEffect(() => {
     const handleFocus = () => {
       isWindowFocusingRef.current = true;
@@ -155,7 +131,6 @@ const MessageListComponent: React.FC<MessageListProps> = ({
     };
   }, []);
 
-  // Scroll to active match for in-message search
   useEffect(() => {
     if (messageMatchIndices.length === 0) return;
     const matchIdx = messageMatchIndices[activeMatchIndex];
@@ -164,7 +139,6 @@ const MessageListComponent: React.FC<MessageListProps> = ({
     el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [activeMatchIndex, messageMatchIndices, messages]);
 
-  // Auto-scroll: only when user is already near the bottom
   const isNearBottomRef = useRef(true);
 
   useEffect(() => {
@@ -186,10 +160,9 @@ const MessageListComponent: React.FC<MessageListProps> = ({
 
   return (
     <>
-      {/* In-message Search Bar */}
       {showMessageSearch && (
         <div className="message-search-bar">
-          <span className="material-symbols-outlined message-search-icon">search</span>
+          <span className="message-search-icon"><SearchIcon size={16} /></span>
           <input
             className="message-search-input"
             type="text"
@@ -201,37 +174,30 @@ const MessageListComponent: React.FC<MessageListProps> = ({
             }}
           />
           <span className="message-search-count">
-            {messageSearchQuery.trim()
-              ? `${activeMatchIndex + 1}/${messageMatchIndices.length}`
-              : ''}
+            {messageSearchQuery.trim() ? `${activeMatchIndex + 1}/${messageMatchIndices.length}` : ''}
           </span>
           <button
             className="message-search-nav"
             disabled={messageMatchIndices.length === 0}
-            onClick={() => onSetActiveMatch(i => i <= 0 ? messageMatchIndices.length - 1 : i - 1)}
+            onClick={() => onSetActiveMatch((i) => (i <= 0 ? messageMatchIndices.length - 1 : i - 1))}
             title={t('message.previous')}
           >
-            <span className="material-symbols-outlined">keyboard_arrow_up</span>
+            <ChevronUpIcon size={16} />
           </button>
           <button
             className="message-search-nav"
             disabled={messageMatchIndices.length === 0}
-            onClick={() => onSetActiveMatch(i => i >= messageMatchIndices.length - 1 ? 0 : i + 1)}
+            onClick={() => onSetActiveMatch((i) => (i >= messageMatchIndices.length - 1 ? 0 : i + 1))}
             title={t('message.next')}
           >
-            <span className="material-symbols-outlined">keyboard_arrow_down</span>
+            <ChevronDownIcon size={16} />
           </button>
-          <button
-            className="message-search-close"
-            onClick={onCloseSearch}
-            title={t('message.close')}
-          >
-            <span className="material-symbols-outlined">close</span>
+          <button className="message-search-close" onClick={onCloseSearch} title={t('message.close')}>
+            <XIcon size={16} />
           </button>
         </div>
       )}
 
-      {/* Messages */}
       <div className="chat-page-messages" ref={scrollContainerRef}>
         {messages.length === 0 && !isStreaming && (
           <div className="chat-welcome">
@@ -247,10 +213,9 @@ const MessageListComponent: React.FC<MessageListProps> = ({
           </div>
         )}
 
-        {/* Virtual scrolling for large lists (non-streaming) */}
         {shouldVirtualize ? (
           <div style={{ position: 'relative', height: virtualizer.getTotalSize() }}>
-            {virtualizer.getVirtualItems().map(virtualRow => {
+            {virtualizer.getVirtualItems().map((virtualRow) => {
               const msg = visibleMessages[virtualRow.index];
               const prevVisible = visibleMessages[virtualRow.index - 1];
               const isFirstInGroup = !prevVisible || prevVisible.role !== msg.role;
@@ -275,6 +240,7 @@ const MessageListComponent: React.FC<MessageListProps> = ({
                   onToggleSelectAll={onToggleSelectAll}
                   onBatchDelete={onBatchDelete}
                   onBatchExport={onBatchExport}
+                  onOpenSessionSearchResult={onOpenSessionSearchResult}
                   onCopyMessage={onCopyMessage}
                   onDeleteMessage={onDeleteMessage}
                   onRegenerate={onRegenerate}
@@ -287,28 +253,21 @@ const MessageListComponent: React.FC<MessageListProps> = ({
               );
             })}
           </div>
-        ) : (
-          messages.map((msg, idx) => {
-            // Check if message has any visible content
+        ) : (() => {
+          const rendered: React.ReactNode[] = [];
+          let lastVisibleRole: string | null = null;
+
+          for (const msg of messages) {
             const { cleanContent } = msg.content ? parseToolJson(msg.content) : { cleanContent: '' };
             const hasVisibleContent = cleanContent || (msg.tools && msg.tools.length > 0);
-            if (!hasVisibleContent) return null;
+            if (!hasVisibleContent) continue;
 
-            let prevVisibleIdx = idx - 1;
-            while (prevVisibleIdx >= 0) {
-              const prevMsg = messages[prevVisibleIdx];
-              const prevClean = prevMsg.content ? parseToolJson(prevMsg.content).cleanContent : '';
-              if (prevClean || prevMsg.reasoning || (prevMsg.tools && prevMsg.tools.length > 0)) {
-                break;
-              }
-              prevVisibleIdx--;
-            }
+            const isFirstInGroup = lastVisibleRole !== msg.role;
+            lastVisibleRole = msg.role;
 
-            const isFirstInGroup = prevVisibleIdx < 0 || messages[prevVisibleIdx].role !== msg.role;
-
-            return (
+            rendered.push(
               <MessageContent
-                key={idx}
+                key={msg.id}
                 message={msg}
                 isFirstInGroup={isFirstInGroup}
                 messageSearchQuery={messageSearchQuery}
@@ -319,6 +278,7 @@ const MessageListComponent: React.FC<MessageListProps> = ({
                 onToggleSelectAll={onToggleSelectAll}
                 onBatchDelete={onBatchDelete}
                 onBatchExport={onBatchExport}
+                onOpenSessionSearchResult={onOpenSessionSearchResult}
                 onCopyMessage={onCopyMessage}
                 onDeleteMessage={onDeleteMessage}
                 onRegenerate={onRegenerate}
@@ -327,25 +287,21 @@ const MessageListComponent: React.FC<MessageListProps> = ({
                 onSaveEdit={onSaveEdit}
                 onEditContentChange={onEditContentChange}
                 t={t}
-              />
+              />,
             );
-          })
-        )}
+          }
+          return rendered;
+        })()}
 
-        {/* Streaming message — live display during generation */}
         {isStreaming && (streamingText || reasoningText || streamingTools.length > 0) && (
           <div className="chat-message assistant streaming-message">
-            <div className="message-avatar">
-              <BotIcon size={16} />
-            </div>
-            <div className="message-content">
-              {/* Streaming tools */}
+            <div className="message-body">
               {streamingTools.length > 0 && (
                 <div className="streaming-tools">
                   {streamingTools.map((tool, i) => (
                     <div key={i} className="streaming-tool-item">
-                      <span className="material-symbols-outlined streaming-tool-icon">
-                        {tool.is_error ? 'error' : tool.event_type === 'tool.completed' ? 'check_circle' : 'sync'}
+                      <span className="streaming-tool-icon">
+                        {tool.is_error ? <AlertIcon size={14} /> : tool.event_type === 'tool.completed' ? <CheckIcon size={14} /> : <RefreshIcon size={14} />}
                       </span>
                       <span className="streaming-tool-name">{tool.name || 'tool'}</span>
                       {tool.preview && <span className="streaming-tool-preview">{tool.preview}</span>}
@@ -354,20 +310,15 @@ const MessageListComponent: React.FC<MessageListProps> = ({
                 </div>
               )}
 
-              {/* Reasoning / thinking block */}
-              {reasoningText && (
-                <ThinkingBlock content={reasoningText} isActive={true} />
-              )}
+              {reasoningText && <ThinkingBlock content={reasoningText} isActive={true} />}
 
-              {/* Streaming text with cursor */}
               {streamingText && (
                 <div className="message-text streaming-text">
                   <MarkdownRenderer content={streamingText} />
-                  <span className="streaming-cursor">{'▌'}</span>
+                  <span className="streaming-cursor">|</span>
                 </div>
               )}
 
-              {/* Show processing dots only when no text yet */}
               {!streamingText && !reasoningText && streamingTools.length === 0 && (
                 <div className="cli-processing">
                   <span className="cli-processing-dots">
@@ -377,24 +328,13 @@ const MessageListComponent: React.FC<MessageListProps> = ({
                   </span>
                 </div>
               )}
-
-              {/* Streaming indicator with elapsed time */}
-              {streamingElapsed > 0 && (
-                <div className="streaming-indicator">
-                  <span className="star material-symbols-outlined">auto_awesome</span>
-                  <span className="verb">generating</span>
-                  <span className="elapsed">{formatElapsed(streamingElapsed)}</span>
-                </div>
-              )}
             </div>
           </div>
         )}
-
         <div ref={messagesEndRef} />
       </div>
     </>
   );
 };
 
-// Memoize to prevent re-renders when parent updates but props haven't changed
 export const MessageList = memo(MessageListComponent);

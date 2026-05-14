@@ -1,51 +1,50 @@
 import React, { memo, useMemo } from 'react';
+import { AlertIcon } from '../ui/Icons';
+import { useTranslation } from '../../hooks/useTranslation';
 
 interface ToolErrorCardProps {
   error: string;
 }
 
 const ToolErrorCardComponent: React.FC<ToolErrorCardProps> = ({ error }) => {
-  // Parse various error formats for cleaner display
-  const parseError = (errorMsg: string): { title: string; details: string } => {
-    // Vision analysis error
-    if (errorMsg.includes('vision analysis')) {
-      const match = errorMsg.match(/Error during vision analysis:\s*(.+)/);
+  const { t } = useTranslation();
+  const { title, details } = useMemo(() => {
+    if (error.includes('vision analysis')) {
+      const match = error.match(/Error during vision analysis:\s*(.+)/);
       if (match) {
-        // Try to extract the actual error message from nested JSON
         const innerError = match[1];
         if (innerError.includes('image_url is only supported')) {
           return {
-            title: '视觉分析错误',
-            details: '当前模型不支持图片分析 (image_url)，请使用支持视觉的模型',
+            title: t('message.visionError'),
+            details:
+              'The current model does not support image_url input. Please switch to a vision-capable model.',
           };
         }
         return {
-          title: '视觉分析错误',
+          title: t('message.visionError'),
           details: innerError.slice(0, 200),
         };
       }
     }
-    // Playwright page.evaluate error
-    if (errorMsg.includes('page.evaluate:')) {
-      const match = errorMsg.match(/page\.evaluate:\s*(.+)/);
+
+    if (error.includes('page.evaluate:')) {
+      const match = error.match(/page\.evaluate:\s*(.+)/);
       return {
-        title: '浏览器脚本执行错误',
-        details: match?.[1] || errorMsg,
+        title: t('message.browserScriptError'),
+        details: match?.[1] || error,
       };
     }
-    // Generic error - truncate if too long
-    return {
-      title: '工具执行错误',
-      details: errorMsg.length > 300 ? errorMsg.slice(0, 300) + '...' : errorMsg,
-    };
-  };
 
-  const { title, details } = useMemo(() => parseError(error), [error]);
+    return {
+      title: t('message.toolError'),
+      details: error.length > 300 ? `${error.slice(0, 300)}...` : error,
+    };
+  }, [error, t]);
 
   return (
     <div className="tool-error-card">
       <div className="tool-error-header">
-        <span className="material-symbols-outlined tool-error-icon">error</span>
+        <span className="tool-error-icon"><AlertIcon size={16} /></span>
         <span className="tool-error-title">{title}</span>
       </div>
       <div className="tool-error-details">
@@ -55,5 +54,4 @@ const ToolErrorCardComponent: React.FC<ToolErrorCardProps> = ({ error }) => {
   );
 };
 
-// Memoize to prevent re-renders when parent message updates but error hasn't changed
 export const ToolErrorCard = memo(ToolErrorCardComponent);

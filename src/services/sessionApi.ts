@@ -106,9 +106,11 @@ export async function countSessions(): Promise<number> {
 export interface Checkpoint {
   id: string;
   session_id: string;
+  name?: string | null;
   created_at: string;
   message_count: number;
-  description?: string;
+  size_bytes?: number;
+  description?: string | null;
 }
 
 export interface CheckpointInfo {
@@ -118,18 +120,20 @@ export interface CheckpointInfo {
 
 export async function listCheckpoints(sessionId: string): Promise<Checkpoint[]> {
   try {
-    return await apiClient.invoke<Checkpoint[]>('list_checkpoints', { session_id: sessionId });
+    const resp = await apiClient.invoke<{ checkpoints: Checkpoint[]; total: number }>('list_checkpoints', { session_id: sessionId });
+    return resp.checkpoints ?? [];
   } catch (error) {
     logger.error(`[SessionApi] listCheckpoints failed: ${getErrorDetail(error)}`);
     return [];
   }
 }
 
-export async function createCheckpoint(sessionId: string, description?: string): Promise<Checkpoint | null> {
+export async function createCheckpoint(sessionId: string, name?: string, description?: string): Promise<Checkpoint | null> {
   try {
-    return await apiClient.invoke<Checkpoint>('create_checkpoint', { 
+    return await apiClient.invoke<Checkpoint>('create_checkpoint', {
       session_id: sessionId,
-      description 
+      name,
+      description,
     });
   } catch (error) {
     logger.error(`[SessionApi] createCheckpoint failed: ${getErrorDetail(error)}`);
@@ -146,8 +150,8 @@ export async function getCheckpointInfo(checkpointId: string): Promise<Checkpoin
   }
 }
 
-export async function restoreCheckpoint(checkpointId: string): Promise<ApiOkResponse> {
-  return apiClient.invoke<ApiOkResponse>('restore_checkpoint', { checkpoint_id: checkpointId });
+export async function restoreCheckpoint(sessionId: string, checkpointId: string): Promise<ApiOkResponse> {
+  return apiClient.invoke<ApiOkResponse>('restore_checkpoint', { session_id: sessionId, checkpoint_id: checkpointId });
 }
 
 export async function deleteCheckpoint(checkpointId: string): Promise<ApiOkResponse> {

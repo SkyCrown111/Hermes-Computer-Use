@@ -4,6 +4,7 @@
 //! Queries Hermes Agent state from WSL.
 
 use super::utils::create_command;
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
 
 /// Connected platform
@@ -43,24 +44,23 @@ pub struct SystemStatus {
 }
 
 /// Query SQLite database via WSL Python
+/// SQL is base64-encoded to avoid shell injection.
 fn query_db_single(sql: &str) -> Result<serde_json::Value, String> {
-    let escaped_sql = sql.replace('\n', " ").replace('\'', "'\\''");
-    // Use single quotes to wrap the Python script
+    let sql_b64 = STANDARD.encode(sql);
+
     let script = format!(
         r#"python3 -c '
-import sqlite3
-import json
-import os
-
+import sqlite3, json, os, base64
 conn = sqlite3.connect(os.path.expanduser("~/.hermes/state.db"))
 cursor = conn.cursor()
-cursor.execute("{}")
+sql = base64.b64decode("{}").decode()
+cursor.execute(sql)
 row = cursor.fetchone()
 if row:
     print(json.dumps(row))
 conn.close()
 '"#,
-        escaped_sql
+        sql_b64
     );
 
     let output = create_command("wsl")
@@ -81,7 +81,7 @@ conn.close()
 }
 
 /// Get system status - reads real data from Hermes database and gateway state
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn get_system_status() -> Result<SystemStatus, String> {
     println!("[System] Getting system status...");
 
@@ -185,10 +185,10 @@ pub async fn get_system_status() -> Result<SystemStatus, String> {
         };
 
         // Get system metrics via WSL
-        let (cpu_percent, memory_percent, memory_used_mb, memory_total_mb) = get_system_metrics();
+        let (cpu_percent, memory_percent, memory_used_mb, memory_total_mb, disk_percent) = get_system_metrics();
 
-        (active_sessions, pending_tasks, gateway_state, cpu_percent, memory_percent, memory_used_mb, memory_total_mb, hermes_cli_available, gateway_process_running)
-    }).await.unwrap_or((0, 0, serde_json::json!({}), 0.0, 0.0, 0, 0, false, false));
+        (active_sessions, pending_tasks, gateway_state, cpu_percent, memory_percent, memory_used_mb, memory_total_mb, disk_percent, hermes_cli_available, gateway_process_running)
+    }).await.unwrap_or((0, 0, serde_json::json!({}), 0.0, 0.0, 0, 0, 0.0, false, false));
 
     // Determine gateway status - use multiple sources
     // Priority: 1. gateway_state.json, 2. process check, 3. CLI availability
@@ -199,7 +199,7 @@ pub async fn get_system_status() -> Result<SystemStatus, String> {
         .unwrap_or("unknown");
 
     // Determine final status (mapped to frontend expected values: online|offline|degraded)
-    let gateway_status = if file_status == "running" || result.8 {
+    let gateway_status = if file_status == "running" || result.9 {
         "online".to_string()
     } else {
         "offline".to_string()
@@ -207,7 +207,7 @@ pub async fn get_system_status() -> Result<SystemStatus, String> {
 
     println!(
         "[System] Gateway status: file={}, process={}, cli={}, final={}",
-        file_status, result.8, result.7, gateway_status
+        file_status, result.9, result.8, gateway_status
     );
 
     let start_time = result
@@ -241,8 +241,8 @@ pub async fn get_system_status() -> Result<SystemStatus, String> {
         result.0, result.1, gateway_status
     );
     println!(
-        "[System] CPU: {}%, Memory: {}% ({} / {} MB)",
-        result.3, result.4, result.5, result.6
+        "[System] CPU: {}%, Memory: {}% ({} / {} MB), Disk: {}%",
+        result.3, result.4, result.5, result.6, result.7
     );
 
     Ok(SystemStatus {
@@ -257,15 +257,15 @@ pub async fn get_system_status() -> Result<SystemStatus, String> {
             memory_percent: result.4,
             memory_used_mb: result.5,
             memory_total_mb: result.6,
-            disk_percent: 0.0,
+            disk_percent: result.7,
         },
         active_sessions: result.0,
         pending_tasks: result.1,
     })
 }
 
-/// Get system metrics (CPU, memory) via WSL
-fn get_system_metrics() -> (f32, f32, u64, u64) {
+/// Get system metrics (CPU, memory, disk) via WSL
+fn get_system_metrics() -> (f32, f32, u64, u64, f32) {
     // Get memory info from /proc/meminfo - simpler and more reliable
     let (memory_percent, memory_used_mb, memory_total_mb) = if let Ok(output) =
         create_command("wsl")
@@ -311,6 +311,21 @@ fn get_system_metrics() -> (f32, f32, u64, u64) {
         }
     } else {
         (0.0, 0, 0)
+    };
+
+    // Get disk usage for the ~/.hermes filesystem
+    let disk_percent = if let Ok(output) = create_command("wsl")
+        .args(["bash", "-c", "df --output=pcent ~/.hermes 2>/dev/null | tail -1 | tr -d ' %'"])
+        .output()
+    {
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            stdout.parse::<f32>().unwrap_or(0.0)
+        } else {
+            0.0
+        }
+    } else {
+        0.0
     };
 
     // Get CPU usage - read from /proc/stat twice with delay
@@ -366,7 +381,7 @@ fn get_system_metrics() -> (f32, f32, u64, u64) {
         0.0
     };
 
-    (cpu_percent, memory_percent, memory_used_mb, memory_total_mb)
+    (cpu_percent, memory_percent, memory_used_mb, memory_total_mb, disk_percent)
 }
 
 /// Usage totals
@@ -414,7 +429,7 @@ pub struct UsageAnalytics {
 }
 
 /// Get usage analytics - reads real data from database
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn get_usage_analytics(days: Option<u32>) -> Result<UsageAnalytics, String> {
     println!(
         "[Analytics] Getting usage analytics for {} days...",
@@ -510,7 +525,7 @@ print(json.dumps({
             println!("[Analytics] Command status: {}", output.status.success());
             if output.status.success() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
-                println!("[Analytics] stdout: {}", &stdout[..stdout.len().min(200)]);
+                println!("[Analytics] Received response ({} bytes)", stdout.len());
                 if let Ok(data) = serde_json::from_str::<serde_json::Value>(&stdout) {
                     println!("[Analytics] Parsed JSON successfully");
                     return Some(data);
@@ -662,7 +677,7 @@ print(json.dumps({
 }
 
 /// Health check - performs actual system health verification
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn health_check() -> Result<serde_json::Value, String> {
     println!("[System] Performing health check...");
 

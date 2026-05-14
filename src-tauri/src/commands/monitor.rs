@@ -115,7 +115,7 @@ pub struct PerformanceMetrics {
 }
 
 /// Get logs from file
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn get_logs(
     file: Option<String>,
     lines: Option<usize>,
@@ -175,7 +175,7 @@ pub async fn get_logs(
 }
 
 /// Get log statistics
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn get_log_stats(file: Option<String>) -> Result<LogStats, String> {
     let file_name = file.unwrap_or_else(|| "agent".to_string());
 
@@ -244,7 +244,7 @@ fi
 }
 
 /// Get gateway detailed status
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn get_gateway_status() -> Result<GatewayDetailedStatus, String> {
     println!("[Monitor] Getting gateway status...");
 
@@ -494,25 +494,8 @@ fn parse_connection_history(gateway_state: &serde_json::Value) -> Vec<Connection
         }
     }
 
-    // If no history in state, generate from current platform states
-    if history.is_empty() {
-        let now = chrono::Local::now().to_rfc3339();
-        if let Some(platforms) = gateway_state.get("platforms").and_then(|v| v.as_object()) {
-            for (name, info) in platforms {
-                let state = info
-                    .get("state")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("unknown");
-
-                history.push(ConnectionEvent {
-                    timestamp: now.clone(),
-                    event_type: if state == "connected" { "connect".to_string() } else { "disconnect".to_string() },
-                    platform: name.clone(),
-                    message: Some(format!("Platform {} is {}", name, state)),
-                });
-            }
-        }
-    }
+    // Return empty history if no connection_history in state
+    // Do NOT fabricate events from current platform states
 
     // Limit to last 10 events
     history.truncate(10);
@@ -543,38 +526,49 @@ fn parse_throughput_stats(gateway_state: &serde_json::Value) -> ThroughputStats 
     }
 }
 
-/// Get performance metrics
-#[tauri::command]
+/// Get performance metrics - collects multiple sample points
+#[tauri::command(rename_all = "snake_case")]
 pub async fn get_performance_metrics(minutes: Option<u32>) -> Result<PerformanceMetrics, String> {
     let _minutes = minutes.unwrap_or(30);
     println!("[Monitor] Getting performance metrics...");
 
-    // Get current CPU and memory
-    let (cpu, memory) = get_current_metrics();
+    // Run blocking operations (WSL calls + sleep) on a dedicated thread
+    let result = tokio::task::spawn_blocking(move || {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
 
-    // For now, return single data point
-    // In a real implementation, this would query historical data
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
+        let (cpu1, mem1) = get_current_metrics();
 
-    Ok(PerformanceMetrics {
-        cpu: vec![MetricPoint {
-            timestamp: now,
-            value: cpu,
-        }],
-        memory: vec![MetricPoint {
-            timestamp: now,
-            value: memory,
-        }],
-        network_in: vec![],
-        network_out: vec![],
-    })
+        // Wait briefly and collect another sample
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        let (cpu2, mem2) = get_current_metrics();
+
+        let interval_secs: u64 = 5;
+
+        PerformanceMetrics {
+            cpu: vec![
+                MetricPoint { timestamp: now - interval_secs, value: cpu1 },
+                MetricPoint { timestamp: now, value: cpu2 },
+            ],
+            memory: vec![
+                MetricPoint { timestamp: now - interval_secs, value: mem1 },
+                MetricPoint { timestamp: now, value: mem2 },
+            ],
+            network_in: vec![],
+            network_out: vec![],
+        }
+    }).await.map_err(|e| format!("Task join error: {}", e))?;
+
+    Ok(result)
 }
 
 /// Get current CPU and memory metrics
 fn get_current_metrics() -> (f32, f32) {
+    // Get CPU usage via /proc/stat (two samples with a short delay)
+    let cpu_percent = get_cpu_usage();
+
     // Get memory
     let memory_percent = if let Ok(output) = create_command("wsl")
         .args(["cat", "/proc/meminfo"])
@@ -614,12 +608,65 @@ fn get_current_metrics() -> (f32, f32) {
         0.0
     };
 
-    // Get CPU (simplified - just return 0 for now as it requires two readings)
-    (0.0, memory_percent)
+    (cpu_percent, memory_percent)
+}
+
+/// Get CPU usage percentage via two /proc/stat readings
+fn get_cpu_usage() -> f32 {
+    // Read /proc/stat twice with a small delay to compute CPU usage
+    let read_stat = || -> Option<Vec<u64>> {
+        let output = create_command("wsl")
+            .args(["cat", "/proc/stat"])
+            .output()
+            .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let first_line = stdout.lines().next()?;
+        // Format: cpu  user nice system idle iowait irq softirq steal guest guest_nice
+        let values: Vec<u64> = first_line
+            .split_whitespace()
+            .skip(1) // skip "cpu"
+            .filter_map(|v| v.parse().ok())
+            .collect();
+        if values.len() < 4 {
+            return None;
+        }
+        Some(values)
+    };
+
+    let stat1 = match read_stat() {
+        Some(s) => s,
+        None => return 0.0,
+    };
+
+    // Wait 100ms between samples
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    let stat2 = match read_stat() {
+        Some(s) => s,
+        None => return 0.0,
+    };
+
+    // Calculate delta
+    let idle1 = stat1.get(3).unwrap_or(&0) + stat1.get(4).unwrap_or(&0);
+    let idle2 = stat2.get(3).unwrap_or(&0) + stat2.get(4).unwrap_or(&0);
+    let total1: u64 = stat1.iter().sum();
+    let total2: u64 = stat2.iter().sum();
+
+    let total_delta = (total2 - total1) as f64;
+    let idle_delta = (idle2 - idle1) as f64;
+
+    if total_delta > 0.0 {
+        ((1.0 - idle_delta / total_delta) * 100.0) as f32
+    } else {
+        0.0
+    }
 }
 
 /// Get log components
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn get_log_components() -> Result<Vec<String>, String> {
     let script = r#"
 if [ -f ~/.hermes/logs/agent.log ]; then
@@ -643,7 +690,7 @@ fi
 }
 
 /// Clear logs
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn clear_logs(file: Option<String>) -> Result<(), String> {
     let file_name = file.unwrap_or_else(|| "agent".to_string());
 
@@ -667,7 +714,7 @@ pub async fn clear_logs(file: Option<String>) -> Result<(), String> {
 }
 
 /// Reload gateway configuration (hot reload)
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn reload_gateway_config() -> Result<(), String> {
     println!("[Monitor] Reloading gateway config...");
 

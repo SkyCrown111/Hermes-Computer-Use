@@ -5,14 +5,11 @@
 
 use super::utils::create_command;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 
-lazy_static! {
-    /// Store WeChat QR code value for polling iLink API
-    static ref WECHAT_QR_VALUE: Mutex<Option<String>> = Mutex::new(None);
-}
+/// Store WeChat QR code value for polling iLink API
+static WECHAT_QR_VALUE: LazyLock<Mutex<Option<String>>> = LazyLock::new(|| Mutex::new(None));
 
 /// Whitelist of valid platform types
 const VALID_PLATFORM_TYPES: &[&str] = &[
@@ -22,18 +19,18 @@ const VALID_PLATFORM_TYPES: &[&str] = &[
     "whatsapp",
     "wechat",
     "feishu",
+    "lark",
     "weixin",
-    "qqbot",
     "api_server",
+    "api",
     "webhook",
 ];
 
-/// Validate platform type against whitelist
-fn validate_platform_type(platform_type: &str) -> Result<String, String> {
+/// Validate platform type against whitelist and normalize aliases to canonical frontend types.
+fn normalize_platform_type(platform_type: &str) -> Result<String, String> {
     if platform_type.is_empty() {
         return Err("Platform type cannot be empty".to_string());
     }
-    // Check against whitelist
     if !VALID_PLATFORM_TYPES.contains(&platform_type) {
         return Err(format!(
             "Invalid platform type: {}. Valid types are: {}",
@@ -41,7 +38,12 @@ fn validate_platform_type(platform_type: &str) -> Result<String, String> {
             VALID_PLATFORM_TYPES.join(", ")
         ));
     }
-    Ok(platform_type.to_string())
+    Ok(match platform_type {
+        "feishu" => "lark",
+        "api_server" => "api",
+        other => other,
+    }
+    .to_string())
 }
 
 /// Platform status - matches frontend Platform type exactly
@@ -79,6 +81,7 @@ fn get_platform_definitions() -> Vec<(&'static str, &'static str, &'static str)>
         ("whatsapp", "WhatsApp", "💬"),
         ("wechat", "企业微信", "🏢"),
         ("feishu", "飞书", "🪽"),
+        ("lark", "Lark", "🪽"),
         ("weixin", "微信", "📱"),
         ("qqbot", "QQ Bot", "🤖"),
         ("api_server", "API Server", "🔌"),
@@ -86,8 +89,15 @@ fn get_platform_definitions() -> Vec<(&'static str, &'static str, &'static str)>
     ]
 }
 
+fn get_platform_enabled(state_info: &Option<serde_json::Value>, status: &str) -> bool {
+    state_info
+        .as_ref()
+        .and_then(|state| state.get("enabled").and_then(|value| value.as_bool()))
+        .unwrap_or(status != "disconnected")
+}
+
 /// Get all platforms with their status
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn get_platforms() -> Result<Vec<Platform>, String> {
     println!("[Platforms] Getting platforms...");
 
@@ -145,7 +155,7 @@ except:
             .and_then(|s| s.get("updated_at").and_then(|v| v.as_str()))
             .map(|s| s.to_string());
 
-        let enabled = status != "disconnected" || state_info.is_some();
+        let enabled = get_platform_enabled(&state_info, status);
 
         platforms.push(Platform {
             platform_type: platform_type.to_string(),
@@ -165,10 +175,10 @@ except:
 }
 
 /// Get platform status
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn get_platform_status(platform_type: String) -> Result<PlatformStatus, String> {
     // Validate platform type
-    let valid_type = validate_platform_type(&platform_type)?;
+    let valid_type = normalize_platform_type(&platform_type)?;
 
     let script = format!(
         r#"
@@ -285,24 +295,35 @@ with open(filepath, 'w', encoding='utf-8') as f:
     Ok(())
 }
 
-/// Enable platform
-#[tauri::command]
+/// Enable platform - updates gateway state and attempts to connect via Hermes gateway
+#[tauri::command(rename_all = "snake_case")]
 pub fn enable_platform(platform_type: String) -> Result<(), String> {
     println!("[Platforms] Enabling platform: {}", platform_type);
 
     // Validate platform type
-    let valid_type = validate_platform_type(&platform_type)?;
+    let valid_type = normalize_platform_type(&platform_type)?;
 
     let mut gateway_state = read_gateway_state()?;
 
-    let platform_entry = serde_json::json!({
+    let now = chrono::Utc::now().to_rfc3339();
+
+    let mut platform_entry = serde_json::json!({
         "config": {},
-        "state": "connected",
-        "updated_at": chrono::Utc::now().to_rfc3339()
+        "enabled": true,
+        "state": "connecting",
+        "updated_at": now
     });
 
     if let Some(platforms) = gateway_state.get_mut("platforms") {
         if let Some(platforms_obj) = platforms.as_object_mut() {
+            // Preserve existing config if re-enabling
+            if let Some(existing) = platforms_obj.get(&valid_type) {
+                if let Some(existing_config) = existing.get("config") {
+                    if let Some(entry_obj) = platform_entry.as_object_mut() {
+                        entry_obj.insert("config".to_string(), existing_config.clone());
+                    }
+                }
+            }
             platforms_obj.insert(valid_type.clone(), platform_entry);
         }
     } else {
@@ -312,17 +333,54 @@ pub fn enable_platform(platform_type: String) -> Result<(), String> {
     }
 
     write_gateway_state(&gateway_state)?;
+
+    // Try to trigger the gateway to connect the platform via hermes CLI
+    let connect_result = create_command("wsl")
+        .args([
+            "python3", "-c",
+            &format!("import os; venv = os.path.expanduser('~/.hermes/hermes-agent/venv/bin/python'); import subprocess; subprocess.run([venv, '-m', 'hermes_cli.main', 'platform', 'connect', '{}'])", valid_type),
+        ])
+        .output();
+
+    match connect_result {
+        Ok(output) if output.status.success() => {
+            println!("[Platforms] Gateway connected platform: {}", valid_type);
+            // Update state to connected
+            let mut gateway_state = read_gateway_state()?;
+            if let Some(platforms) = gateway_state.get_mut("platforms") {
+                if let Some(platforms_obj) = platforms.as_object_mut() {
+                    if let Some(platform) = platforms_obj.get_mut(&valid_type) {
+                        if let Some(platform_obj) = platform.as_object_mut() {
+                            platform_obj.insert("enabled".to_string(), serde_json::Value::Bool(true));
+                            platform_obj.insert("state".to_string(), serde_json::Value::String("connected".to_string()));
+                            platform_obj.insert("updated_at".to_string(), serde_json::Value::String(chrono::Utc::now().to_rfc3339()));
+                        }
+                    }
+                }
+            }
+            write_gateway_state(&gateway_state)?;
+        }
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            println!("[Platforms] Gateway connect failed (platform state saved as 'connecting'): {}", stderr);
+            // Leave state as "connecting" -?the gateway may connect later
+        }
+        Err(e) => {
+            println!("[Platforms] Gateway CLI not available (platform state saved as 'connecting'): {}", e);
+        }
+    }
+
     println!("[Platforms] Enabled platform: {}", valid_type);
     Ok(())
 }
 
 /// Disable platform
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn disable_platform(platform_type: String) -> Result<(), String> {
     println!("[Platforms] Disabling platform: {}", platform_type);
 
     // Validate platform type
-    let valid_type = validate_platform_type(&platform_type)?;
+    let valid_type = normalize_platform_type(&platform_type)?;
 
     let mut gateway_state = read_gateway_state()?;
 
@@ -330,6 +388,10 @@ pub fn disable_platform(platform_type: String) -> Result<(), String> {
         if let Some(platforms_obj) = platforms.as_object_mut() {
             if let Some(platform) = platforms_obj.get_mut(&valid_type) {
                 if let Some(platform_obj) = platform.as_object_mut() {
+                    platform_obj.insert(
+                        "enabled".to_string(),
+                        serde_json::Value::Bool(false),
+                    );
                     platform_obj.insert(
                         "state".to_string(),
                         serde_json::Value::String("disconnected".to_string()),
@@ -366,12 +428,12 @@ fn get_required_fields(platform_type: &str) -> Vec<&'static str> {
 }
 
 /// Test platform connection - validates required config fields
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn test_platform_connection(platform_type: String) -> Result<serde_json::Value, String> {
     println!("[Platforms] Testing connection for: {}", platform_type);
 
     // Validate platform type
-    let valid_type = validate_platform_type(&platform_type)?;
+    let valid_type = normalize_platform_type(&platform_type)?;
 
     let gateway_state = read_gateway_state()?;
 
@@ -387,10 +449,10 @@ pub fn test_platform_connection(platform_type: String) -> Result<serde_json::Val
     let required_fields = get_required_fields(&valid_type);
 
     if required_fields.is_empty() {
-        // No required fields for this platform type
         return Ok(serde_json::json!({
             "ok": true,
-            "message": "Platform ready (no configuration required)"
+            "status": "connected",
+            "message": "Platform ready"
         }));
     }
 
@@ -406,55 +468,138 @@ pub fn test_platform_connection(platform_type: String) -> Result<serde_json::Val
         }
     }
 
-    if missing_fields.is_empty() {
-        Ok(serde_json::json!({
-            "ok": true,
-            "message": "Configuration valid"
-        }))
-    } else {
-        Ok(serde_json::json!({
+    if !missing_fields.is_empty() {
+        return Ok(serde_json::json!({
             "ok": false,
+            "status": "disconnected",
             "message": format!("Missing required fields: {}", missing_fields.join(", "))
-        }))
+        }));
+    }
+
+    let platform_state = gateway_state
+        .get("platforms")
+        .and_then(|platforms| platforms.get(&valid_type))
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!({}));
+    let status = platform_state
+        .get("state")
+        .and_then(|value| value.as_str())
+        .unwrap_or("disconnected");
+    let error_message = platform_state
+        .get("error_message")
+        .and_then(|value| value.as_str())
+        .map(|value| value.to_string());
+
+    match status {
+        "connected" => Ok(serde_json::json!({
+            "ok": true,
+            "status": "connected",
+            "message": "Platform connected"
+        })),
+        "connecting" => Ok(serde_json::json!({
+            "ok": false,
+            "status": "pending",
+            "message": "Platform is still connecting"
+        })),
+        "error" => Ok(serde_json::json!({
+            "ok": false,
+            "status": "error",
+            "message": error_message.clone().unwrap_or_else(|| "Platform reported an error".to_string()),
+            "details": error_message
+        })),
+        _ => Ok(serde_json::json!({
+            "ok": false,
+            "status": "disconnected",
+            "message": "Configuration is valid, but the platform is not connected"
+        })),
     }
 }
 
-/// Reconnect platform
-#[tauri::command]
+/// Reconnect platform - attempts to reconnect via Hermes gateway
+#[tauri::command(rename_all = "snake_case")]
 pub fn reconnect_platform(platform_type: String) -> Result<(), String> {
     println!("[Platforms] Reconnecting platform: {}", platform_type);
 
     // Validate platform type
-    let valid_type = validate_platform_type(&platform_type)?;
+    let valid_type = normalize_platform_type(&platform_type)?;
 
     let mut gateway_state = read_gateway_state()?;
 
+    // Check if platform exists in state
+    let platform_exists = gateway_state
+        .get("platforms")
+        .and_then(|p| p.get(&valid_type))
+        .is_some();
+
+    if !platform_exists {
+        return Err(format!("Platform not found: {}", valid_type));
+    }
+
+    // Update state to "connecting"
     if let Some(platforms) = gateway_state.get_mut("platforms") {
         if let Some(platforms_obj) = platforms.as_object_mut() {
             if let Some(platform) = platforms_obj.get_mut(&valid_type) {
                 if let Some(platform_obj) = platform.as_object_mut() {
                     platform_obj.insert(
+                        "enabled".to_string(),
+                        serde_json::Value::Bool(true),
+                    );
+                    platform_obj.insert(
                         "state".to_string(),
-                        serde_json::Value::String("connected".to_string()),
+                        serde_json::Value::String("connecting".to_string()),
                     );
                     platform_obj.insert(
                         "updated_at".to_string(),
                         serde_json::Value::String(chrono::Utc::now().to_rfc3339()),
                     );
                 }
-            } else {
-                return Err(format!("Platform not found: {}", valid_type));
             }
         }
     }
-
     write_gateway_state(&gateway_state)?;
+
+    // Try to trigger reconnect via hermes CLI
+    let connect_result = create_command("wsl")
+        .args([
+            "python3", "-c",
+            &format!("import os; venv = os.path.expanduser('~/.hermes/hermes-agent/venv/bin/python'); import subprocess; subprocess.run([venv, '-m', 'hermes_cli.main', 'platform', 'connect', '{}'])", valid_type),
+        ])
+        .output();
+
+    // Update state based on result
+    let new_state = match connect_result {
+        Ok(output) if output.status.success() => "connected",
+        _ => "error",
+    };
+
+    let mut gateway_state = read_gateway_state()?;
+    if let Some(platforms) = gateway_state.get_mut("platforms") {
+        if let Some(platforms_obj) = platforms.as_object_mut() {
+            if let Some(platform) = platforms_obj.get_mut(&valid_type) {
+                if let Some(platform_obj) = platform.as_object_mut() {
+                    platform_obj.insert("state".to_string(), serde_json::Value::String(new_state.to_string()));
+                    platform_obj.insert("updated_at".to_string(), serde_json::Value::String(chrono::Utc::now().to_rfc3339()));
+                    if new_state == "error" {
+                        platform_obj.insert("error_message".to_string(), serde_json::Value::String("Reconnect failed -?gateway may not be running".to_string()));
+                    } else {
+                        platform_obj.remove("error_message");
+                    }
+                }
+            }
+        }
+    }
+    write_gateway_state(&gateway_state)?;
+
+    if new_state == "error" {
+        return Err(format!("Failed to reconnect platform {} -?gateway may not be running", valid_type));
+    }
+
     println!("[Platforms] Reconnected platform: {}", valid_type);
     Ok(())
 }
 
 /// Request WeChat bot binding QR code via Tencent iLink Bot API
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn get_wechat_qrcode() -> Result<serde_json::Value, String> {
     println!("[Platforms] Requesting WeChat bot QR code from iLink API...");
 
@@ -507,7 +652,7 @@ pub fn get_wechat_qrcode() -> Result<serde_json::Value, String> {
 }
 
 /// Check WeChat bot QR code status via Tencent iLink Bot API
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn check_wechat_qrcode_status() -> Result<serde_json::Value, String> {
     let qrcode = {
         let guard = WECHAT_QR_VALUE
@@ -562,7 +707,7 @@ pub fn check_wechat_qrcode_status() -> Result<serde_json::Value, String> {
 }
 
 /// Update platform config
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn update_platform_config(
     platform_type: String,
     config: serde_json::Value,
@@ -570,7 +715,7 @@ pub fn update_platform_config(
     println!("[Platforms] Updating config for: {}", platform_type);
 
     // Validate platform type
-    let valid_type = validate_platform_type(&platform_type)?;
+    let valid_type = normalize_platform_type(&platform_type)?;
 
     let mut gateway_state = read_gateway_state()?;
 
@@ -586,6 +731,7 @@ pub fn update_platform_config(
                     valid_type.clone(),
                     serde_json::json!({
                         "config": config.clone(),
+                        "enabled": false,
                         "state": "disconnected"
                     }),
                 );
@@ -596,6 +742,7 @@ pub fn update_platform_config(
         gateway_state["platforms"] = serde_json::json!({
             platform_type_key: {
                 "config": config.clone(),
+                "enabled": false,
                 "state": "disconnected"
             }
         });
@@ -630,9 +777,9 @@ pub struct PlatformMessage {
 }
 
 /// Get chats list from a platform
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn get_platform_chats(platform_type: String, limit: Option<usize>) -> Result<Vec<PlatformChat>, String> {
-    let valid_type = validate_platform_type(&platform_type)?;
+    let valid_type = normalize_platform_type(&platform_type)?;
     let limit = limit.unwrap_or(50);
 
     let script = format!(
@@ -692,34 +839,54 @@ print(json.dumps(chats))
 }
 
 /// Send message through platform gateway
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn send_platform_message(
     platform_type: String,
     chat_id: String,
     message: String,
 ) -> Result<serde_json::Value, String> {
-    let valid_type = validate_platform_type(&platform_type)?;
+    let valid_type = normalize_platform_type(&platform_type)?;
 
-    // Use Hermes send_message tool via Python
+    // Validate chat_id to prevent injection
+    if chat_id.is_empty() {
+        return Err("Chat ID cannot be empty".to_string());
+    }
+
+    // Use base64 encoding for safe message transport
+    let message_b64 = STANDARD.encode(&message);
+    let chat_id_b64 = STANDARD.encode(&chat_id);
+
     let script = format!(
         r#"
+import os
 import sys
 import json
-sys.path.insert(0, str(__import__('pathlib').Path.home() / '.hermes' / 'hermes-agent'))
+import base64
 
-# Construct target string
-target = "{}:{}"
+# Decode inputs from base64
+chat_id = base64.b64decode("{}").decode('utf-8')
+message = base64.b64decode("{}").decode('utf-8')
+platform = "{}"
+target = f"{{platform}}:{{chat_id}}"
 
-# Call send_message tool
-try:
-    from tools.send_message_tool import send_message
-    result = send_message(target=target, message="""{}""")
-    print(json.dumps({{"success": True, "result": result}}))
-except Exception as e:
-    print(json.dumps({{"success": False, "error": str(e)}}))
+# Try to use hermes CLI to send the message
+venv_python = os.path.expanduser("~/.hermes/hermes-agent/venv/bin/python")
+if not os.path.isfile(venv_python):
+    print(json.dumps({{"success": False, "error": "Hermes agent not installed"}}))
+    exit(0)
+
+import subprocess
+result = subprocess.run(
+    [venv_python, '-m', 'hermes_cli.main', 'send', '--target', target, '--message', message],
+    capture_output=True, text=True, timeout=30
+)
+
+if result.returncode == 0:
+    print(json.dumps({{"success": True, "output": result.stdout.strip()}}))
+else:
+    print(json.dumps({{"success": False, "error": result.stderr.strip() or "Send failed"}}))
 "#,
-        valid_type, chat_id,
-        message.replace("\"", "\\\"").replace("\n", "\\n")
+        chat_id_b64, message_b64, valid_type
     );
 
     let output = create_command("wsl")
@@ -740,14 +907,14 @@ except Exception as e:
 }
 
 /// Get recent messages from a platform chat
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn get_platform_messages(
     platform_type: String,
     chat_id: String,
     limit: Option<usize>,
     before_id: Option<String>,
 ) -> Result<Vec<PlatformMessage>, String> {
-    let valid_type = validate_platform_type(&platform_type)?;
+    let valid_type = normalize_platform_type(&platform_type)?;
     let limit = limit.unwrap_or(50);
 
     let _before_clause = match before_id {
@@ -814,9 +981,9 @@ print(json.dumps(messages))
 }
 
 /// Mark chat as read on platform
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn mark_platform_chat_read(platform_type: String, chat_id: String) -> Result<(), String> {
-    let valid_type = validate_platform_type(&platform_type)?;
+    let valid_type = normalize_platform_type(&platform_type)?;
 
     // Update gateway state to clear unread count
     let mut gateway_state = read_gateway_state()?;

@@ -88,38 +88,38 @@ else:
     let char_count = content.chars().count();
 
     // Parse sections (split by ## headers)
+    // Fixed: handle first ## header correctly by capturing title without
+    // requiring non-empty current_section
     let mut sections = Vec::new();
     let mut current_section = String::new();
-    let mut current_start = 1;
+    let mut current_start: usize = 1;
     let mut current_title: Option<String> = None;
-    let mut line_num = 1;
-    let mut section_id = 0;
+    let mut line_num: usize = 1;
+    let mut section_id: usize = 0;
 
     for line in content.lines() {
-        if line.starts_with("## ") && !current_section.is_empty() {
-            // Save current section
-            let char_count = current_section.chars().count();
-            sections.push(MemorySection {
-                id: format!("section-{}", section_id),
-                title: current_title.clone(),
-                content: current_section.trim().to_string(),
-                start_line: current_start,
-                end_line: line_num - 1,
-                char_count,
-            });
-            section_id += 1;
+        if line.starts_with("## ") {
+            // Save previous section if it has content
+            if !current_section.trim().is_empty() {
+                let char_count = current_section.chars().count();
+                sections.push(MemorySection {
+                    id: format!("section-{}", section_id),
+                    title: current_title.clone(),
+                    content: current_section.trim().to_string(),
+                    start_line: current_start,
+                    end_line: line_num - 1,
+                    char_count,
+                });
+                section_id += 1;
+            }
 
-            // Start new section
+            // Start new section with this header's title
             current_section = String::new();
             current_start = line_num;
             current_title = Some(line[3..].to_string());
         } else {
-            if current_section.is_empty() && line.starts_with("## ") {
-                current_title = Some(line[3..].to_string());
-            } else {
-                current_section.push_str(line);
-                current_section.push('\n');
-            }
+            current_section.push_str(line);
+            current_section.push('\n');
         }
         line_num += 1;
     }
@@ -183,7 +183,7 @@ else:
 }
 
 /// Get all memory data
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn get_memories() -> Result<MemoryData, String> {
     println!("[Memory] Getting memories...");
 
@@ -202,7 +202,7 @@ pub fn get_memories() -> Result<MemoryData, String> {
 }
 
 /// Save memory content - uses base64 encoding for safe shell transport
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn save_memory(file_type: String, content: String) -> Result<serde_json::Value, String> {
     let filename = if file_type == "user_profile" {
         "USER.md"
@@ -257,7 +257,7 @@ print(json.dumps({{"success": True}}))
 }
 
 /// Get memory directory path
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn get_memories_path() -> Result<String, String> {
     Ok("~/.hermes/memories".to_string())
 }
@@ -273,18 +273,22 @@ pub struct MemorySearchResult {
 }
 
 /// Search memories for a query
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn search_memories(query: String, case_sensitive: bool) -> Result<Vec<MemorySearchResult>, String> {
     if query.is_empty() {
         return Err("Query cannot be empty".to_string());
     }
 
+    // Use base64 encoding for the query to avoid shell injection
+    let query_b64 = STANDARD.encode(&query);
+
     let script = format!(
         r#"
 import os
 import json
+import base64
 
-query = "{}"
+query = base64.b64decode("{}").decode('utf-8')
 case_sensitive = {}
 results = []
 
@@ -292,12 +296,12 @@ for filename in ["MEMORY.md", "USER.md"]:
     filepath = os.path.expanduser("~/.hermes/memories/" + filename)
     if not os.path.isfile(filepath):
         continue
-    
+
     with open(filepath, 'r', encoding='utf-8') as f:
         lines = f.readlines()
-    
+
     search_query = query if case_sensitive else query.lower()
-    
+
     for i, line in enumerate(lines):
         search_line = line if case_sensitive else line.lower()
         if search_query in search_line:
@@ -313,7 +317,7 @@ for filename in ["MEMORY.md", "USER.md"]:
 
 print(json.dumps(results))
 "#,
-        query.replace("\"", "\\\""),
+        query_b64,
         case_sensitive
     );
 
@@ -335,7 +339,7 @@ print(json.dumps(results))
 }
 
 /// Delete a section from memory by ID
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn delete_memory_section(file_type: String, section_id: String) -> Result<serde_json::Value, String> {
     let filename = if file_type == "user_profile" {
         "USER.md"
@@ -400,7 +404,7 @@ print('ok')
 }
 
 /// Append content to memory
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn append_memory(file_type: String, content: String, section_title: Option<String>) -> Result<serde_json::Value, String> {
     let filename = if file_type == "user_profile" {
         "USER.md"

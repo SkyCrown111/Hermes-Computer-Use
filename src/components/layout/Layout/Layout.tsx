@@ -1,14 +1,47 @@
 import React from 'react';
+import { exit } from '@tauri-apps/plugin-process';
 import { BaseComponentProps } from '../../../types';
-import { Sidebar } from '../Sidebar';
 import { SessionSidebar } from '../SessionSidebar';
-import { StatusBar } from '../StatusBar';
 import { KeyboardShortcutsHelp } from '../../ui/KeyboardShortcutsHelp';
+import { BookIcon, MonitorThemeIcon, MoonIcon, SunIcon } from '../../ui/Icons';
 import { useThemeStore, useNavigationStore } from '../../../stores';
 import { useTranslation } from '../../../hooks/useTranslation';
+import { isTauri } from '../../../lib/tauri';
 import './Layout.css';
 
-// Hamburger Menu Icon
+function MinimizeWindowIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <path d="M3 7h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function MaximizeWindowIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <rect x="3.25" y="3.25" width="7.5" height="7.5" rx="1.25" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
+function RestoreWindowIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <path d="M5.25 3.25h4a1.5 1.5 0 0 1 1.5 1.5v4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <rect x="3.25" y="5.25" width="5.5" height="5.5" rx="1.1" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
+function CloseWindowIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <path d="M4 4l6 6M10 4l-6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function MenuIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -34,56 +67,238 @@ export const Layout: React.FC<LayoutProps> = ({
   const setSidebarCollapsed = useThemeStore((s) => s.setSidebarCollapsed);
   const toggleMobileSidebar = useThemeStore((s) => s.toggleMobileSidebar);
   const sidebarPosition = useThemeStore((s) => s.displayPreferences.sidebarPosition);
+  const mode = useThemeStore((s) => s.mode);
+  const setTheme = useThemeStore((s) => s.setTheme);
   const activeItem = useNavigationStore((s) => s.activeItem);
-  const { t } = useTranslation();
+  const setActiveItem = useNavigationStore((s) => s.setActiveItem);
+  const { t, lang } = useTranslation();
+  const [isWindowFocused, setIsWindowFocused] = React.useState(true);
+  const [isWindowMaximized, setIsWindowMaximized] = React.useState(false);
+  const [helpMenuOpen, setHelpMenuOpen] = React.useState(false);
+  const helpMenuRef = React.useRef<HTMLDivElement>(null);
 
-  // When entering chat mode, collapse the main sidebar
+  const showCustomTitlebar = isTauri();
+
   React.useEffect(() => {
-    if (activeItem === 'chat') {
-      setSidebarCollapsed(true);
-    }
-  }, [activeItem, setSidebarCollapsed]);
+    setSidebarCollapsed(false);
+  }, [setSidebarCollapsed]);
+
+  React.useEffect(() => {
+    if (!showCustomTitlebar) return;
+
+    let mounted = true;
+    let cleanupResize: (() => void) | undefined;
+    let cleanupFocus: (() => void) | undefined;
+
+    const bindWindowState = async () => {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window');
+      const appWindow = getCurrentWindow();
+
+      const syncState = async () => {
+        try {
+          const [maximized, focused] = await Promise.all([
+            appWindow.isMaximized(),
+            appWindow.isFocused(),
+          ]);
+
+          if (!mounted) return;
+          setIsWindowMaximized(maximized);
+          setIsWindowFocused(focused);
+        } catch {
+          // ignore transient desktop window state errors
+        }
+      };
+
+      await syncState();
+
+      cleanupResize = await appWindow.onResized(() => {
+        void syncState();
+      });
+
+      cleanupFocus = await appWindow.onFocusChanged(({ payload }) => {
+        if (!mounted) return;
+        setIsWindowFocused(payload);
+      });
+    };
+
+    void bindWindowState();
+
+    return () => {
+      mounted = false;
+      cleanupResize?.();
+      cleanupFocus?.();
+    };
+  }, [showCustomTitlebar]);
+
+  React.useEffect(() => {
+    if (!helpMenuOpen) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!helpMenuRef.current?.contains(event.target as Node)) {
+        setHelpMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
+  }, [helpMenuOpen]);
 
   const layoutClasses = [
     'layout',
     sidebarCollapsed ? 'sidebar-collapsed' : '',
-    'has-session-sidebar', // Session sidebar is always shown
+    showCustomTitlebar ? 'layout-has-custom-titlebar' : '',
+    showCustomTitlebar && !isWindowFocused ? 'layout-window-blurred' : '',
   ].filter(Boolean).join(' ');
 
-  // Get page title based on active item
-  const getPageTitle = () => {
-    const titles: Record<string, string> = {
-      dashboard: t('nav.home'),
-      sessions: t('nav.sessions'),
-      skills: t('nav.skills'),
-      tasks: t('nav.tasks'),
-      settings: t('nav.settings'),
-      monitor: t('nav.monitor'),
-      memory: t('nav.memory'),
-      platforms: t('nav.platforms'),
-      gateway: 'Gateway',
-      files: t('nav.files'),
-      preferences: t('nav.preferences'),
-      mcp: t('nav.mcp'),
-    };
-    return titles[activeItem] || 'Hermes';
-  };
+  const sidebarContent = <SessionSidebar />;
 
-  const sidebarContent = (
-    <>
-      <Sidebar />
-      <SessionSidebar />
-    </>
-  );
+  const handleMinimize = React.useCallback(async () => {
+    const { getCurrentWindow } = await import('@tauri-apps/api/window');
+    await getCurrentWindow().minimize();
+  }, []);
+
+  const handleToggleMaximize = React.useCallback(async () => {
+    const { getCurrentWindow } = await import('@tauri-apps/api/window');
+    const appWindow = getCurrentWindow();
+    await appWindow.toggleMaximize();
+    setIsWindowMaximized(await appWindow.isMaximized());
+  }, []);
+
+  const handleClose = React.useCallback(async () => {
+    if (showCustomTitlebar) {
+      await exit(0);
+      return;
+    }
+    window.close();
+  }, [showCustomTitlebar]);
+
+  const swallowTitlebarPointer = React.useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+  }, []);
+
+  const handleThemeCycle = React.useCallback(() => {
+    const nextMode = mode === 'dark' ? 'light' : mode === 'light' ? 'system' : 'dark';
+    setTheme(nextMode);
+  }, [mode, setTheme]);
+
+  const ThemeIcon = mode === 'dark' ? MoonIcon : mode === 'light' ? SunIcon : MonitorThemeIcon;
+  const helpDescription = lang === 'zh'
+    ? '查看项目整体功能说明与使用指引'
+    : 'Open the project overview and usage guide';
+  const prefsDescription = lang === 'zh'
+    ? '前往主题、布局和通知偏好设置'
+    : 'Open theme, layout, and notification preferences';
+
+  const titlebar = showCustomTitlebar ? (
+    <div className="app-titlebar">
+      <div
+        className="app-titlebar-left"
+        data-tauri-drag-region
+        onDoubleClick={() => { void handleToggleMaximize(); }}
+      >
+        <div className="app-titlebar-brand" data-tauri-drag-region>
+          <span className="app-titlebar-mark" aria-hidden="true">H</span>
+          <span className="app-titlebar-name">Hermes</span>
+        </div>
+        <div className="app-titlebar-tools" ref={helpMenuRef}>
+          <button
+            type="button"
+            className="app-titlebar-tool-btn"
+            onClick={handleThemeCycle}
+            title={`${t('prefs.theme') || 'Theme'}: ${mode}`}
+            aria-label={t('prefs.theme') || 'Theme'}
+          >
+            <ThemeIcon size={15} />
+          </button>
+          <button
+            type="button"
+            className={`app-titlebar-tool-btn ${helpMenuOpen ? 'active' : ''}`}
+            onClick={() => setHelpMenuOpen((open) => !open)}
+            title={t('nav.help') || 'Help'}
+            aria-label={t('nav.help') || 'Help'}
+          >
+            <BookIcon size={15} />
+          </button>
+        {helpMenuOpen && (
+          <div className="app-titlebar-help-menu">
+              <button
+                type="button"
+                className="app-titlebar-help-item"
+                onClick={() => {
+                  setActiveItem('help');
+                  setHelpMenuOpen(false);
+                }}
+              >
+                <span className="app-titlebar-help-item-title">{t('nav.help') || 'Help'}</span>
+                <span className="app-titlebar-help-item-copy">{helpDescription}</span>
+              </button>
+              <button
+                type="button"
+                className="app-titlebar-help-item"
+                onClick={() => {
+                  setActiveItem('preferences');
+                  setHelpMenuOpen(false);
+                }}
+              >
+                <span className="app-titlebar-help-item-title">{t('nav.preferences')}</span>
+                <span className="app-titlebar-help-item-copy">{prefsDescription}</span>
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div
+        className="app-titlebar-center"
+        data-tauri-drag-region
+        onDoubleClick={() => { void handleToggleMaximize(); }}
+      />
+
+      <div className="app-titlebar-window-actions">
+        <button
+          type="button"
+          className="app-titlebar-btn"
+          onMouseDown={swallowTitlebarPointer}
+          onDoubleClick={swallowTitlebarPointer}
+          onClick={() => { void handleMinimize(); }}
+          aria-label="Minimize window"
+          title="Minimize"
+        >
+          <MinimizeWindowIcon />
+        </button>
+        <button
+          type="button"
+          className="app-titlebar-btn"
+          onMouseDown={swallowTitlebarPointer}
+          onDoubleClick={swallowTitlebarPointer}
+          onClick={() => { void handleToggleMaximize(); }}
+          aria-label={isWindowMaximized ? 'Restore window' : 'Maximize window'}
+          title={isWindowMaximized ? 'Restore' : 'Maximize'}
+        >
+          {isWindowMaximized ? <RestoreWindowIcon /> : <MaximizeWindowIcon />}
+        </button>
+        <button
+          type="button"
+          className="app-titlebar-btn app-titlebar-btn-close"
+          onMouseDown={swallowTitlebarPointer}
+          onDoubleClick={swallowTitlebarPointer}
+          onClick={() => { void handleClose(); }}
+          aria-label="Close window"
+          title="Close"
+        >
+          <CloseWindowIcon />
+        </button>
+      </div>
+    </div>
+  ) : null;
 
   const mainContent = (
     <main className="layout-main">
-      {/* Mobile Header */}
       <div className="mobile-header">
         <button className="hamburger-btn" onClick={toggleMobileSidebar} aria-label="Open menu">
           <MenuIcon />
         </button>
-        <span className="mobile-header-title">{getPageTitle()}</span>
+        <span className="mobile-header-title">{title || t('nav.home')}</span>
         {actions && <div className="mobile-actions">{actions}</div>}
       </div>
 
@@ -93,18 +308,20 @@ export const Layout: React.FC<LayoutProps> = ({
           {actions && <div className="layout-actions">{actions}</div>}
         </header>
       )}
-      <div className={`layout-content ${className}`}>{children}</div>
+      <div className={`layout-content ${activeItem === 'chat' ? 'layout-content-chat' : ''} ${className}`}>{children}</div>
     </main>
   );
 
   return (
     <div className={layoutClasses} data-sidebar-position={sidebarPosition}>
-      {sidebarPosition === 'right' ? (
-        <>{mainContent}{sidebarContent}</>
-      ) : (
-        <>{sidebarContent}{mainContent}</>
-      )}
-      <StatusBar />
+      {titlebar}
+      <div className="layout-body">
+        {sidebarPosition === 'right' ? (
+          <>{mainContent}{sidebarContent}</>
+        ) : (
+          <>{sidebarContent}{mainContent}</>
+        )}
+      </div>
       <KeyboardShortcutsHelp />
     </div>
   );

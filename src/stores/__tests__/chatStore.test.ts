@@ -129,6 +129,7 @@ describe('ChatStore', () => {
   describe('streaming state', () => {
     it('should set and clear streaming text', () => {
       const store = useChatStore.getState();
+      store.addMessage(sessionId, { role: 'user', content: 'hi' });
       store.setStreamingText(sessionId, 'Hello...');
       expect(useChatStore.getState().sessions[sessionId].streamingText).toBe('Hello...');
 
@@ -138,6 +139,7 @@ describe('ChatStore', () => {
 
     it('should append streaming text', () => {
       const store = useChatStore.getState();
+      store.addMessage(sessionId, { role: 'user', content: 'hi' });
       store.appendStreamingText(sessionId, 'Hello ');
       store.appendStreamingText(sessionId, 'World');
 
@@ -146,6 +148,7 @@ describe('ChatStore', () => {
 
     it('should set thinking state with text', () => {
       const store = useChatStore.getState();
+      store.addMessage(sessionId, { role: 'user', content: 'hi' });
       store.setThinking(sessionId, true, '思考中...');
 
       const session = useChatStore.getState().sessions[sessionId];
@@ -155,6 +158,7 @@ describe('ChatStore', () => {
 
     it('should manage streaming tools', () => {
       const store = useChatStore.getState();
+      store.addMessage(sessionId, { role: 'user', content: 'hi' });
       store.addStreamingTool(sessionId, { name: 'read_file', event_type: 'tool.started' });
 
       let tools = useChatStore.getState().sessions[sessionId].streamingTools;

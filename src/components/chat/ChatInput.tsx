@@ -1,17 +1,13 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { useTranslation } from '../../hooks/useTranslation';
-import { PlusIcon, PlayIcon, StopIcon, XIcon } from '../ui/Icons';
+import { FileIcon, FileTextIcon, PlusIcon, SendIcon, StopIcon, XIcon } from '../ui/Icons';
 import { logger } from '../../lib/logger';
-
-type InputMode = 'agent' | 'normal';
-
-// ---- Types ----
 
 export interface AttachedFile {
   name: string;
   type: string;
   size: number;
-  content: string; // text content or base64
+  content: string;
   isText: boolean;
 }
 
@@ -23,11 +19,11 @@ interface ChatInputProps {
   onSendMessage: (text: string, attachedFiles: AttachedFile[]) => void;
   onStop: () => void;
   isStreaming: boolean;
-  hasPendingPermission?: boolean; // Allow sending even when streaming if there's a pending permission
+  hasPendingInput?: boolean;
   disabled?: boolean;
 }
 
-// ---- Constants ----
+const MAX_TEXTAREA_HEIGHT = 200;
 
 const getHermesCommands = (t: (key: string) => string) => [
   { command: '/help', description: t('chat.cmd.help') },
@@ -42,116 +38,102 @@ const getHermesCommands = (t: (key: string) => string) => [
   { command: '/search', description: t('chat.cmd.search') },
 ];
 
-// ---- Component ----
-
 export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
-  ({ onSendMessage, onStop, isStreaming, hasPendingPermission }, ref) => {
+  ({ onSendMessage, onStop, isStreaming, hasPendingInput, disabled }, ref) => {
     const { t } = useTranslation();
-    const HERMES_COMMANDS = useMemo(() => getHermesCommands(t), [t]);
+    const hermesCommands = useMemo(() => getHermesCommands(t), [t]);
 
-    // ---- State ----
     const [inputValue, setInputValue] = useState('');
-    const [mode, setMode] = useState<InputMode>('agent');
     const [showAddMenu, setShowAddMenu] = useState(false);
     const [showCommands, setShowCommands] = useState(false);
-    const [filteredCommands, setFilteredCommands] = useState(HERMES_COMMANDS);
+    const [filteredCommands, setFilteredCommands] = useState(hermesCommands);
     const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
     const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
 
-    // ---- Refs ----
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const imageInputRef = useRef<HTMLInputElement>(null);
     const addMenuRef = useRef<HTMLDivElement>(null);
+    const dropdownRef = useRef<HTMLDivElement>(null);
 
-    // ---- Imperative handle for parent (handleRegenerate) ----
     useImperativeHandle(ref, () => ({
       triggerSend: (text: string) => {
         setInputValue(text);
-        inputRef.current?.focus();
+        requestAnimationFrame(() => {
+          inputRef.current?.focus();
+        });
       },
     }));
 
-    // ---- Effects ----
-
-    // Focus input on mount
     useEffect(() => {
       inputRef.current?.focus();
     }, []);
 
-    // Close menus when clicking outside
     useEffect(() => {
       const handleClickOutside = (e: MouseEvent) => {
         if (addMenuRef.current && !addMenuRef.current.contains(e.target as Node)) {
           setShowAddMenu(false);
+        }
+        if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+          setShowCommands(false);
         }
       };
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    // ---- Handlers ----
+    useEffect(() => {
+      if (!showCommands || !dropdownRef.current) return;
+      const items = dropdownRef.current.querySelectorAll('[data-cmd-item]');
+      items[selectedCommandIndex]?.scrollIntoView({ block: 'nearest' });
+    }, [selectedCommandIndex, showCommands]);
 
-    // Auto-resize textarea to fit content
     const resizeTextarea = useCallback(() => {
       const el = inputRef.current;
       if (!el) return;
       el.style.height = 'auto';
-      const maxHeight = 200; // ~8 lines
-      el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`;
+      el.style.height = `${Math.min(el.scrollHeight, MAX_TEXTAREA_HEIGHT)}px`;
     }, []);
 
-    const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
       const value = e.target.value;
       setInputValue(value);
-
-      // Auto-resize
       requestAnimationFrame(resizeTextarea);
 
-      // Check for slash command
       if (value.startsWith('/')) {
         const query = value.toLowerCase();
-        const filtered = HERMES_COMMANDS.filter(cmd =>
-          cmd.command.toLowerCase().startsWith(query)
-        );
+        const filtered = hermesCommands.filter(cmd => cmd.command.toLowerCase().startsWith(query));
         setFilteredCommands(filtered);
         setShowCommands(filtered.length > 0);
         setSelectedCommandIndex(0);
       } else {
         setShowCommands(false);
       }
-    };
+    }, [hermesCommands, resizeTextarea]);
 
-    const insertCommand = (command: string) => {
-      setInputValue(command + ' ');
+    const insertCommand = useCallback((command: string) => {
+      setInputValue(`${command} `);
       setShowCommands(false);
-      inputRef.current?.focus();
-    };
+      requestAnimationFrame(() => {
+        resizeTextarea();
+        inputRef.current?.focus();
+      });
+    }, [resizeTextarea]);
 
-  const handleSend = () => {
+    const handleSend = useCallback(() => {
       if (!inputValue.trim()) return;
-
-      // Reset textarea height
+      const text = inputValue.trim();
+      const files = attachedFiles;
+      setInputValue('');
+      setAttachedFiles([]);
+      setShowCommands(false);
       if (inputRef.current) {
         inputRef.current.style.height = 'auto';
       }
+      onSendMessage(text, files);
+    }, [attachedFiles, inputValue, onSendMessage]);
 
-      // CLI behavior: if streaming, let parent handle abort+resend
-      if (isStreaming && !hasPendingPermission) {
-        const text = inputValue.trim();
-        const files = attachedFiles;
-        setInputValue('');
-        setAttachedFiles([]);
-        onSendMessage(text, files);
-        return;
-      }
-
-      onSendMessage(inputValue.trim(), attachedFiles);
-      setInputValue('');
-      setAttachedFiles([]);
-    };
-
-    const readFileAsContent = (file: File): Promise<AttachedFile> => {
+    const readFileAsContent = useCallback((file: File): Promise<AttachedFile> => {
       return new Promise((resolve, reject) => {
         const isText = file.type.startsWith('text/') || [
           '.md', '.ts', '.tsx', '.js', '.jsx', '.json', '.css', '.html',
@@ -160,62 +142,52 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           '.txt', '.csv', '.log',
         ].some(ext => file.name.toLowerCase().endsWith(ext));
 
+        const reader = new FileReader();
+        reader.onload = () => resolve({
+          name: file.name,
+          type: file.type,
+          size: file.size,
+          content: reader.result as string,
+          isText,
+        });
+        reader.onerror = () => reject(reader.error);
+
         if (isText) {
-          const reader = new FileReader();
-          reader.onload = () => resolve({
-            name: file.name,
-            type: file.type,
-            size: file.size,
-            content: reader.result as string,
-            isText: true,
-          });
-          reader.onerror = () => reject(reader.error);
           reader.readAsText(file);
         } else {
-          // For non-text files, read as base64 for potential image display
-          const reader = new FileReader();
-          reader.onload = () => resolve({
-            name: file.name,
-            type: file.type,
-            size: file.size,
-            content: reader.result as string,
-            isText: false,
-          });
-          reader.onerror = () => reject(reader.error);
           reader.readAsDataURL(file);
         }
       });
-    };
+    }, []);
 
-    const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = e.target.files;
       if (files) {
-        const filePromises = Array.from(files).map(f => readFileAsContent(f));
         try {
-          const fileData = await Promise.all(filePromises);
+          const fileData = await Promise.all(Array.from(files).map(readFileAsContent));
           setAttachedFiles(prev => [...prev, ...fileData]);
         } catch (err) {
           logger.error('[ChatInput] Failed to read files:', err);
         }
       }
+      e.target.value = '';
       setShowAddMenu(false);
-    };
+    }, [readFileAsContent]);
 
-    const removeAttachedFile = (index: number) => {
+    const removeAttachedFile = useCallback((index: number) => {
       setAttachedFiles(prev => prev.filter((_, i) => i !== index));
-    };
+    }, []);
 
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-      // Slash command navigation
+    const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
       if (showCommands && filteredCommands.length > 0) {
         if (e.key === 'ArrowDown') {
           e.preventDefault();
-          setSelectedCommandIndex((prev) => (prev + 1) % filteredCommands.length);
+          setSelectedCommandIndex(prev => (prev + 1) % filteredCommands.length);
           return;
         }
         if (e.key === 'ArrowUp') {
           e.preventDefault();
-          setSelectedCommandIndex((prev) => (prev - 1 + filteredCommands.length) % filteredCommands.length);
+          setSelectedCommandIndex(prev => (prev - 1 + filteredCommands.length) % filteredCommands.length);
           return;
         }
         if (e.key === 'Enter' || e.key === 'Tab') {
@@ -235,159 +207,174 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         e.preventDefault();
         handleSend();
       }
-    };
+    }, [filteredCommands, handleSend, insertCommand, selectedCommandIndex, showCommands]);
 
-    // ---- Render ----
+    const canSend = inputValue.trim().length > 0;
+    const showStop = isStreaming && !hasPendingInput;
+    const activeCommand = inputValue.startsWith('/') ? filteredCommands[selectedCommandIndex] : null;
+    const showFooter = inputValue.startsWith('/') || attachedFiles.length > 0 || isStreaming || !!hasPendingInput;
 
     return (
-      <div className="chat-input-wrapper">
-        <div className="chat-input-container">
-          {/* Slash Commands Dropdown */}
-          {showCommands && (
-            <div className="slash-commands-dropdown">
-              <div className="slash-commands-list" role="listbox">
-                {filteredCommands.map((cmd, index) => (
-                  <div
-                    key={cmd.command}
-                    className={`slash-command-item ${index === selectedCommandIndex ? 'selected' : ''}`}
-                    role="option"
-                    aria-selected={index === selectedCommandIndex}
-                    tabIndex={-1}
-                    onClick={() => insertCommand(cmd.command)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); insertCommand(cmd.command); } }}
-                  >
-                    <span className="slash-command-name">{cmd.command}</span>
-                    <span className="slash-command-desc">{cmd.description}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Attached Files */}
-          {attachedFiles.length > 0 && (
-            <div className="attached-files">
-              {attachedFiles.map((file, idx) => (
-                <div key={idx} className="attached-file-item">
-                  <span className="attached-file-name">{file.name}</span>
-                  <button
-                    className="remove-file-btn"
-                    onClick={() => removeAttachedFile(idx)}
-                  >
-                    <XIcon size={14} />
-                  </button>
+      <div className="chat-input-area">
+        <div className="chat-input-shell">
+          {showCommands && filteredCommands.length > 0 && (
+            <div className="chat-input-dropdown" ref={dropdownRef} role="listbox">
+              {filteredCommands.map((cmd, index) => (
+                <div
+                  key={cmd.command}
+                  data-cmd-item
+                  className={`cmd-item ${index === selectedCommandIndex ? 'selected' : ''}`}
+                  role="option"
+                  aria-selected={index === selectedCommandIndex}
+                  tabIndex={-1}
+                  onClick={() => insertCommand(cmd.command)}
+                  onMouseEnter={() => setSelectedCommandIndex(index)}
+                >
+                  <span className="cmd-name">{cmd.command}</span>
+                  <span className="cmd-desc">{cmd.description}</span>
                 </div>
               ))}
             </div>
           )}
 
-          {/* Textarea */}
-          <textarea
-            ref={inputRef}
-            className="chat-textarea"
-            value={inputValue}
-            onChange={handleInputChange}
-            onKeyDown={handleKeyDown}
-            placeholder={t('chat.inputPlaceholder')}
-            rows={1}
-          />
+          {attachedFiles.length > 0 && (
+            <div className="chat-input-files">
+              {attachedFiles.map((file, idx) => (
+                <span key={`${file.name}-${idx}`} className="file-chip">
+                  <span className="file-icon" aria-hidden="true">
+                    {file.isText ? <FileTextIcon size={12} /> : <FileIcon size={12} />}
+                  </span>
+                  <span className="file-name">{file.name}</span>
+                  <button
+                    className="file-remove"
+                    onClick={() => removeAttachedFile(idx)}
+                    aria-label={`Remove ${file.name}`}
+                  >
+                    <XIcon size={12} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
 
-          {/* Bottom Toolbar */}
-          <div className="chat-input-toolbar">
-            <div className="toolbar-left">
-              <div className="mode-toggle">
-                <button
-                  className={`mode-toggle-btn ${mode === 'agent' ? 'active' : ''}`}
-                  onClick={() => setMode('agent')}
-                >
-                  <span className="material-symbols-outlined mode-icon">smart_toy</span>
-                  <span>Agent</span>
-                </button>
-                <button
-                  className={`mode-toggle-btn ${mode === 'normal' ? 'active' : ''}`}
-                  onClick={() => setMode('normal')}
-                >
-                  <span className="material-symbols-outlined mode-icon">chat</span>
-                  <span>Normal</span>
-                </button>
+          <div className="chat-input-container">
+            <div className="chat-input-main">
+              <div className="chat-input-editor">
+                <textarea
+                  ref={inputRef}
+                  className="chat-textarea"
+                  value={inputValue}
+                  onChange={handleInputChange}
+                  onKeyDown={handleKeyDown}
+                  placeholder={t('chat.inputPlaceholder')}
+                  rows={1}
+                  disabled={disabled}
+                />
               </div>
-              <div className="add-button-wrapper" ref={addMenuRef}>
-                <button
-                  className="toolbar-add-btn"
-                  onClick={() => setShowAddMenu(!showAddMenu)}
-                  disabled={isStreaming}
-                >
-                  <PlusIcon size={18} />
-                </button>
+            </div>
 
-                {showAddMenu && (
-                  <div className="add-menu-popup">
-                    <button
-                      className="add-menu-item"
-                      onClick={() => {
-                        fileInputRef.current?.click();
-                        setShowAddMenu(false);
-                      }}
-                    >
-                      <PlusIcon size={16} />
-                      <span>{t('chat.addFile')}</span>
-                    </button>
-                    <button
-                      className="add-menu-item"
-                      onClick={() => {
-                        imageInputRef.current?.click();
-                        setShowAddMenu(false);
-                      }}
-                    >
-                      <PlusIcon size={16} />
-                      <span>{t('chat.addImage')}</span>
-                    </button>
-                    <button
-                      className="add-menu-item"
-                      onClick={() => {
-                        setInputValue('/');
-                        inputRef.current?.focus();
-                        setShowAddMenu(false);
-                      }}
-                    >
-                      <span className="slash-icon">/</span>
-                      <span>{t('chat.slashCommands')}</span>
-                    </button>
+            <div className="chat-input-footer">
+              <div className="chat-input-footer-left">
+                <div ref={addMenuRef} style={{ position: 'relative' }}>
+                  <button
+                    className="action-btn chat-composer-btn"
+                    onClick={() => setShowAddMenu(prev => !prev)}
+                    disabled={isStreaming || disabled}
+                    title={t('chat.addFile')}
+                    aria-label={t('chat.addFile')}
+                  >
+                    <PlusIcon size={14} />
+                  </button>
+
+                  {showAddMenu && (
+                    <div className="add-menu-popup">
+                      <button
+                        className="add-menu-item"
+                        onClick={() => { fileInputRef.current?.click(); setShowAddMenu(false); }}
+                      >
+                        <span className="add-menu-item-icon"><FileTextIcon size={14} /></span>
+                        {t('chat.addFile')}
+                      </button>
+                      <button
+                        className="add-menu-item"
+                        onClick={() => { imageInputRef.current?.click(); setShowAddMenu(false); }}
+                      >
+                        <span className="add-menu-item-icon"><FileIcon size={14} /></span>
+                        {t('chat.addImage')}
+                      </button>
+                      <button
+                        className="add-menu-item"
+                        onClick={() => { setInputValue('/'); setShowCommands(true); setShowAddMenu(false); requestAnimationFrame(() => inputRef.current?.focus()); }}
+                      >
+                        <span className="add-menu-item-icon add-menu-command-icon">/</span>
+                        {t('chat.slashCommands')}
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {showFooter && (
+                  <div className="chat-input-metadata">
+                    {inputValue.startsWith('/') && (
+                      <span className="chat-input-badge">
+                        <span className="chat-input-badge-mark">/</span>
+                        <span className="chat-input-badge-text">{activeCommand?.command ?? '/'}</span>
+                      </span>
+                    )}
+                    {attachedFiles.length > 0 && (
+                      <span className="chat-input-badge">
+                        <FileTextIcon size={12} />
+                        <span className="chat-input-badge-text">{attachedFiles.length}</span>
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
-            </div>
 
-            <div className="toolbar-right">
-              <button
-                className={`run-action-btn ${isStreaming && !hasPendingPermission ? 'running' : ''}`}
-                onClick={isStreaming && !hasPendingPermission ? onStop : handleSend}
-                disabled={!isStreaming && !hasPendingPermission && !inputValue.trim()}
-              >
-                {isStreaming && !hasPendingPermission ? <StopIcon size={14} /> : <PlayIcon size={14} />}
-                <span>{isStreaming && !hasPendingPermission ? t('chat.stop') : t('chat.run')}</span>
-              </button>
+              <div className="chat-input-trailing">
+                {(isStreaming || hasPendingInput) && (
+                  <span className={`chat-input-presence${isStreaming ? ' streaming' : ''}${hasPendingInput ? ' pending' : ''}`} />
+                )}
+                {showStop ? (
+                  <button
+                    className="action-btn stop chat-send-btn"
+                    onClick={onStop}
+                    title={t('chat.stop')}
+                    aria-label={t('chat.stop')}
+                  >
+                    <StopIcon size={14} />
+                  </button>
+                ) : (
+                  <button
+                    className="action-btn send chat-send-btn"
+                    onClick={handleSend}
+                    disabled={!canSend}
+                    title={t('chat.run')}
+                    aria-label={t('chat.run')}
+                  >
+                    <SendIcon size={14} />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
-
-          {/* Hidden File Input */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            style={{ display: 'none' }}
-            onChange={handleFileSelect}
-          />
-          {/* Hidden Image Input - only accepts images */}
-          <input
-            ref={imageInputRef}
-            type="file"
-            multiple
-            accept="image/*"
-            style={{ display: 'none' }}
-            onChange={handleFileSelect}
-          />
         </div>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          style={{ display: 'none' }}
+          onChange={handleFileSelect}
+        />
+        <input
+          ref={imageInputRef}
+          type="file"
+          multiple
+          accept="image/*"
+          style={{ display: 'none' }}
+          onChange={handleFileSelect}
+        />
       </div>
     );
   }

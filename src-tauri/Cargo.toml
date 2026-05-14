@@ -30,7 +30,6 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = ["devtools", "tray-icon"] }
 tauri-plugin-opener = "2"
-tauri-plugin-updater = "2"
 tauri-plugin-window-state = "2"
 tauri-plugin-process = "2"
 serde = { version = "1", features = ["derive"] }
@@ -38,12 +37,9 @@ serde_json = "1"
 serde_yaml = "0.9"
 dirs = "5"
 chrono = { version = "0.4", features = ["serde"] }
-sysinfo = "0.30"
-tokio = { version = "1", features = ["rt-multi-thread", "sync"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "process", "io-util", "time", "fs"] }
 base64 = "0.22"
-lazy_static = "1.4"
 reqwest = { version = "0.12", features = ["blocking", "json", "native-tls"] }
-
-[target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3", features = ["winuser", "processthreadsapi"] }
-
+fs2 = "0.4"
+uuid = { version = "1.6", features = ["v4", "serde"] }
+shellexpand = "3.1"

@@ -4,7 +4,6 @@ import { useNavigationStore, useThemeStore } from '../../../stores';
 import { useTranslation } from '../../../hooks/useTranslation';
 import './Sidebar.css';
 
-// SVG Icons
 function HomeIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -121,11 +120,29 @@ function McpIcon() {
   );
 }
 
+function KanbanIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="5" height="18" rx="1" />
+      <rect x="10" y="3" width="5" height="12" rx="1" />
+      <rect x="17" y="3" width="5" height="8" rx="1" />
+    </svg>
+  );
+}
+
 function PlusIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <line x1="12" y1="5" x2="12" y2="19" />
       <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  );
+}
+
+function CollapseIcon({ collapsed }: { collapsed: boolean }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      {collapsed ? <polyline points="9 18 15 12 9 6" /> : <polyline points="15 18 9 12 15 6" />}
     </svg>
   );
 }
@@ -140,18 +157,17 @@ export const Sidebar: React.FC = () => {
   const setMobileSidebarOpen = useThemeStore(s => s.setMobileSidebarOpen);
   const { t } = useTranslation();
 
-  // Handle new chat creation
   const handleNewChat = useCallback(() => {
     const newId = `new_${Date.now()}`;
     openTab(newId, t('sidebar.newChat'), 'new');
   }, [openTab, t]);
 
-  // Navigation items with translated labels
   const navItems: NavItem[] = useMemo(() => [
     { id: 'dashboard', label: t('nav.home'), icon: <HomeIcon />, path: '/' },
     { id: 'sessions', label: t('nav.sessions'), icon: <ChatIcon />, path: '/sessions' },
     { id: 'skills', label: t('nav.skills'), icon: <SkillsIcon />, path: '/skills' },
     { id: 'tasks', label: t('nav.tasks'), icon: <TasksIcon />, path: '/tasks' },
+    { id: 'kanban', label: t('nav.kanban'), icon: <KanbanIcon />, path: '/kanban' },
     { id: 'settings', label: t('nav.settings'), icon: <SettingsIcon />, path: '/settings' },
     { id: 'monitor', label: t('nav.monitor'), icon: <MonitorIcon />, path: '/monitor' },
     { id: 'memory', label: t('nav.memory'), icon: <MemoryIcon />, path: '/memory' },
@@ -167,87 +183,89 @@ export const Sidebar: React.FC = () => {
 
   return (
     <>
-      {/* Mobile overlay backdrop */}
       <div
         className={`sidebar-overlay ${mobileSidebarOpen ? 'active' : ''}`}
         onClick={() => setMobileSidebarOpen(false)}
       />
       <aside className={`sidebar ${sidebarCollapsed ? 'sidebar-collapsed' : ''} ${mobileSidebarOpen ? 'mobile-open' : ''}`}>
-        {/* Header */}
         <div className="sidebar-header">
-        <div className="sidebar-logo">
-          {!sidebarCollapsed && (
-            <span className="logo-text">
-              Hermes <span className="logo-brand">Crown</span>
-            </span>
-          )}
+          <div className="sidebar-logo">
+            {!sidebarCollapsed && (
+              <>
+                <span className="logo-mark" aria-hidden="true">{'</>'}</span>
+                <span className="logo-text">
+                  Hermes <span className="logo-brand">Console</span>
+                </span>
+              </>
+            )}
+          </div>
+          <button
+            className="sidebar-toggle"
+            onClick={toggleSidebar}
+            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            <CollapseIcon collapsed={sidebarCollapsed} />
+          </button>
         </div>
-        <button className="sidebar-toggle" onClick={toggleSidebar}>
-          {sidebarCollapsed ? '»' : '«'}
-        </button>
-      </div>
 
-      {/* New Chat Button */}
-      <div className="sidebar-new-chat">
-        <button
-          className="new-chat-btn"
-          onClick={handleNewChat}
-          title={t('nav.newChat')}
-          aria-label={t('nav.newChat')}
-        >
-          <span className="new-chat-icon"><PlusIcon /></span>
-          {!sidebarCollapsed && <span className="new-chat-label">{t('nav.newChat')}</span>}
-        </button>
-      </div>
+        <div className="sidebar-new-chat">
+          <button
+            className="new-chat-btn"
+            onClick={handleNewChat}
+            title={t('nav.newChat')}
+            aria-label={t('nav.newChat')}
+          >
+            <span className="new-chat-icon"><PlusIcon /></span>
+            {!sidebarCollapsed && <span className="new-chat-label">{t('nav.newChat')}</span>}
+          </button>
+        </div>
 
-      {/* Navigation */}
-      <nav className="sidebar-nav" role="navigation" aria-label={t('nav.home') === 'Home' ? 'Main navigation' : '主导航'}>
-        <ul className="nav-list" role="list">
-          {navItems.map((item) => (
-            <li key={item.id} className="nav-item">
-              <button
-                className={`nav-link ${activeItem === item.id ? 'nav-link-active' : ''}`}
-                onClick={() => setActiveItem(item.id)}
-                aria-current={activeItem === item.id ? 'page' : undefined}
-                aria-label={item.label}
-              >
-                <span className="nav-icon" aria-hidden="true">{item.icon}</span>
-                {!sidebarCollapsed && (
-                  <>
-                    <span className="nav-label">{item.label}</span>
-                    {item.badge && <span className="nav-badge">{item.badge}</span>}
-                  </>
-                )}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </nav>
+        <nav className="sidebar-nav" role="navigation" aria-label={t('nav.home') === 'Home' ? 'Main navigation' : '主导航'}>
+          <ul className="nav-list" role="list">
+            {navItems.map((item) => (
+              <li key={item.id} className="nav-item">
+                <button
+                  className={`nav-link ${activeItem === item.id ? 'nav-link-active' : ''}`}
+                  onClick={() => setActiveItem(item.id)}
+                  aria-current={activeItem === item.id ? 'page' : undefined}
+                  aria-label={item.label}
+                >
+                  <span className="nav-icon" aria-hidden="true">{item.icon}</span>
+                  {!sidebarCollapsed && (
+                    <>
+                      <span className="nav-label">{item.label}</span>
+                      {item.badge && <span className="nav-badge">{item.badge}</span>}
+                    </>
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </nav>
 
-      {/* Bottom Navigation */}
-      <nav className="sidebar-nav-bottom" role="navigation" aria-label={t('nav.home') === 'Home' ? 'Settings navigation' : '设置导航'}>
-        <ul className="nav-list" role="list">
-          {bottomNavItems.map((item) => (
-            <li key={item.id} className="nav-item">
-              <button
-                className={`nav-link ${activeItem === item.id ? 'nav-link-active' : ''}`}
-                onClick={() => setActiveItem(item.id)}
-                aria-current={activeItem === item.id ? 'page' : undefined}
-                aria-label={item.label}
-              >
-                <span className="nav-icon" aria-hidden="true">{item.icon}</span>
-                {!sidebarCollapsed && (
-                  <>
-                    <span className="nav-label">{item.label}</span>
-                    {item.badge && <span className="nav-badge">{item.badge}</span>}
-                  </>
-                )}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </nav>
-    </aside>
+        <nav className="sidebar-nav-bottom" role="navigation" aria-label={t('nav.home') === 'Home' ? 'Settings navigation' : '设置导航'}>
+          <ul className="nav-list" role="list">
+            {bottomNavItems.map((item) => (
+              <li key={item.id} className="nav-item">
+                <button
+                  className={`nav-link ${activeItem === item.id ? 'nav-link-active' : ''}`}
+                  onClick={() => setActiveItem(item.id)}
+                  aria-current={activeItem === item.id ? 'page' : undefined}
+                  aria-label={item.label}
+                >
+                  <span className="nav-icon" aria-hidden="true">{item.icon}</span>
+                  {!sidebarCollapsed && (
+                    <>
+                      <span className="nav-label">{item.label}</span>
+                      {item.badge && <span className="nav-badge">{item.badge}</span>}
+                    </>
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      </aside>
     </>
   );
 };

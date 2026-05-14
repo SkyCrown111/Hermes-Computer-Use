@@ -41,7 +41,21 @@ Hermes Computer Use 是 [Hermes Agent](https://github.com/hermes-agent/hermes) �
 
 ## 截图
 
-> 截图将在首次发布后添加
+### 首页仪表盘
+
+![首页仪表盘](./public/screenshots/首页.png)
+
+### 会话管理
+
+![会话管理](./public/screenshots/会话页.png)
+
+### 系统监控
+
+![系统监控](./public/screenshots/监控页.png)
+
+### 平台配置
+
+![平台配置](./public/screenshots/平台配置页.png)
 
 ## 安装
 

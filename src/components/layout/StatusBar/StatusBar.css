@@ -1,29 +1,23 @@
-/* Global Status Bar — fixed bottom bar */
+/* Global status bar docked to the app bottom edge */
 .status-bar {
   position: fixed;
   bottom: 0;
-  left: calc(var(--sidebar-width) + var(--session-sidebar-width));
+  left: 0;
   right: 0;
   height: 32px;
-  background: var(--color-surface-container-high);
+  background: var(--color-surface-elevated);
   border-top: 1px solid var(--color-border);
+  backdrop-filter: blur(16px);
   display: flex;
   align-items: center;
   padding: 0 var(--space-4);
   gap: var(--space-4);
   font-size: var(--text-xs);
   color: var(--color-text-secondary);
-  z-index: 1000;
+  z-index: 90;
   user-select: none;
-  transition: left var(--duration-normal) var(--ease-out);
 }
 
-/* When sidebar is collapsed */
-.layout.sidebar-collapsed .status-bar {
-  left: calc(var(--sidebar-collapsed-width) + var(--session-sidebar-width));
-}
-
-/* Left section */
 .status-bar-left {
   display: flex;
   align-items: center;
@@ -32,7 +26,6 @@
   min-width: 0;
 }
 
-/* Right section */
 .status-bar-right {
   display: flex;
   align-items: center;
@@ -40,7 +33,6 @@
   flex-shrink: 0;
 }
 
-/* Gateway status indicator */
 .status-gateway {
   display: flex;
   align-items: center;
@@ -80,14 +72,13 @@
   font-size: var(--text-xs);
 }
 
-/* Model badge */
 .status-model {
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  padding: 2px var(--space-2);
+  padding: 3px 9px;
   background: var(--color-surface-container);
-  border-radius: var(--radius-sm);
+  border-radius: 999px;
   white-space: nowrap;
 }
 
@@ -95,7 +86,6 @@
   font-size: 12px;
 }
 
-/* Token usage */
 .status-tokens {
   display: flex;
   align-items: center;
@@ -109,7 +99,6 @@
   font-size: 11px;
 }
 
-/* Background tasks */
 .status-tasks {
   display: flex;
   align-items: center;
@@ -132,7 +121,6 @@
   color: var(--color-text-tertiary);
 }
 
-/* Separator */
 .status-separator {
   width: 1px;
   height: 14px;
@@ -140,27 +128,14 @@
   flex-shrink: 0;
 }
 
-/* Spinner animation */
 @keyframes status-spin {
   to {
     transform: rotate(360deg);
   }
 }
 
-/* ============================================
-   Responsive Styles
-   ============================================ */
-
-/* Tablet: 768px - 1024px - sidebar auto-collapsed, session sidebar narrower */
-@media (min-width: 768px) and (max-width: 1023px) {
-  .status-bar {
-    left: calc(var(--sidebar-collapsed-width) + 200px);
-  }
-}
-
-/* Mobile: < 768px - no sidebars */
 @media (max-width: 767px) {
   .status-bar {
-    left: 0;
+    padding: 0 12px;
   }
 }

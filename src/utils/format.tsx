@@ -105,11 +105,15 @@ export const getPlatformIcon = (platform: string): React.ReactNode => {
   const icons: Record<string, React.ReactNode> = {
     cli: <TerminalIcon size={14} />,
     weixin: <ChatIcon size={14} />,
+    wechat: <BotIcon size={14} />,
     telegram: <SmartphoneIcon size={14} />,
     discord: <ChatIcon size={14} />,
     slack: <BriefcaseIcon size={14} />,
+    feishu: <BotIcon size={14} />,
+    lark: <BotIcon size={14} />,
     web: <GlobeIcon size={14} />,
     cron: <ClockIcon size={14} />,
+    api_server: <PlugIcon size={14} />,
     api: <PlugIcon size={14} />,
   };
   return icons[platform] || <BotIcon size={14} />;
@@ -119,11 +123,15 @@ export const getPlatformName = (platform: string): string => {
   const names: Record<string, string> = {
     cli: 'CLI',
     weixin: 'WeChat',
+    wechat: 'WeChat Work',
     telegram: 'Telegram',
     discord: 'Discord',
     slack: 'Slack',
+    feishu: 'Feishu',
+    lark: 'Lark',
     web: 'Web',
     cron: 'Cron',
+    api_server: 'API Server',
     api: 'API',
   };
   return names[platform] || platform;

@@ -10,6 +10,7 @@ import type {
   ToggleSkillParams,
   ToggleSkillResponse,
   Toolset,
+  SkillExecutionRecord,
 } from '../types/skill';
 import type { ApiOkResponse } from '../types/common';
 
@@ -54,6 +55,7 @@ export async function getSkillCategories(): Promise<SkillCategoriesResponse> {
 export async function toggleSkill(params: ToggleSkillParams): Promise<ToggleSkillResponse> {
   return apiClient.invoke<ToggleSkillResponse>('toggle_skill', {
     name: params.name,
+    category: params.category,
     enabled: params.enabled,
   });
 }
@@ -69,12 +71,11 @@ export async function createSkill(params: CreateSkillParams): Promise<ApiOkRespo
 }
 
 export async function updateSkill(name: string, category: string, params: UpdateSkillParams): Promise<ApiOkResponse> {
-  return apiClient.invoke<ApiOkResponse>('save_skill', {
-    name,
+  return apiClient.invoke<ApiOkResponse>('update_skill', {
     category,
-    description: params.description,
-    content: params.content,
-    metadata: params.metadata,
+    name,
+    description: params.description || '',
+    content: params.content || '',
   });
 }
 
@@ -97,5 +98,18 @@ export async function getSkillsPath(): Promise<string> {
   } catch (error) {
     logger.debug('[Skills] getSkillsPath failed, using default:', getErrorDetail(error));
     return DEFAULT_PATHS.skills;
+  }
+}
+
+export async function getSkillExecutionHistory(skillName: string, limit?: number, skillCategory?: string): Promise<SkillExecutionRecord[]> {
+  try {
+    return await apiClient.invoke<SkillExecutionRecord[]>('get_skill_execution_history', {
+      skill_name: skillName,
+      limit,
+      skill_category: skillCategory,
+    });
+  } catch (error) {
+    logger.error(`[SkillsApi] getSkillExecutionHistory failed: ${getErrorDetail(error)}`);
+    return [];
   }
 }

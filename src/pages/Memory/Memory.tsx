@@ -117,7 +117,7 @@ const MemoryFileView: React.FC<MemoryFileViewProps> = ({
       lastSavedContentRef.current = editingContent;
       setAutoSaveStatus('idle');
     }
-  }, [isEditing]);
+  }, [isEditing, editingContent]);
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -133,10 +133,10 @@ const MemoryFileView: React.FC<MemoryFileViewProps> = ({
   // Show auto-save status
   const getAutoSaveIndicator = () => {
     if (autoSaveStatus === 'saving') {
-      return <span className="auto-save-indicator saving"><HourglassIcon size={14} /> Saving...</span>;
+      return <span className="auto-save-indicator saving"><HourglassIcon size={14} /> {t('memory.savingStatus')}</span>;
     }
     if (autoSaveStatus === 'saved') {
-      return <span className="auto-save-indicator saved"><CheckIcon size={14} /> Saved</span>;
+      return <span className="auto-save-indicator saved"><CheckIcon size={14} /> {t('memory.savedStatus')}</span>;
     }
     return null;
   };
@@ -314,24 +314,6 @@ export const Memory: React.FC = () => {
     fetchMemory();
   }, [fetchMemory]);
 
-  // 搜索处理 - supports case sensitivity and regex
-  const handleSearch = useCallback((query: string) => {
-    if (!query.trim()) {
-      searchMemory('');
-      setLocalSearchResults([]);
-      return;
-    }
-
-    // Use advanced search with case sensitivity or regex
-    if (searchCaseSensitive || searchRegex) {
-      performAdvancedSearch(query);
-    } else {
-      // Use API search for simple queries
-      searchMemory(query);
-      setLocalSearchResults([]);
-    }
-  }, [searchMemory, searchCaseSensitive, searchRegex]);
-
   // Advanced search implementation
   const performAdvancedSearch = useCallback((query: string) => {
     if (!memoryData) return;
@@ -382,6 +364,24 @@ export const Memory: React.FC = () => {
 
     setLocalSearchResults(results);
   }, [memoryData, activeTab, searchRegex, searchCaseSensitive]);
+
+  // 搜索处理 - supports case sensitivity and regex
+  const handleSearch = useCallback((query: string) => {
+    if (!query.trim()) {
+      searchMemory('');
+      setLocalSearchResults([]);
+      return;
+    }
+
+    // Use advanced search with case sensitivity or regex
+    if (searchCaseSensitive || searchRegex) {
+      performAdvancedSearch(query);
+    } else {
+      // Use API search for simple queries
+      searchMemory(query);
+      setLocalSearchResults([]);
+    }
+  }, [searchMemory, searchCaseSensitive, searchRegex, performAdvancedSearch]);
 
   // 开始编辑
   const handleStartEdit = useCallback((type: MemoryFileType) => {
@@ -461,7 +461,7 @@ export const Memory: React.FC = () => {
               </div>
               {/* Advanced Search Options */}
               <div className="search-options">
-                <label className="search-option" title="Case sensitive">
+                <label className="search-option" title={t('memory.caseSensitive')}>
                   <input
                     type="checkbox"
                     checked={searchCaseSensitive}
@@ -472,7 +472,7 @@ export const Memory: React.FC = () => {
                   />
                   <span>Aa</span>
                 </label>
-                <label className="search-option" title="Regular expression">
+                <label className="search-option" title={t('memory.regex')}>
                   <input
                     type="checkbox"
                     checked={searchRegex}

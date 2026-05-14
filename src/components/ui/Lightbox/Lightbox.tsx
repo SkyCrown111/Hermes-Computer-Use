@@ -1,4 +1,6 @@
 import React, { useEffect, useCallback } from 'react';
+import { XIcon } from '../Icons';
+import { useTranslation } from '../../../hooks/useTranslation';
 import './Lightbox.css';
 
 interface LightboxProps {
@@ -9,6 +11,7 @@ interface LightboxProps {
 }
 
 export const Lightbox: React.FC<LightboxProps> = ({ src, alt, isOpen, onClose }) => {
+  const { t } = useTranslation();
   // Close on escape key
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (e.key === 'Escape') {
@@ -40,9 +43,9 @@ export const Lightbox: React.FC<LightboxProps> = ({ src, alt, isOpen, onClose })
       <button
         className="lightbox-close"
         onClick={onClose}
-        aria-label="Close image preview"
+        aria-label={t('common.closeImagePreview')}
       >
-        <span className="material-symbols-outlined">close</span>
+        <XIcon size={20} />
       </button>
       <div className="lightbox-content">
         <img

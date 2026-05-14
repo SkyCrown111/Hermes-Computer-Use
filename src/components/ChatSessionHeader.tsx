@@ -1,11 +1,10 @@
-// Chat Session Header - Shows session status, token usage, and last update time
 import React, { useMemo } from 'react';
 import { useNavigationStore, useChatStore, useSessionStore } from '../stores';
 import { useTranslation } from '../hooks/useTranslation';
 import { formatNumber } from '../utils/format';
+import { AlertIcon, ClockIcon, TokenIcon } from './ui/Icons';
 
-// Format relative time
-function formatRelativeTime(timestamp: string | undefined): string {
+function formatRelativeTime(timestamp: string | undefined, lang: 'zh' | 'en'): string {
   if (!timestamp) return '';
 
   const now = Date.now();
@@ -16,65 +15,39 @@ function formatRelativeTime(timestamp: string | undefined): string {
   const diffHour = Math.floor(diffMin / 60);
   const diffDay = Math.floor(diffHour / 24);
 
-  if (diffSec < 60) return '刚刚';
-  if (diffMin < 60) return `${diffMin}分钟前`;
-  if (diffHour < 24) return `${diffHour}小时前`;
-  if (diffDay < 7) return `${diffDay}天前`;
+  if (diffSec < 60) return lang === 'zh' ? '刚刚' : 'Just now';
+  if (diffMin < 60) return lang === 'zh' ? `${diffMin}分钟前` : `${diffMin} minutes ago`;
+  if (diffHour < 24) return lang === 'zh' ? `${diffHour}小时前` : `${diffHour} hours ago`;
+  if (diffDay < 7) return lang === 'zh' ? `${diffDay}天前` : `${diffDay} days ago`;
 
-  return new Date(timestamp).toLocaleDateString('zh-CN');
+  return new Date(timestamp).toLocaleDateString(lang === 'zh' ? 'zh-CN' : 'en-US');
 }
 
 export const ChatSessionHeader: React.FC = () => {
-  const { t } = useTranslation();
-
-  // Get current session info
+  const { t, lang } = useTranslation();
   const activeTabId = useNavigationStore((s) => s.activeTabId);
   const openTabs = useNavigationStore((s) => s.openTabs);
   const sessionState = useChatStore((s) => s.sessions[activeTabId || '']);
   const sessions = useSessionStore((s) => s.sessions);
 
-  // Find the session info from sessionStore
-  const sessionInfo = useMemo(() => {
-    return sessions.find(s => s.id === activeTabId);
-  }, [sessions, activeTabId]);
+  const sessionInfo = useMemo(() => sessions.find((s) => s.id === activeTabId), [sessions, activeTabId]);
+  const currentTab = useMemo(() => openTabs.find((tab) => tab.id === activeTabId), [openTabs, activeTabId]);
 
-  // Find the current tab info
-  const currentTab = useMemo(() => {
-    return openTabs.find(tab => tab.id === activeTabId);
-  }, [openTabs, activeTabId]);
-
-  // Calculate total tokens
   const totalTokens = useMemo(() => {
     if (!sessionState) return 0;
-
-    // From token usage in streaming state
-    const streamingTokens = sessionState.tokenUsage?.input_tokens + sessionState.tokenUsage?.output_tokens || 0;
-
-    // From messages
-    const messageTokens = sessionState.messages?.reduce((sum, msg) => {
-      return sum + (msg.totalTokens || 0);
-    }, 0) || 0;
-
+    const streamingTokens =
+      (sessionState.tokenUsage?.input_tokens || 0) + (sessionState.tokenUsage?.output_tokens || 0);
+    const messageTokens =
+      sessionState.messages?.reduce((sum, msg) => sum + (msg.totalTokens || 0), 0) || 0;
     return streamingTokens + messageTokens;
   }, [sessionState]);
 
-  // Get last activity time
   const lastActivity = useMemo(() => {
-    // From session info in store
-    if (sessionInfo?.last_activity_at) {
-      return sessionInfo.last_activity_at;
-    }
-
-    // From last message timestamp
-    if (sessionState?.messages?.length) {
-      const lastMsg = sessionState.messages[sessionState.messages.length - 1];
-      return lastMsg?.timestamp;
-    }
-
+    if (sessionInfo?.last_activity_at) return sessionInfo.last_activity_at;
+    if (sessionState?.messages?.length) return sessionState.messages[sessionState.messages.length - 1]?.timestamp;
     return undefined;
   }, [sessionInfo, sessionState]);
 
-  // Determine session status
   const status = useMemo(() => {
     if (sessionState?.isStreaming) return 'streaming';
     if (sessionState?.error) return 'error';
@@ -82,16 +55,13 @@ export const ChatSessionHeader: React.FC = () => {
     return 'idle';
   }, [sessionState]);
 
-  // Get session title
   const title = currentTab?.title || sessionInfo?.chat_name || t('chat.idle');
 
-  // Don't render if no active session
   if (!activeTabId) return null;
 
   return (
     <div className="chat-session-header">
       <div className="chat-session-header-left">
-        {/* Status indicator */}
         <span className={`chat-session-status ${status}`}>
           {status === 'streaming' && (
             <>
@@ -107,17 +77,16 @@ export const ChatSessionHeader: React.FC = () => {
           )}
           {status === 'error' && (
             <>
-              <span className="material-symbols-outlined status-icon error">error</span>
+              <AlertIcon size={14} className="status-icon error" />
               {t('chat.error')}
             </>
           )}
           {status === 'idle' && t('chat.idle')}
         </span>
 
-        {/* Token usage */}
         {totalTokens > 0 && (
           <span className="chat-session-tokens">
-            <span className="material-symbols-outlined token-icon">token</span>
+            <TokenIcon size={14} className="token-icon" />
             {formatNumber(totalTokens)}t
           </span>
         )}
@@ -128,11 +97,10 @@ export const ChatSessionHeader: React.FC = () => {
       </div>
 
       <div className="chat-session-header-right">
-        {/* Last update time */}
         {lastActivity && (
           <span className="chat-session-last-update">
-            <span className="material-symbols-outlined time-icon">schedule</span>
-            {t('chat.lastUpdate')} {formatRelativeTime(lastActivity)}
+            <ClockIcon size={14} className="time-icon" />
+            {t('chat.lastUpdate')} {formatRelativeTime(lastActivity, lang)}
           </span>
         )}
       </div>

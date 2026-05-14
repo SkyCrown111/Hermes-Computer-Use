@@ -1,15 +1,39 @@
-import React, { useState, useMemo, memo } from 'react';
+import React, { useState, memo } from 'react';
 import type { ToolCallInfo } from '../../stores/chatStore';
 import { TOOL_ICONS } from './constants';
 import { SimpleDiffViewer } from './SimpleDiffViewer';
+import { AlertIcon, CheckIcon, ChevronDownIcon, ChevronUpIcon, EditIcon, FileTextIcon, GlobeIcon, SearchIcon, SparklesIcon, TerminalIcon, ToolIcon, DownloadIcon } from '../ui/Icons';
 
 interface ToolItemProps {
   tool: ToolCallInfo;
   isStreaming?: boolean;
 }
 
+function renderToolIcon(icon: string) {
+  switch (icon) {
+    case 'terminal':
+      return <TerminalIcon size={14} />;
+    case 'search':
+    case 'find_in_page':
+      return <SearchIcon size={14} />;
+    case 'description':
+      return <FileTextIcon size={14} />;
+    case 'edit_document':
+    case 'edit_note':
+      return <EditIcon size={14} />;
+    case 'travel_explore':
+      return <GlobeIcon size={14} />;
+    case 'cloud_download':
+      return <DownloadIcon size={14} />;
+    case 'auto_awesome':
+      return <SparklesIcon size={14} />;
+    default:
+      return <ToolIcon size={14} />;
+  }
+}
+
 const ToolItemComponent: React.FC<ToolItemProps> = ({ tool, isStreaming }) => {
-  const [expanded, setExpanded] = useState(false);
+  const [showDiff, setShowDiff] = useState(false);
   const isRunning = !tool.duration && !tool.is_error && isStreaming;
   const icon = TOOL_ICONS[tool.name] || 'build';
 
@@ -20,84 +44,50 @@ const ToolItemComponent: React.FC<ToolItemProps> = ({ tool, isStreaming }) => {
   const newString = args?.new_string as string | undefined;
   const content = args?.content as string | undefined;
 
-  const isDiffTool = (tool.name === 'edit_file' || tool.name === 'write_file' || tool.name === 'Edit' || tool.name === 'Write') &&
+  const canShowDiff = (tool.name === 'edit_file' || tool.name === 'write_file' || tool.name === 'Edit' || tool.name === 'Write') &&
     (oldString !== undefined || newString !== undefined || content !== undefined);
 
-  const hasExpandableContent = isDiffTool || (args && Object.keys(args).length > 0);
-
-  // Build a compact args summary for the preview line
-  const argsSummary = useMemo(() => {
-    if (!args) return '';
-    const keys = Object.keys(args);
-    if (keys.length === 0) return '';
-    // Show first string value as preview
-    for (const k of keys) {
-      const v = args[k];
-      if (typeof v === 'string' && v.length > 0 && k !== 'old_string' && k !== 'new_string' && k !== 'content') {
-        const preview = v.length > 60 ? v.slice(0, 60) + '...' : v;
-        return `${k}: ${preview}`;
-      }
-    }
-    return keys.join(', ');
-  }, [args]);
-
   return (
-    <div className={`tool-item ${tool.is_error ? 'error' : 'success'}`}>
-      <div
-        className="tool-item-header"
-        onClick={() => hasExpandableContent && setExpanded(!expanded)}
-        {...(hasExpandableContent ? { role: 'button', tabIndex: 0, onKeyDown: (e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpanded(!expanded); } } } : {})}
-      >
-        <span className="material-symbols-outlined tool-item-icon">{icon}</span>
-        <span className="tool-item-name">{tool.name}</span>
+    <div className={`tool-call-card ${showDiff ? 'expanded' : ''} ${tool.is_error ? 'error' : 'success'}`}>
+      <div className="tool-call-header" onClick={() => canShowDiff && setShowDiff(!showDiff)} {...(canShowDiff ? { role: 'button', tabIndex: 0, onKeyDown: (e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setShowDiff(!showDiff); } } } : {})}>
+        <span className="tool-call-icon">{renderToolIcon(icon)}</span>
+        <span className="tool-call-name">{tool.name}</span>
         {filePath && (
-          <span className="tool-item-file">{filePath.split('/').pop()}</span>
+          <span className="tool-call-file">{filePath.split('/').pop()}</span>
         )}
-        {!filePath && argsSummary && (
-          <span className="tool-item-preview">{argsSummary}</span>
+        {tool.preview && !filePath && (
+          <span className="tool-call-preview">{tool.preview.slice(0, 50)}{tool.preview.length > 50 ? '...' : ''}</span>
         )}
-        {!filePath && !argsSummary && tool.preview && (
-          <span className="tool-item-preview">{tool.preview.slice(0, 50)}{tool.preview.length > 50 ? '...' : ''}</span>
-        )}
-        <span className="tool-item-spacer" />
+        <span className="tool-call-spacer" />
         {isRunning && (
-          <span className="tool-item-status running">
-            <span className="material-symbols-outlined spinning">sync</span>
-            running
-          </span>
+          <span className="tool-call-status running">Running...</span>
         )}
         {!isRunning && !tool.is_error && (
-          <span className="tool-item-status success">
-            <span className="material-symbols-outlined">check_circle</span>
+          <span className="tool-call-status success">
+            <CheckIcon size={14} />
             {tool.duration && `${tool.duration.toFixed(0)}ms`}
           </span>
         )}
         {tool.is_error && (
-          <span className="tool-item-status error">
-            <span className="material-symbols-outlined">error</span>
-            failed
+          <span className="tool-call-status error">
+            <AlertIcon size={14} />
+            Failed
           </span>
         )}
-        {hasExpandableContent && (
-          <span className="material-symbols-outlined tool-item-expand">
-            {expanded ? 'expand_less' : 'expand_more'}
+        {canShowDiff && (
+          <span className="tool-call-arrow">
+            {showDiff ? <ChevronUpIcon size={14} /> : <ChevronDownIcon size={14} />}
           </span>
         )}
       </div>
-      {/* Expandable content */}
-      {expanded && (
-        <div className="tool-item-body">
-          {isDiffTool ? (
-            <div className="tool-diff-container">
-              {tool.name === 'Edit' || tool.name === 'edit_file' ? (
-                <SimpleDiffViewer oldStr={oldString || ''} newStr={newString || ''} filePath={filePath} />
-              ) : (
-                <SimpleDiffViewer oldStr="" newStr={content || ''} filePath={filePath} />
-              )}
-            </div>
-          ) : args ? (
-            <pre className="tool-item-args">{JSON.stringify(args, null, 2)}</pre>
-          ) : null}
+      {/* Diff viewer for Edit/Write tools */}
+      {showDiff && canShowDiff && (
+        <div className="tool-call-body">
+          {tool.name === 'Edit' || tool.name === 'edit_file' ? (
+            <SimpleDiffViewer oldStr={oldString || ''} newStr={newString || ''} filePath={filePath} />
+          ) : (
+            <SimpleDiffViewer oldStr="" newStr={content || ''} filePath={filePath} />
+          )}
         </div>
       )}
     </div>

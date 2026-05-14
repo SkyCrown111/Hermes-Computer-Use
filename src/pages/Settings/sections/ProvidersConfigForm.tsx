@@ -61,13 +61,30 @@ const ProvidersConfigForm: React.FC<{
   ];
 
   const maskApiKey = (key: string | undefined): string => {
-    if (!key || key.length < 8) return key || '';
+    if (!key) return '';
+    // If already masked by backend (__MASKED__ format), show a friendly display
+    if (key.startsWith('__MASKED__')) {
+      const suffix = key.replace('__MASKED__', '');
+      return `****${suffix}`;
+    }
+    if (key.length < 8) return key;
     return key.slice(0, 4) + '*'.repeat(Math.min(key.length - 8, 20)) + key.slice(-4);
+  };
+
+  // Check if a key value is a masked placeholder from the backend
+  const isMaskedKey = (key: string | undefined): boolean => {
+    if (!key) return false;
+    return key.startsWith('__MASKED__') || key.startsWith('•') || (key.includes('****') && key.length > 8);
   };
 
   const handleAddProvider = () => {
     if (newProvider.name && newProvider.base_url) {
-      onAddCustomProvider(newProvider);
+      // Don't save masked API keys — only save real keys
+      const providerToSave = { ...newProvider };
+      if (isMaskedKey(providerToSave.api_key)) {
+        delete providerToSave.api_key;
+      }
+      onAddCustomProvider(providerToSave);
       setNewProvider({
         name: '',
         base_url: '',
@@ -82,7 +99,12 @@ const ProvidersConfigForm: React.FC<{
 
   const handleEditProvider = () => {
     if (showEditModal !== null) {
-      onUpdateCustomProvider(showEditModal, newProvider);
+      // Don't save masked API keys — only save real keys
+      const providerToSave = { ...newProvider };
+      if (isMaskedKey(providerToSave.api_key)) {
+        delete providerToSave.api_key;
+      }
+      onUpdateCustomProvider(showEditModal, providerToSave);
       setShowEditModal(null);
       setNewProvider({
         name: '',

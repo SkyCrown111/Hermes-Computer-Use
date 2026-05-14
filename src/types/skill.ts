@@ -65,12 +65,14 @@ export interface UpdateSkillParams {
 
 export interface ToggleSkillParams {
   name: string;
+  category: string;
   enabled: boolean;
 }
 
 export interface ToggleSkillResponse {
   ok: boolean;
   name: string;
+  category: string;
   enabled: boolean;
 }
 

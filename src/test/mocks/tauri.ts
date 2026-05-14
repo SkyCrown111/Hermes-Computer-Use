@@ -5,7 +5,7 @@ interface MockHandler {
   (cmd: string, args?: Record<string, unknown>): unknown;
 }
 
-let mockHandlers: Map<string, MockHandler> = new Map();
+const mockHandlers: Map<string, MockHandler> = new Map();
 let fallbackHandler: MockHandler | null = null;
 
 /**

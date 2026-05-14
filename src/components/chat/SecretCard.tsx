@@ -1,6 +1,7 @@
 import React, { useState, memo } from 'react';
 import { logger } from '../../lib/logger';
 import { useTranslation } from '../../hooks/useTranslation';
+import { EyeIcon, EyeOffIcon, KeyIcon, LockIcon, SaveIcon, XIcon } from '../ui/Icons';
 
 interface SecretCardProps {
   secret: {
@@ -61,7 +62,7 @@ const SecretCardComponent: React.FC<SecretCardProps> = ({ secret, onRespond, onS
     <div className="secret-card">
       <div className="secret-card-header">
         <div className="secret-card-icon">
-          <span className="material-symbols-outlined">key</span>
+          <KeyIcon size={18} />
         </div>
         <div className="secret-card-title">
           <span className="secret-card-label">{t('secret.needsKey')}</span>
@@ -97,13 +98,11 @@ const SecretCardComponent: React.FC<SecretCardProps> = ({ secret, onRespond, onS
             type="button"
             title={showValue ? t('common.hide') : t('common.show')}
           >
-            <span className="material-symbols-outlined">
-              {showValue ? 'visibility_off' : 'visibility'}
-            </span>
+            {showValue ? <EyeOffIcon size={16} /> : <EyeIcon size={16} />}
           </button>
         </div>
         <p className="secret-security-note">
-          <span className="material-symbols-outlined">lock</span>
+          <LockIcon size={14} />
           {t('secret.securityNote')}
         </p>
       </div>
@@ -113,7 +112,7 @@ const SecretCardComponent: React.FC<SecretCardProps> = ({ secret, onRespond, onS
           onClick={handleSkip}
           disabled={responding}
         >
-          <span className="material-symbols-outlined">close</span>
+          <XIcon size={16} />
           {t('secret.skip')}
         </button>
         <button
@@ -121,7 +120,7 @@ const SecretCardComponent: React.FC<SecretCardProps> = ({ secret, onRespond, onS
           onClick={handleSubmit}
           disabled={responding || !value.trim()}
         >
-          <span className="material-symbols-outlined">save</span>
+          <SaveIcon size={16} />
           {t('secret.save')}
         </button>
       </div>
