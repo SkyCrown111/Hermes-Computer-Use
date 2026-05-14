@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { logger } from '../lib/logger';
 import { t } from '../lib/i18n';
 import { useThemeStore } from './themeStore';
-import { restoreMessages, hasPendingSession } from './chatStore';
+import { hasPendingSession, restorePersistedMessages } from './chatPersistence';
 import { getSession } from '../services/sessionApi';
 
 const TAB_STORAGE_KEY = 'hermes-open-tabs';
@@ -182,7 +182,7 @@ export const useNavigationStore = create<NavigationState>((set, get) => ({
       if (!data.openTabs || data.openTabs.length === 0) return;
 
       // Get persisted messages to check if new_ tabs have content
-      const persistedMessages = restoreMessages();
+      const persistedMessages = restorePersistedMessages();
 
       // Filter tabs: keep real session IDs that exist in DB, but only keep new_ tabs if they have messages
       const validTabsPromises: Promise<OpenTab | null>[] = data.openTabs

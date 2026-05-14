@@ -12,3 +12,4 @@ export * from './platform';
 export * from './files';
 export * from './mcp';
 export * from './checkpoint';
+export * from './kanban';

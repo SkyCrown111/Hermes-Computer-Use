@@ -3,14 +3,14 @@
 .cron-jobs-page {
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
+  gap: var(--page-gap);
 }
 
 /* Stats */
 .jobs-stats {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: var(--space-4);
+  gap: 16px;
 }
 
 @media (max-width: 1024px) {
@@ -25,40 +25,43 @@
   }
 }
 
-.stat-card {
+.cron-jobs-page .stat-card {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--space-5);
+  padding: var(--panel-padding-lg);
+  border-radius: var(--panel-radius);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-container-low);
 }
 
-.stat-card .stat-content {
+.cron-jobs-page .stat-card .stat-content {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: var(--space-1);
 }
 
-.stat-card .stat-value {
-  font-size: var(--text-3xl);
-  font-weight: var(--font-bold);
-  color: var(--text-primary);
+.cron-jobs-page .stat-card .stat-value {
+  font-size: 24px;
+  font-weight: 650;
+  color: var(--color-text-primary);
 }
 
-.stat-card .stat-label {
+.cron-jobs-page .stat-card .stat-label {
   font-size: var(--text-sm);
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
 }
 
-.stat-card-success .stat-value {
-  color: var(--accent-success);
+.cron-jobs-page .stat-card-success .stat-value {
+  color: var(--color-success);
 }
 
-.stat-card-warning .stat-value {
-  color: var(--accent-warning);
+.cron-jobs-page .stat-card-warning .stat-value {
+  color: var(--color-warning);
 }
 
-.stat-card-info .stat-value {
+.cron-jobs-page .stat-card-info .stat-value {
   color: var(--color-primary);
 }
 
@@ -67,19 +70,20 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 16px;
 }
 
-.section-title {
-  font-size: var(--text-lg);
-  font-weight: var(--font-semibold);
-  color: var(--text-primary);
+.cron-jobs-page .section-title {
+  font-size: var(--page-title-size);
+  font-weight: 650;
+  color: var(--color-text-primary);
 }
 
 /* Jobs List */
 .jobs-list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: 16px;
 }
 
 /* Job Card */
@@ -87,12 +91,16 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
-  padding: var(--space-5);
+  padding: var(--panel-padding-lg);
+  border-radius: var(--panel-radius);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-container-low);
   transition: all var(--duration-normal) var(--ease-out);
 }
 
 .job-card:hover {
-  border-color: rgba(255, 255, 255, 0.15);
+  background: var(--color-surface-hover);
+  border-color: var(--color-border);
 }
 
 .job-header {
@@ -117,25 +125,25 @@
 .job-name {
   font-size: var(--text-lg);
   font-weight: var(--font-semibold);
-  color: var(--text-primary);
+  color: var(--color-text-primary);
   margin: 0;
 }
 
 .job-status {
   font-size: var(--text-xs);
   padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius-full);
+  border-radius: 999px;
   font-weight: var(--font-medium);
 }
 
 .status-enabled {
   background: rgba(48, 209, 88, 0.15);
-  color: var(--accent-success);
+  color: var(--color-success);
 }
 
 .status-disabled {
   background: rgba(255, 69, 58, 0.15);
-  color: var(--accent-error);
+  color: var(--color-error);
 }
 
 .job-schedule {
@@ -143,7 +151,7 @@
   align-items: center;
   gap: var(--space-2);
   font-size: var(--text-sm);
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
 }
 
 .schedule-icon {
@@ -152,9 +160,9 @@
 
 .schedule-text {
   font-family: var(--font-mono);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--color-surface-container);
   padding: 2px 8px;
-  border-radius: var(--radius-sm);
+  border-radius: 8px;
 }
 
 .next-run {
@@ -169,15 +177,15 @@
 
 .job-prompt {
   padding: var(--space-3);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--color-surface-container);
   border-radius: var(--radius-md);
-  border-left: 3px solid var(--color-primary);
+  border: 1px solid var(--color-border);
 }
 
 .job-prompt p {
   margin: 0;
   font-size: var(--text-sm);
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
   line-height: 1.6;
 }
 
@@ -207,15 +215,15 @@
   padding: var(--space-1) var(--space-2);
   background: var(--color-surface-selected);
   color: var(--color-primary);
-  border-radius: var(--radius-sm);
+  border-radius: 8px;
 }
 
 .deliver-badge {
   font-size: var(--text-xs);
   padding: var(--space-1) var(--space-2);
   background: rgba(90, 200, 250, 0.15);
-  color: var(--accent-secondary);
-  border-radius: var(--radius-sm);
+  color: var(--color-secondary);
+  border-radius: 8px;
 }
 
 .meta-right {
@@ -223,14 +231,15 @@
   align-items: center;
   gap: var(--space-4);
   font-size: var(--text-xs);
-  color: var(--text-tertiary);
+  color: var(--color-text-tertiary);
 }
 
 .job-actions {
   display: flex;
   gap: var(--space-2);
   padding-top: var(--space-3);
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  border-top: 1px solid var(--color-border);
+  flex-wrap: wrap;
 }
 
 /* Form Modal */
@@ -240,8 +249,8 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(8px);
+  background: rgba(27, 28, 26, 0.52);
+  backdrop-filter: blur(14px);
   z-index: 1000;
   display: flex;
   align-items: center;
@@ -250,9 +259,9 @@
 }
 
 .form-modal {
-  background: var(--bg-secondary);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-xl);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 20px;
   width: 100%;
   max-width: 600px;
   max-height: 90vh;
@@ -265,13 +274,13 @@
   align-items: center;
   justify-content: space-between;
   padding: var(--space-5) var(--space-6);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .form-header h2 {
   font-size: var(--text-lg);
   font-weight: var(--font-semibold);
-  color: var(--text-primary);
+  color: var(--color-text-primary);
   margin: 0;
 }
 
@@ -281,17 +290,17 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--color-surface-container);
   border: none;
-  border-radius: var(--radius-md);
-  color: var(--text-secondary);
+  border-radius: 10px;
+  color: var(--color-text-secondary);
   cursor: pointer;
   transition: all var(--duration-fast) var(--ease-out);
 }
 
 .close-button:hover {
-  background: rgba(255, 255, 255, 0.2);
-  color: var(--text-primary);
+  background: var(--color-surface-hover);
+  color: var(--color-text-primary);
 }
 
 .form-content {
@@ -310,7 +319,7 @@
 .field-label {
   font-size: var(--text-sm);
   font-weight: var(--font-medium);
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
 }
 
 .skills-input-row {
@@ -336,7 +345,7 @@
   padding: var(--space-1) var(--space-3);
   background: var(--color-surface-selected);
   color: var(--color-primary);
-  border-radius: var(--radius-full);
+  border-radius: 999px;
   font-size: var(--text-sm);
 }
 
@@ -373,7 +382,8 @@
 .output-item {
   padding: var(--space-4);
   background: rgba(255, 255, 255, 0.03);
-  border-radius: var(--radius-md);
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .output-header {
@@ -389,27 +399,27 @@
 }
 
 .status-success {
-  color: var(--accent-success);
+  color: var(--color-success);
 }
 
 .status-error {
-  color: var(--accent-error);
+  color: var(--color-error);
 }
 
 .output-time {
   font-size: var(--text-xs);
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
 }
 
 .output-duration {
   font-size: var(--text-xs);
-  color: var(--text-tertiary);
+  color: var(--color-text-tertiary);
 }
 
 .output-file {
   font-size: var(--text-xs);
   font-family: var(--font-mono);
-  color: var(--text-tertiary);
+  color: var(--color-text-tertiary);
   word-break: break-all;
 }
 
@@ -473,7 +483,7 @@
 
 .empty-state p {
   font-size: var(--text-lg);
-  color: var(--text-tertiary);
+  color: var(--color-text-tertiary);
 }
 
 /* Error State */
@@ -484,7 +494,7 @@
   padding: var(--space-3);
   border-radius: var(--radius-md);
   background: rgba(255, 69, 58, 0.1);
-  color: var(--accent-error);
+  color: var(--color-error);
   font-size: var(--text-sm);
 }
 
@@ -642,3 +652,4 @@
     font-size: 10px;
   }
 }
+

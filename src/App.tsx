@@ -20,6 +20,8 @@ const ChatPageLazy = lazy(() => import('./pages/Chat').then(m => ({ default: m.C
 const Preferences = lazy(() => import('./pages/Preferences').then(m => ({ default: m.Preferences })));
 const Gateway = lazy(() => import('./pages/Gateway').then(m => ({ default: m.Gateway })));
 const MCP = lazy(() => import('./pages/MCP').then(m => ({ default: m.MCP })));
+const KanbanPage = lazy(() => import('./pages/Kanban').then(m => ({ default: m.KanbanPage })));
+const HelpGuidePage = lazy(() => import('./pages/HelpGuide').then(m => ({ default: m.HelpGuidePage })));
 
 // Suspense fallback with i18n
 const PageFallback: React.FC = () => {
@@ -37,7 +39,7 @@ const PageFallback: React.FC = () => {
       }}
     >
       <div className="loading-spinner" />
-      <span style={{ color: 'var(--text-tertiary)', fontSize: '0.875rem' }}>
+      <span style={{ color: 'var(--color-text-tertiary)', fontSize: '0.875rem' }}>
         {t('loading.loading')}
       </span>
     </div>
@@ -118,8 +120,12 @@ function App() {
           return <Gateway key="gateway" />;
         case 'mcp':
           return <MCP key="mcp" />;
+        case 'kanban':
+          return <KanbanPage key="kanban" />;
         case 'preferences':
           return <Preferences key="preferences" />;
+        case 'help':
+          return <HelpGuidePage key="help" />;
         case 'chat':
           return <ChatPageLazy key="chat" sessionId={chatContext?.sessionId} />;
         case 'dashboard':

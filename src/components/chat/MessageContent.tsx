@@ -3,14 +3,30 @@ import { ToolErrorCard } from './ToolErrorCard';
 import { SessionSearchCard } from './SessionSearchCard';
 import { parseToolJson } from './parseToolJson';
 import { MarkdownRenderer } from '../ui/MarkdownRenderer';
-import { UserIcon, BotIcon } from '../ui/Icons';
-import { useNavigationStore } from '../../stores/navigationStore';
+import {
+  UserIcon,
+  BotIcon,
+  ToolIcon,
+  TerminalIcon,
+  SearchIcon,
+  FileTextIcon,
+  EditIcon,
+  GlobeIcon,
+  DownloadIcon,
+  SparklesIcon,
+  CheckIcon,
+  AlertIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
+  CopyIcon,
+  TrashIcon,
+  RefreshIcon,
+  ThinkingIcon,
+  ExportIcon,
+} from '../ui/Icons';
 import { SimpleDiffViewer } from './SimpleDiffViewer';
-import { TOOL_ICONS } from './constants';
 import type { ChatMessage, ToolCallInfo } from '../../stores/chatStore';
 import type { SessionSearchResult } from './constants';
-
-// ---- Types ----
 
 export interface MessageContentProps {
   message: ChatMessage;
@@ -24,6 +40,7 @@ export interface MessageContentProps {
   onToggleSelectAll: (msgId: string, sessionIds: string[]) => void;
   onBatchDelete: (msgId: string) => void;
   onBatchExport: (msgId: string, sessions: SessionSearchResult[]) => void;
+  onOpenSessionSearchResult?: (session: SessionSearchResult) => void;
   onCopyMessage: (content: string) => void;
   onDeleteMessage: (messageId: string) => void;
   onRegenerate: () => void;
@@ -34,17 +51,41 @@ export interface MessageContentProps {
   t: (key: string) => string;
 }
 
-// ---- Inline Tool Card Component ----
+const getToolIcon = (toolName: string) => {
+  switch (toolName) {
+    case 'terminal':
+      return <TerminalIcon size={16} />;
+    case 'search_files':
+    case 'glob':
+    case 'grep':
+      return <SearchIcon size={16} />;
+    case 'read_file':
+      return <FileTextIcon size={16} />;
+    case 'write_file':
+    case 'edit_file':
+    case 'Edit':
+    case 'Write':
+      return <EditIcon size={16} />;
+    case 'web_search':
+      return <GlobeIcon size={16} />;
+    case 'web_fetch':
+      return <DownloadIcon size={16} />;
+    case 'skill':
+      return <SparklesIcon size={16} />;
+    default:
+      return <ToolIcon size={16} />;
+  }
+};
 
 interface InlineToolCardProps {
   tool: ToolCallInfo;
   isStreaming?: boolean;
+  t: (key: string) => string;
 }
 
-const InlineToolCard: React.FC<InlineToolCardProps> = ({ tool, isStreaming }) => {
+const InlineToolCard: React.FC<InlineToolCardProps> = ({ tool, isStreaming, t }) => {
   const [expanded, setExpanded] = useState(false);
   const isRunning = !tool.duration && !tool.is_error && isStreaming;
-  const icon = TOOL_ICONS[tool.name] || 'build';
 
   const args = tool.args as Record<string, unknown> | undefined;
   const filePath = (args?.file_path || args?.path) as string | undefined;
@@ -59,10 +100,7 @@ const InlineToolCard: React.FC<InlineToolCardProps> = ({ tool, isStreaming }) =>
       tool.name === 'Write') &&
     (oldString !== undefined || newString !== undefined || content !== undefined);
 
-  const formatDuration = (ms: number) => {
-    if (ms < 1000) return `${ms.toFixed(0)}ms`;
-    return `${(ms / 1000).toFixed(1)}s`;
-  };
+  const formatDuration = (ms: number) => (ms < 1000 ? `${ms.toFixed(0)}ms` : `${(ms / 1000).toFixed(1)}s`);
 
   return (
     <div className={`mc-tool-card ${tool.is_error ? 'mc-tool-error' : ''} ${isRunning ? 'mc-tool-running' : ''}`}>
@@ -74,7 +112,7 @@ const InlineToolCard: React.FC<InlineToolCardProps> = ({ tool, isStreaming }) =>
         role={canShowDiff || tool.preview ? 'button' : undefined}
         tabIndex={canShowDiff || tool.preview ? 0 : undefined}
       >
-        <span className="material-symbols-outlined mc-tool-icon">{icon}</span>
+        <span className="mc-tool-icon">{getToolIcon(tool.name)}</span>
         <span className="mc-tool-name">{tool.name}</span>
         {filePath && (
           <span className="mc-tool-filepath" title={filePath}>
@@ -83,39 +121,37 @@ const InlineToolCard: React.FC<InlineToolCardProps> = ({ tool, isStreaming }) =>
         )}
         {!filePath && tool.preview && (
           <span className="mc-tool-preview-text">
-            {tool.preview.length > 60 ? tool.preview.slice(0, 60) + '...' : tool.preview}
+            {tool.preview.length > 60 ? `${tool.preview.slice(0, 60)}...` : tool.preview}
           </span>
         )}
         <span className="mc-tool-spacer" />
         {isRunning && (
           <span className="mc-tool-status mc-tool-status-running">
             <span className="mc-tool-spinner" />
-            running
+            {t('chat.running')}
           </span>
         )}
         {!isRunning && !tool.is_error && (
           <span className="mc-tool-status mc-tool-status-done">
-            <span className="material-symbols-outlined">check_circle</span>
+            <CheckIcon size={14} />
             {tool.duration != null && formatDuration(tool.duration)}
           </span>
         )}
         {tool.is_error && (
           <span className="mc-tool-status mc-tool-status-error">
-            <span className="material-symbols-outlined">error</span>
-            error
+            <AlertIcon size={14} />
+            {t('chat.error')}
           </span>
         )}
         {(canShowDiff || tool.preview) && (
-          <span className="material-symbols-outlined mc-tool-expand">
-            {expanded ? 'expand_less' : 'expand_more'}
+          <span className="mc-tool-expand">
+            {expanded ? <ChevronUpIcon size={16} /> : <ChevronDownIcon size={16} />}
           </span>
         )}
       </div>
       {expanded && (
         <div className="mc-tool-card-body">
-          {canShowDiff && tool.name === ('Edit' as string) ? (
-            <SimpleDiffViewer oldStr={oldString || ''} newStr={newString || ''} filePath={filePath} />
-          ) : canShowDiff && tool.name === ('edit_file' as string) ? (
+          {canShowDiff && (tool.name === 'Edit' || tool.name === 'edit_file') ? (
             <SimpleDiffViewer oldStr={oldString || ''} newStr={newString || ''} filePath={filePath} />
           ) : canShowDiff && (tool.name === 'Write' || tool.name === 'write_file') ? (
             <SimpleDiffViewer oldStr="" newStr={content || ''} filePath={filePath} />
@@ -130,37 +166,33 @@ const InlineToolCard: React.FC<InlineToolCardProps> = ({ tool, isStreaming }) =>
   );
 };
 
-// ---- Thinking Block Component ----
-
 interface ThinkingBlockProps {
   content: string;
   thinkingTime?: number;
   isStreaming?: boolean;
+  t: (key: string) => string;
 }
 
-const ThinkingBlock: React.FC<ThinkingBlockProps> = ({ content, thinkingTime, isStreaming }) => {
+const ThinkingBlock: React.FC<ThinkingBlockProps> = ({ content, thinkingTime, isStreaming, t }) => {
   const [expanded, setExpanded] = useState(false);
 
   if (!content) return null;
 
-  const preview = content.length > 120 ? content.slice(0, 120) + '...' : content;
+  const preview = content.length > 120 ? `${content.slice(0, 120)}...` : content;
   const hasContent = content.length > 0;
 
   return (
     <div className={`mc-thinking-block ${isStreaming && hasContent ? 'mc-thinking-active' : ''}`}>
       <button className="mc-thinking-header" onClick={() => setExpanded((v) => !v)}>
-        <span className="mc-thinking-arrow">{expanded ? '▾' : '▸'}</span>
+        <span className="mc-thinking-arrow">{expanded ? <ChevronUpIcon size={14} /> : <ChevronDownIcon size={14} />}</span>
         <span className="mc-thinking-label">
-          Thinking
+          <ThinkingIcon size={14} />
+          {t('chat.thinking')}
           {isStreaming && hasContent && <span className="mc-thinking-dots" />}
         </span>
-        {!expanded && hasContent && (
-          <span className="mc-thinking-preview">{preview}</span>
-        )}
+        {!expanded && hasContent && <span className="mc-thinking-preview">{preview}</span>}
         {thinkingTime != null && thinkingTime > 0 && (
-          <span className="mc-thinking-time">
-            {(thinkingTime / 1000).toFixed(1)}s
-          </span>
+          <span className="mc-thinking-time">{(thinkingTime / 1000).toFixed(1)}s</span>
         )}
       </button>
       {expanded && (
@@ -171,8 +203,6 @@ const ThinkingBlock: React.FC<ThinkingBlockProps> = ({ content, thinkingTime, is
     </div>
   );
 };
-
-// ---- Component ----
 
 const MessageContentComponent: React.FC<MessageContentProps> = ({
   message,
@@ -186,6 +216,7 @@ const MessageContentComponent: React.FC<MessageContentProps> = ({
   onToggleSelectAll,
   onBatchDelete,
   onBatchExport,
+  onOpenSessionSearchResult,
   onCopyMessage,
   onDeleteMessage,
   onRegenerate,
@@ -201,30 +232,14 @@ const MessageContentComponent: React.FC<MessageContentProps> = ({
   const isUser = role === 'user';
   const isAssistant = role === 'assistant';
 
-  const { cleanContent, errors, sessionSearchResults } = useMemo(
-    () => parseToolJson(msg.content),
-    [msg.content],
-  );
+  const { cleanContent, errors, sessionSearchResults } = useMemo(() => parseToolJson(msg.content), [msg.content]);
 
-  const hasTokens =
-    msg.inputTokens !== undefined || msg.outputTokens !== undefined;
+  const hasTokens = msg.inputTokens !== undefined || msg.outputTokens !== undefined;
 
-  const handleCopy = useCallback(
-    () => onCopyMessage(msg.content),
-    [onCopyMessage, msg.content],
-  );
+  const handleCopy = useCallback(() => onCopyMessage(msg.content), [onCopyMessage, msg.content]);
+  const handleDelete = useCallback(() => onDeleteMessage(msg.id), [onDeleteMessage, msg.id]);
+  const handleStartEdit = useCallback(() => onStartEdit(msg.id, msg.content), [onStartEdit, msg.id, msg.content]);
 
-  const handleDelete = useCallback(
-    () => onDeleteMessage(msg.id),
-    [onDeleteMessage, msg.id],
-  );
-
-  const handleStartEdit = useCallback(
-    () => onStartEdit(msg.id, msg.content),
-    [onStartEdit, msg.id, msg.content],
-  );
-
-  // ---- User Message ----
   if (isUser) {
     return (
       <div
@@ -237,7 +252,7 @@ const MessageContentComponent: React.FC<MessageContentProps> = ({
         {isFirstInGroup && (
           <div className="mc-role-label mc-role-label-user">
             <UserIcon size={14} />
-            <span>You</span>
+            <span>{t('message.you')}</span>
           </div>
         )}
         <div className="mc-message-bubble-user">
@@ -251,42 +266,28 @@ const MessageContentComponent: React.FC<MessageContentProps> = ({
               />
               <div className="mc-edit-actions">
                 <button className="mc-edit-save" onClick={() => onSaveEdit(msg.id)}>
-                  <span className="material-symbols-outlined">check</span>
+                  <CheckIcon size={14} />
                   {t('common.confirm')}
                 </button>
                 <button className="mc-edit-cancel" onClick={onCancelEdit}>
-                  <span className="material-symbols-outlined">close</span>
+                  <AlertIcon size={14} />
                   {t('common.cancel')}
                 </button>
               </div>
             </div>
           ) : (
-            <div className="mc-message-text mc-message-text-user">
-              {cleanContent || msg.content}
-            </div>
+            <div className="mc-message-text mc-message-text-user">{cleanContent || msg.content}</div>
           )}
           {isHovered && editMessageId !== msg.id && (
             <div className="mc-hover-actions mc-hover-actions-user">
-              <button
-                className="mc-action-btn"
-                onClick={handleStartEdit}
-                title={t('message.edit')}
-              >
-                <span className="material-symbols-outlined">edit</span>
+              <button className="mc-action-btn" onClick={handleStartEdit} title={t('message.edit')}>
+                <EditIcon size={14} />
               </button>
-              <button
-                className="mc-action-btn"
-                onClick={handleCopy}
-                title={t('message.copy')}
-              >
-                <span className="material-symbols-outlined">content_copy</span>
+              <button className="mc-action-btn" onClick={handleCopy} title={t('message.copy')}>
+                <CopyIcon size={14} />
               </button>
-              <button
-                className="mc-action-btn mc-action-delete"
-                onClick={handleDelete}
-                title={t('message.delete')}
-              >
-                <span className="material-symbols-outlined">delete</span>
+              <button className="mc-action-btn mc-action-delete" onClick={handleDelete} title={t('message.delete')}>
+                <TrashIcon size={14} />
               </button>
             </div>
           )}
@@ -295,7 +296,6 @@ const MessageContentComponent: React.FC<MessageContentProps> = ({
     );
   }
 
-  // ---- Assistant Message ----
   return (
     <div
       id={`chat-msg-${msg.id}`}
@@ -307,29 +307,27 @@ const MessageContentComponent: React.FC<MessageContentProps> = ({
       {isFirstInGroup && (
         <div className="mc-role-label mc-role-label-assistant">
           <BotIcon size={14} />
-          <span>Assistant</span>
+          <span>{t('message.assistant')}</span>
         </div>
       )}
 
-      {/* Thinking block - rendered above tools and text */}
       {(msg.reasoning || msg.thinking) && (
         <ThinkingBlock
           content={msg.reasoning || msg.thinking || ''}
           thinkingTime={msg.thinkingTime}
           isStreaming={!!msg.thinking && !msg.content}
+          t={t}
         />
       )}
 
-      {/* Tool cards - each tool rendered as individual collapsible card */}
       {msg.tools && msg.tools.length > 0 && (
         <div className="mc-tools-container">
           {msg.tools.map((tool, idx) => (
-            <InlineToolCard key={idx} tool={tool} isStreaming={false} />
+            <InlineToolCard key={idx} tool={tool} isStreaming={false} t={t} />
           ))}
         </div>
       )}
 
-      {/* Tool errors */}
       {errors.length > 0 && (
         <div className="mc-tool-errors">
           {errors.map((err, i) => (
@@ -338,7 +336,6 @@ const MessageContentComponent: React.FC<MessageContentProps> = ({
         </div>
       )}
 
-      {/* Message text content */}
       {editMessageId === msg.id ? (
         <div className="mc-edit-mode">
           <textarea
@@ -349,11 +346,11 @@ const MessageContentComponent: React.FC<MessageContentProps> = ({
           />
           <div className="mc-edit-actions">
             <button className="mc-edit-save" onClick={() => onSaveEdit(msg.id)}>
-              <span className="material-symbols-outlined">check</span>
+              <CheckIcon size={14} />
               {t('common.confirm')}
             </button>
             <button className="mc-edit-cancel" onClick={onCancelEdit}>
-              <span className="material-symbols-outlined">close</span>
+              <AlertIcon size={14} />
               {t('common.cancel')}
             </button>
           </div>
@@ -364,12 +361,9 @@ const MessageContentComponent: React.FC<MessageContentProps> = ({
         </div>
       ) : null}
 
-      {/* Session search results */}
       {sessionSearchResults && sessionSearchResults.results.length > 0 && (() => {
         const msgSelectedIds = selectedSearchResults[msg.id] || [];
-        const allSelected = sessionSearchResults.results.every((r) =>
-          msgSelectedIds.includes(r.session_id),
-        );
+        const allSelected = sessionSearchResults.results.every((r) => msgSelectedIds.includes(r.session_id));
         const selectedCount = msgSelectedIds.length;
         return (
           <div className="mc-session-search-results">
@@ -378,14 +372,9 @@ const MessageContentComponent: React.FC<MessageContentProps> = ({
                 <input
                   type="checkbox"
                   checked={allSelected && selectedCount > 0}
-                  onChange={() =>
-                    onToggleSelectAll(
-                      msg.id,
-                      sessionSearchResults.results.map((r) => r.session_id),
-                    )
-                  }
+                  onChange={() => onToggleSelectAll(msg.id, sessionSearchResults.results.map((r) => r.session_id))}
                 />
-                <span>{sessionSearchResults.results.length} 个会话</span>
+                <span>{sessionSearchResults.results.length} {t('message.sessions')}</span>
               </label>
               <div className="mc-session-search-toolbar-actions">
                 <button
@@ -396,8 +385,8 @@ const MessageContentComponent: React.FC<MessageContentProps> = ({
                     onBatchDelete(msg.id);
                   }}
                 >
-                  <span className="material-symbols-outlined">delete</span>
-                  删除{selectedCount > 0 ? ` (${selectedCount})` : ''}
+                  <TrashIcon size={14} />
+                  {t('message.deleteSelected')}{selectedCount > 0 ? ` (${selectedCount})` : ''}
                 </button>
                 <button
                   className="mc-session-search-toolbar-btn"
@@ -407,8 +396,8 @@ const MessageContentComponent: React.FC<MessageContentProps> = ({
                     onBatchExport(msg.id, sessionSearchResults.results);
                   }}
                 >
-                  <span className="material-symbols-outlined">file_download</span>
-                  导出{selectedCount > 0 ? ` (${selectedCount})` : ''}
+                  <ExportIcon size={14} />
+                  {t('message.exportSelected')}{selectedCount > 0 ? ` (${selectedCount})` : ''}
                 </button>
               </div>
             </div>
@@ -419,14 +408,7 @@ const MessageContentComponent: React.FC<MessageContentProps> = ({
                   result={result}
                   selected={msgSelectedIds.includes(result.session_id)}
                   onToggle={() => onToggleSearchResult(msg.id, result.session_id)}
-                  onClick={() => {
-                    const { openTab } = useNavigationStore.getState();
-                    openTab(
-                      result.session_id,
-                      result.title || `会话 ${result.session_id.slice(0, 8)}`,
-                      'session',
-                    );
-                  }}
+                  onClick={() => onOpenSessionSearchResult?.(result)}
                 />
               ))}
             </div>
@@ -434,53 +416,39 @@ const MessageContentComponent: React.FC<MessageContentProps> = ({
         );
       })()}
 
-      {/* Token usage footer */}
       {isAssistant && hasTokens && (
         <div className="mc-token-usage">
           {msg.inputTokens !== undefined && (
             <span className="mc-token-item">
-              <span className="mc-token-icon">↑</span>
+              <span className="mc-token-icon">In</span>
               {msg.inputTokens.toLocaleString()}
             </span>
           )}
           {msg.outputTokens !== undefined && (
             <span className="mc-token-item">
-              <span className="mc-token-icon">↓</span>
+              <span className="mc-token-icon">Out</span>
               {msg.outputTokens.toLocaleString()}
             </span>
           )}
           {msg.totalTokens !== undefined && (
             <span className="mc-token-item mc-token-total">
-              <span className="mc-token-icon">Σ</span>
+              <span className="mc-token-icon">Total</span>
               {msg.totalTokens.toLocaleString()}
             </span>
           )}
         </div>
       )}
 
-      {/* Hover action buttons */}
       {isHovered && editMessageId !== msg.id && (
         <div className="mc-hover-actions mc-hover-actions-assistant">
-          <button
-            className="mc-action-btn"
-            onClick={handleCopy}
-            title={t('message.copy')}
-          >
-            <span className="material-symbols-outlined">content_copy</span>
+          <button className="mc-action-btn" onClick={handleCopy} title={t('message.copy')}>
+            <CopyIcon size={14} />
           </button>
-          <button
-            className="mc-action-btn"
-            onClick={onRegenerate}
-            title={t('message.regenerate')}
-          >
-            <span className="material-symbols-outlined">replay</span>
+          <button className="mc-action-btn" onClick={onRegenerate} title={t('message.regenerate')}>
+            <RefreshIcon size={14} />
           </button>
-          <button
-            className="mc-action-btn mc-action-delete"
-            onClick={handleDelete}
-            title={t('message.delete')}
-          >
-            <span className="material-symbols-outlined">delete</span>
+          <button className="mc-action-btn mc-action-delete" onClick={handleDelete} title={t('message.delete')}>
+            <TrashIcon size={14} />
           </button>
         </div>
       )}
@@ -488,5 +456,4 @@ const MessageContentComponent: React.FC<MessageContentProps> = ({
   );
 };
 
-// Memoize to prevent re-renders
 export const MessageContent = memo(MessageContentComponent);

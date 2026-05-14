@@ -261,7 +261,7 @@ export const Files: React.FC = () => {
   // 添加工作区
   const handleAddWorkspace = useCallback(async () => {
     if (!newWorkspaceName.trim() || !newWorkspacePath.trim()) {
-      toast.error(t('files.workspaceNameRequired') || 'Please enter workspace name and path');
+      toast.error(t('files.workspaceNameRequired'));
       return;
     }
     const result = await filesApi.addWorkspace(newWorkspaceName, newWorkspacePath);
@@ -271,7 +271,7 @@ export const Files: React.FC = () => {
       setNewWorkspaceName('');
       setNewWorkspacePath('');
       setWorkspaceModal({ isOpen: false, mode: 'add' });
-      toast.success(t('files.workspaceAdded') || 'Workspace added');
+      toast.success(t('files.workspaceAdded'));
     } else {
       toast.error(result.message);
     }
@@ -289,7 +289,7 @@ export const Files: React.FC = () => {
         setWorkspaces([{ id: 'default', name: 'Home', path: '~', isActive: true }]);
         navigateTo('~');
       }
-      toast.success(t('files.workspaceRemoved') || 'Workspace removed');
+      toast.success(t('files.workspaceRemoved'));
     }
   }, [navigateTo, t]);
 
@@ -298,10 +298,10 @@ export const Files: React.FC = () => {
     const isFav = favoriteFiles.some(f => f.path === path);
     if (isFav) {
       await removeFavorite(path);
-      toast.success(t('files.favoriteRemoved') || 'Removed from favorites');
+      toast.success(t('files.favoriteRemoved'));
     } else {
       await addFavorite(path);
-      toast.success(t('files.favoriteAdded') || 'Added to favorites');
+      toast.success(t('files.favoriteAdded'));
     }
   }, [favoriteFiles, removeFavorite, addFavorite, t]);
 
@@ -309,7 +309,7 @@ export const Files: React.FC = () => {
   const handleClearRecentFiles = useCallback(async () => {
     await filesApi.clearRecentFiles();
     loadRecentFiles();
-    toast.success(t('files.recentCleared') || 'Recent files cleared');
+    toast.success(t('files.recentCleared'));
   }, [loadRecentFiles, t]);
 
   // 切换文件选择

@@ -1,6 +1,6 @@
 // ChatPage - Claude Code desktop style: full-width messages, role labels, clean terminal aesthetic
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { streamChatRealtime, checkHermesApiHealth, respondApproval, respondClarify, respondSecret, abortChat } from '../../services/hermesChat';
+import { streamChatRealtime, respondApproval, respondClarify, respondSecret, abortChat } from '../../services/hermesChat';
 import { useSessionStore, useNavigationStore, useChatStore, resolveSessionId } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
 import { logger } from '../../lib/logger';
@@ -193,8 +193,12 @@ const StreamingBlock: React.FC<StreamingBlockProps> = React.memo(({ streamingTex
 
 const EmptyState: React.FC<{ lang: 'zh' | 'en' }> = ({ lang }) => (
   <div className="chat-empty">
+    <div className="empty-eyebrow">
+      <span className="empty-eyebrow-dot" />
+      <span>{lang === 'zh' ? 'Hermes 对话工作台' : 'Hermes conversation workspace'}</span>
+    </div>
     <div className="empty-icon">
-      <TerminalIcon size={28} />
+      <TerminalIcon size={30} />
     </div>
     <h2 className="empty-title">Hermes Agent</h2>
     <p className="empty-subtitle">{lang === 'zh' ? '在下方开始一段对话' : 'Start a conversation below'}</p>
@@ -211,30 +215,6 @@ const EmptyState: React.FC<{ lang: 'zh' | 'en' }> = ({ lang }) => (
         <span className="empty-hint-icon" aria-hidden="true"><TerminalIcon size={16} /></span>
         <span>{lang === 'zh' ? '运行命令和工具' : 'Run commands and tools'}</span>
       </div>
-    </div>
-  </div>
-);
-
-// ---- Status Bar ----
-
-interface StatusBarProps {
-  isStreaming: boolean;
-  apiAvailable: boolean | null;
-  sessionId: string;
-  messageCount: number;
-  lang: 'zh' | 'en';
-}
-
-const StatusBar: React.FC<StatusBarProps> = ({ isStreaming, apiAvailable, sessionId, messageCount, lang }) => (
-  <div className="chat-status-bar">
-    <div className="chat-status-primary">
-      <span className={`chat-status-dot ${isStreaming ? 'streaming' : apiAvailable ? 'ready' : 'offline'}`} />
-      <span>{isStreaming ? (lang === 'zh' ? '流式输出中' : 'Streaming') : apiAvailable ? (lang === 'zh' ? '就绪' : 'Ready') : (lang === 'zh' ? '离线' : 'Offline')}</span>
-    </div>
-    <div className="chat-status-secondary">
-      <span>{messageCount} {lang === 'zh' ? '条消息' : 'messages'}</span>
-      <span className="chat-status-separator">.</span>
-      <span>{sessionId?.slice(0, 8)}</span>
     </div>
   </div>
 );
@@ -278,12 +258,10 @@ export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
   const clearPendingClarify = useChatStore((s) => s.clearPendingClarify);
   const setPendingSecret = useChatStore((s) => s.setPendingSecret);
   const clearPendingSecret = useChatStore((s) => s.clearPendingSecret);
+  const consumePendingPrompt = useChatStore((s) => s.consumePendingPrompt);
 
   // Session store
   const updateSessionActivity = useSessionStore((s) => s.updateSessionActivity);
-
-  // Local state
-  const [apiAvailable, setApiAvailable] = useState<boolean | null>(null);
 
   // Refs
   const chatInputRef = useRef<ChatInputHandle>(null);
@@ -298,11 +276,6 @@ export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
   const streamingText = sessionStreamingText ?? '';
   const reasoningText = sessionReasoningText ?? '';
   const streamingTools = useMemo(() => sessionStreamingTools ?? [], [sessionStreamingTools]);
-
-  // Check API health
-  useEffect(() => {
-    checkHermesApiHealth().then(available => setApiAvailable(available));
-  }, []);
 
   // Request notification permission
   useEffect(() => {
@@ -610,6 +583,20 @@ export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
     }
   }, [effectiveSessionId, addMessage, updateMessage, setStreaming, setStreamingText, setReasoningText, clearReasoningText, clearStreamingTools, updateSessionActivity, clearPendingPermission, clearPendingClarify, clearPendingSecret, setPendingPermission, setPendingClarify, setPendingSecret, t]);
 
+  useEffect(() => {
+    if (!effectiveSessionId) return;
+
+    const { prompt, autoSend } = consumePendingPrompt(effectiveSessionId);
+    if (!prompt) return;
+
+    if (autoSend) {
+      void handleSendMessage(prompt, []);
+      return;
+    }
+
+    chatInputRef.current?.triggerSend(prompt);
+  }, [effectiveSessionId, consumePendingPrompt, handleSendMessage]);
+
   const handleApprovalResponse = useCallback(async (choice: 'once' | 'session' | 'always' | 'deny') => {
     if (!effectiveSessionId || !sessionPendingPermission) return;
     await respondApproval(sessionPendingPermission.id, choice);
@@ -741,14 +728,6 @@ export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
           onStop={handleStop}
           isStreaming={isStreaming}
           hasPendingInput={!!sessionPendingPermission || !!sessionPendingClarify || !!sessionPendingSecret}
-        />
-        {/* Status bar - moved below input */}
-        <StatusBar
-          isStreaming={isStreaming}
-          apiAvailable={apiAvailable}
-          sessionId={effectiveSessionId || ''}
-          messageCount={messages.length}
-          lang={lang}
         />
       </div>
     </div>

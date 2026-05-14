@@ -133,8 +133,10 @@ for category in sorted(os.listdir(skills_dir)):
             metadata = parse_frontmatter(content)
             skill_name = metadata.get("name", item)
 
-            # Use persisted enabled state, default to True
-            enabled = enabled_states.get(skill_name, True)
+            state_key = f"{category}/{skill_name}"
+            # Use persisted enabled state, default to True. Fall back to the
+            # legacy name-only key so existing toggles still apply.
+            enabled = enabled_states.get(state_key, enabled_states.get(skill_name, True))
 
             skill = {
                 "name": skill_name,
@@ -280,7 +282,8 @@ for category in sorted(os.listdir(skills_dir)):
             metadata = parse_frontmatter(content)
             skill_name = metadata.get("name", item)
             if skill_name == target_name or item == target_name:
-                enabled = enabled_states.get(skill_name, True)
+                state_key = category + "/" + skill_name
+                enabled = enabled_states.get(state_key, enabled_states.get(skill_name, True))
                 result = {{
                     "name": skill_name,
                     "description": metadata.get("description"),
@@ -745,14 +748,20 @@ else:
 /// Toggle skill enabled status
 /// Persists the enabled state in a separate state file
 #[tauri::command(rename_all = "snake_case")]
-pub fn toggle_skill(name: String, enabled: bool) -> Result<(), String> {
-    println!("[Skills] Toggling skill '{}' to enabled={}", name, enabled);
+pub fn toggle_skill(category: String, name: String, enabled: bool) -> Result<(), String> {
+    println!(
+        "[Skills] Toggling skill '{}/{}' to enabled={}",
+        category, name, enabled
+    );
 
-    // Validate skill name
-    let _ = validate_skill_identifier(&name)?;
+    // Validate skill identifiers
+    let category = validate_skill_identifier(&category)?;
+    let name = validate_skill_identifier(&name)?;
+    let state_key = format!("{}/{}", category, name);
 
     // Use base64 encoding for safe shell transport
-    let name_b64 = STANDARD.encode(&name);
+    let state_key_b64 = STANDARD.encode(&state_key);
+    let legacy_name_b64 = STANDARD.encode(&name);
 
     let script = format!(
         r#"
@@ -761,7 +770,8 @@ import json
 import base64
 
 states_file = os.path.expanduser("~/.hermes/skill_states.json")
-name = base64.b64decode("{}").decode('utf-8')
+state_key = base64.b64decode("{}").decode('utf-8')
+legacy_name = base64.b64decode("{}").decode('utf-8')
 enabled = {}
 
 # Read existing states
@@ -773,8 +783,10 @@ if os.path.exists(states_file):
     except:
         pass
 
-# Update state
-states[name] = enabled
+# Update state using the fully-qualified key and remove the legacy key to avoid drift
+states[state_key] = enabled
+if legacy_name in states and legacy_name != state_key:
+    del states[legacy_name]
 
 # Write back
 os.makedirs(os.path.dirname(states_file), exist_ok=True)
@@ -783,7 +795,8 @@ with open(states_file, 'w') as f:
 
 print("success")
 "#,
-        name_b64,
+        state_key_b64,
+        legacy_name_b64,
         enabled
     );
 

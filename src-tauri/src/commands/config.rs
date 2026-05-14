@@ -7,9 +7,11 @@
 //! properly read and written.
 
 use super::utils::{create_command, get_hermes_data_dir};
+use crate::core::config_lock::ConfigLock;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::path::PathBuf;
 
 // ============================================================================
 // Config Structs
@@ -191,6 +193,25 @@ fn is_masked_api_key(value: &str) -> bool {
 // ============================================================================
 // File Helpers
 // ============================================================================
+
+/// Get config file path in WSL
+fn get_wsl_config_path() -> PathBuf {
+    // For WSL, we use the Windows path that maps to ~/.hermes/config.yaml
+    // This allows us to use Rust's file operations with ConfigLock
+    let home = std::env::var("USERPROFILE").unwrap_or_else(|_| String::from("C:\\Users\\Default"));
+    PathBuf::from(home)
+        .join("AppData")
+        .join("Local")
+        .join("Packages")
+        .join("CanonicalGroupLimited.Ubuntu_79rhkp1fndgsc")
+        .join("LocalState")
+        .join("rootfs")
+        .join("home")
+        // Get WSL username - fallback to "user"
+        .join(std::env::var("USER").unwrap_or_else(|_| String::from("user")))
+        .join(".hermes")
+        .join("config.yaml")
+}
 
 /// Read file content, trying WSL first then Windows
 fn read_file_content(path_in_hermes: &str) -> Option<String> {
@@ -408,12 +429,111 @@ fn parse_config(yaml_content: &str) -> HermesConfig {
 }
 
 // ============================================================================
-// YAML Merge -?writes config by reading-modifying-writing config.yaml
+// YAML Merge - writes config by reading-modifying-writing config.yaml
 // ============================================================================
+
+/// Merge a section into the existing config.yaml using ConfigLock for safe concurrent access.
+/// This function uses the ConfigLock module to ensure thread-safe configuration updates.
+async fn yaml_merge_section_with_lock(section: &str, data: &serde_json::Value) -> Result<(), String> {
+    // Validate section name
+    if section.chars().any(|c| !c.is_alphanumeric() && c != '_' && c != '-') {
+        return Err(format!("Invalid section name: {}", section));
+    }
+
+    // Strip masked API keys before writing - they are display-only markers
+    let mut clean_data = data.clone();
+    if section == "model" {
+        if let Some(obj) = clean_data.as_object_mut() {
+            if let Some(api_key) = obj.get("api_key").and_then(|v| v.as_str()) {
+                if is_masked_api_key(api_key) {
+                    obj.remove("api_key");
+                }
+            }
+        }
+    }
+    if section == "providers" {
+        if let Some(obj) = clean_data.as_object_mut() {
+            if let Some(custom_providers) = obj.get_mut("custom_providers").and_then(|v| v.as_array_mut()) {
+                for provider in custom_providers.iter_mut() {
+                    if let Some(p) = provider.as_object_mut() {
+                        if let Some(api_key) = p.get("api_key").and_then(|v| v.as_str()) {
+                            if is_masked_api_key(api_key) {
+                                p.remove("api_key");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Get config path - try WSL path first
+    let config_path = get_wsl_config_path();
+    
+    // Create ConfigLock instance
+    let config_lock = ConfigLock::new(config_path.clone());
+    
+    // Acquire lock
+    let mut guard = config_lock.acquire().await?;
+    
+    // Read existing config
+    let mut config = config_lock.read_config().await.unwrap_or_else(|_| {
+        serde_yaml::Value::Mapping(serde_yaml::Mapping::new())
+    });
+    
+    // Ensure top-level is a mapping
+    let config_map = match config.as_mapping_mut() {
+        Some(m) => m,
+        None => {
+            config = serde_yaml::Value::Mapping(serde_yaml::Mapping::new());
+            config.as_mapping_mut().unwrap()
+        }
+    };
+    
+    // Handle section key mapping (frontend 'checkpoint' -> YAML 'checkpoints')
+    let yaml_section = if section == "checkpoint" {
+        "checkpoints"
+    } else {
+        section
+    };
+    
+    // Convert clean_data to serde_yaml::Value
+    let yaml_data = serde_yaml::to_value(&clean_data)
+        .map_err(|e| format!("Failed to convert data to YAML: {}", e))?;
+    
+    // Merge: for dict sections, deep-update; otherwise replace
+    let section_key = serde_yaml::Value::String(yaml_section.to_string());
+    
+    if let Some(existing) = config_map.get_mut(&section_key) {
+        if let (Some(existing_map), Some(new_map)) = (existing.as_mapping_mut(), yaml_data.as_mapping()) {
+            // Deep merge for mappings
+            for (k, v) in new_map.iter() {
+                // Skip None values (they mean "don't update this field")
+                if !v.is_null() {
+                    existing_map.insert(k.clone(), v.clone());
+                }
+            }
+        } else {
+            // Replace for non-mappings
+            *existing = yaml_data;
+        }
+    } else {
+        // Insert new section
+        config_map.insert(section_key, yaml_data);
+    }
+    
+    // Write back with lock
+    config_lock.write_config(&mut guard, &config).await?;
+    
+    println!("[Config] Section '{}' merged successfully with ConfigLock", section);
+    Ok(())
+}
 
 /// Merge a section into the existing config.yaml using Python + PyYAML.
 /// This replaces the old `hermes_config_set` approach which relied on a CLI
 /// command that may not exist. Uses base64-encoded payload via stdin.
+/// 
+/// NOTE: This is the legacy implementation. New code should use yaml_merge_section_with_lock.
 fn yaml_merge_section(section: &str, data: &serde_json::Value) -> Result<(), String> {
     // Validate section name
     if section.chars().any(|c| !c.is_alphanumeric() && c != '_' && c != '-') {
@@ -609,92 +729,82 @@ fn mask_config_api_keys(config: &mut HermesConfig) {
 
 /// Save Hermes configuration
 #[tauri::command(rename_all = "snake_case")]
-pub fn save_config(config: HermesConfig) -> Result<(), String> {
+pub async fn save_config(config: HermesConfig) -> Result<(), String> {
     println!("[Config] Saving configuration...");
     // SECURITY: Do NOT log config details as they may contain API keys
 
-    // If raw content is provided, write directly using base64 encoding
+    // If raw content is provided, write directly using ConfigLock
     if let Some(raw) = &config.raw {
-        let encoded = STANDARD.encode(raw);
-        let script = format!(
-            r#"
-import os, base64
-filepath = os.path.expanduser("~/.hermes/config.yaml")
-os.makedirs(os.path.dirname(filepath), exist_ok=True)
-content = base64.b64decode("{}").decode('utf-8')
-with open(filepath, 'w', encoding='utf-8') as f:
-    f.write(content)
-print("success")
-"#,
-            encoded
-        );
-
-        let output = create_command("wsl")
-            .args(["python3", "-c", &script])
-            .output();
-
-        if let Ok(out) = output {
-            if out.status.success() {
-                println!("[Config] Raw configuration saved to WSL");
-                return Ok(());
-            }
-        }
+        let config_path = get_wsl_config_path();
+        let config_lock = ConfigLock::new(config_path);
+        
+        // Validate YAML before writing
+        config_lock.validate_yaml(raw).await?;
+        
+        // Acquire lock and write
+        let mut guard = config_lock.acquire().await?;
+        let yaml_value = serde_yaml::from_str(raw)
+            .map_err(|e| format!("Failed to parse YAML: {}", e))?;
+        config_lock.write_config(&mut guard, &yaml_value).await?;
+        
+        println!("[Config] Raw configuration saved with ConfigLock");
+        return Ok(());
     }
 
-    // Structured save: merge each section via YAML
+    // Structured save: merge each section via YAML with ConfigLock
     if let Some(model) = &config.model {
         let data = serde_json::to_value(model)
             .map_err(|e| format!("Failed to serialize model config: {}", e))?;
-        yaml_merge_section("model", &data)?;
+        yaml_merge_section_with_lock("model", &data).await?;
     }
 
     if let Some(agent) = &config.agent {
         let data = serde_json::to_value(agent)
             .map_err(|e| format!("Failed to serialize agent config: {}", e))?;
-        yaml_merge_section("agent", &data)?;
+        yaml_merge_section_with_lock("agent", &data).await?;
     }
 
     if let Some(terminal) = &config.terminal {
         let data = serde_json::to_value(terminal)
             .map_err(|e| format!("Failed to serialize terminal config: {}", e))?;
-        yaml_merge_section("terminal", &data)?;
+        yaml_merge_section_with_lock("terminal", &data).await?;
     }
 
     if let Some(compression) = &config.compression {
         let data = serde_json::to_value(compression)
             .map_err(|e| format!("Failed to serialize compression config: {}", e))?;
-        yaml_merge_section("compression", &data)?;
+        yaml_merge_section_with_lock("compression", &data).await?;
     }
 
     if let Some(checkpoint) = &config.checkpoint {
         let data = serde_json::to_value(checkpoint)
             .map_err(|e| format!("Failed to serialize checkpoint config: {}", e))?;
-        yaml_merge_section("checkpoint", &data)?;
+        yaml_merge_section_with_lock("checkpoint", &data).await?;
     }
 
     if let Some(memory) = &config.memory {
         let data = serde_json::to_value(memory)
             .map_err(|e| format!("Failed to serialize memory config: {}", e))?;
-        yaml_merge_section("memory", &data)?;
+        yaml_merge_section_with_lock("memory", &data).await?;
     }
 
     if let Some(approval) = &config.approval {
         let data = serde_json::to_value(approval)
             .map_err(|e| format!("Failed to serialize approval config: {}", e))?;
-        yaml_merge_section("approval", &data)?;
+        yaml_merge_section_with_lock("approval", &data).await?;
     }
 
     if let Some(providers) = &config.providers {
         let data = serde_json::to_value(providers)
             .map_err(|e| format!("Failed to serialize providers config: {}", e))?;
-        yaml_merge_section("providers", &data)?;
+        yaml_merge_section_with_lock("providers", &data).await?;
     }
 
     if let Some(auxiliary) = &config.auxiliary {
-        yaml_merge_section("auxiliary", auxiliary)?;
+        yaml_merge_section_with_lock("auxiliary", auxiliary).await?;
     }
 
-    println!("[Config] Configuration saved successfully via YAML merge");
+    println!("[Config] Configuration saved successfully with ConfigLock");
     Ok(())
 }
 
@@ -757,37 +867,24 @@ pub fn get_config_raw() -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({ "yaml": "" }))
 }
 
-/// Update raw config.yaml content using base64 encoding
+/// Update raw config.yaml content using ConfigLock
 #[tauri::command(rename_all = "snake_case")]
-pub fn update_config_raw(yaml_text: String) -> Result<(), String> {
+pub async fn update_config_raw(yaml_text: String) -> Result<(), String> {
     println!("[Config] Updating raw config...");
 
-    let encoded = STANDARD.encode(&yaml_text);
+    let config_path = get_wsl_config_path();
+    let config_lock = ConfigLock::new(config_path);
+    
+    // Validate YAML before writing
+    config_lock.validate_yaml(&yaml_text).await?;
+    
+    // Acquire lock and write
+    let mut guard = config_lock.acquire().await?;
+    let yaml_value = serde_yaml::from_str(&yaml_text)
+        .map_err(|e| format!("Failed to parse YAML: {}", e))?;
+    config_lock.write_config(&mut guard, &yaml_value).await?;
 
-    let script = format!(
-        r#"
-import os, base64
-filepath = os.path.expanduser("~/.hermes/config.yaml")
-os.makedirs(os.path.dirname(filepath), exist_ok=True)
-content = base64.b64decode("{}").decode('utf-8')
-with open(filepath, 'w', encoding='utf-8') as f:
-    f.write(content)
-print("success")
-"#,
-        encoded
-    );
-
-    let output = create_command("wsl")
-        .args(["python3", "-c", &script])
-        .output()
-        .map_err(|e| format!("Failed to update config: {}", e))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Failed to update config: {}", stderr));
-    }
-
-    println!("[Config] Raw config updated successfully");
+    println!("[Config] Raw config updated successfully with ConfigLock");
     Ok(())
 }
 
@@ -811,13 +908,13 @@ pub fn get_config_section(section: String) -> Result<serde_json::Value, String> 
     }))
 }
 
-/// Update a specific config section using YAML merge
+/// Update a specific config section using ConfigLock
 #[tauri::command(rename_all = "snake_case")]
-pub fn update_config_section(section: String, data: serde_json::Value) -> Result<serde_json::Value, String> {
+pub async fn update_config_section(section: String, data: serde_json::Value) -> Result<serde_json::Value, String> {
     println!("[Config] Updating config section: {}", section);
 
-    // Use YAML merge instead of broken hermes_config_set CLI
-    yaml_merge_section(&section, &data)?;
+    // Use ConfigLock for safe concurrent access
+    yaml_merge_section_with_lock(&section, &data).await?;
 
     Ok(serde_json::json!({
         "ok": true,

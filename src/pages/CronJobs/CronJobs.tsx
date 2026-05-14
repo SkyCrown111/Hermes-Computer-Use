@@ -106,8 +106,8 @@ export const CronJobs: React.FC = () => {
     // Validate schedule
     const validation = validateSchedule(formData.schedule);
     if (!validation.valid) {
-      setScheduleError(validation.error || 'Invalid schedule');
-      toast.error(validation.error || 'Invalid schedule format');
+      setScheduleError(validation.error || t('tasks.invalidSchedule'));
+      toast.error(t('tasks.invalidSchedule'), validation.error);
       return;
     }
 
@@ -132,8 +132,8 @@ export const CronJobs: React.FC = () => {
     // Validate schedule
     const validation = validateSchedule(formData.schedule);
     if (!validation.valid) {
-      setScheduleError(validation.error || 'Invalid schedule');
-      toast.error(validation.error || 'Invalid schedule format');
+      setScheduleError(validation.error || t('tasks.invalidSchedule'));
+      toast.error(t('tasks.invalidSchedule'), validation.error);
       return;
     }
 

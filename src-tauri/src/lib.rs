@@ -3,8 +3,12 @@
 //! This module provides the main entry point for the Tauri application
 //! and registers all commands for interacting with Hermes Agent data.
 
-// Import commands module
+// Import core modules
+mod core;
+mod features;
 mod commands;
+
+use std::sync::Arc;
 
 // Import Manager trait for webview window access
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
@@ -14,6 +18,8 @@ use tauri::Manager;
 // Re-export commands for handler registration
 use commands::{
     abort_chat,
+    add_kanban_comment,
+    add_kanban_link,
     add_mcp_server,
     append_memory,
     check_data_dir_exists,
@@ -24,10 +30,13 @@ use commands::{
     copy_file,
     create_checkpoint,
     create_directory,
+    create_kanban_board,
+    create_kanban_task,
     create_skill,
     delete_checkpoint,
     delete_cron_job,
     delete_file,
+    delete_kanban_task,
     delete_memory_section,
     delete_session,
     delete_skill,
@@ -45,6 +54,11 @@ use commands::{
     get_data_dir,
     get_file_tree,
     get_gateway_status,
+    get_kanban_board,
+    get_current_kanban_board,
+    get_kanban_stats,
+    get_kanban_task,
+    get_kanban_tenants,
     get_log_components,
     get_log_stats,
     get_logs,
@@ -71,6 +85,7 @@ use commands::{
     get_wechat_qrcode,
     health_check,
     list_checkpoints,
+    list_kanban_boards,
     list_cron_jobs,
     list_directory,
     list_mcp_servers,
@@ -79,11 +94,13 @@ use commands::{
     load_config,
     mark_platform_chat_read,
     move_file,
+    move_kanban_task,
     pause_cron_job,
     read_file,
     read_file_binary,
     reconnect_platform,
     reload_gateway_config,
+    remove_kanban_link,
     remove_mcp_server,
     respond_approval,
     respond_clarify,
@@ -95,6 +112,7 @@ use commands::{
     save_cron_job,
     save_memory,
     save_skill,
+    set_kanban_board_archived,
     update_skill,
     get_skill_execution_history,
     search_memories,
@@ -107,6 +125,7 @@ use commands::{
     stream_chat_message,
     stream_chat_realtime,
     stream_chat_with_progress,
+    switch_kanban_board,
     test_mcp_connection,
     test_platform_connection,
     toggle_cron_job,
@@ -114,6 +133,8 @@ use commands::{
     trigger_cron_job,
     update_config_raw,
     update_config_section,
+    update_kanban_board,
+    update_kanban_task,
     update_mcp_server,
     update_platform_config,
     update_session_title,
@@ -135,13 +156,44 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
+            // Initialize core modules
+            let event_bus = Arc::new(core::EventBus::new(app.handle().clone()));
+            let process_manager = Arc::new(core::ProcessManager::new(event_bus.clone()));
+            let hermes_cli = Arc::new(core::HermesCli::new());
+            let config_lock = Arc::new(core::ConfigLock::new(
+                std::path::PathBuf::from(shellexpand::tilde("~/.hermes/config.yaml").to_string())
+            ));
+
+            // Initialize feature modules
+            let mcp_manager = Arc::new(features::McpServerManager::new(
+                process_manager.clone(),
+                hermes_cli.clone(),
+                config_lock.clone(),
+                event_bus.clone(),
+            ));
+
+            let gateway_manager = Arc::new(features::GatewayManager::new(
+                hermes_cli.clone(),
+                event_bus.clone(),
+            ));
+
+            // Store managers in app state
+            app.manage(mcp_manager);
+            app.manage(gateway_manager);
+            app.manage(process_manager);
+            app.manage(hermes_cli);
+            app.manage(config_lock);
+            app.manage(event_bus);
+
             // Auto-start Hermes Gateway on app launch
             println!("[HermesApp] Auto-starting Gateway...");
             // Run in background to not block startup
-            std::thread::spawn(|| {
-                std::thread::sleep(std::time::Duration::from_secs(2));
-                match crate::commands::start_hermes_gateway() {
-                    Ok(msg) => println!("[HermesApp] {}", msg),
+            let gateway_mgr = app.state::<Arc<features::GatewayManager>>();
+            let gateway_mgr_clone = gateway_mgr.inner().clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                match gateway_mgr_clone.start_gateway().await {
+                    Ok(_) => println!("[HermesApp] Gateway started successfully"),
                     Err(e) => eprintln!("[HermesApp] Failed to start gateway: {}", e),
                 }
             });
@@ -196,6 +248,7 @@ pub fn run() {
 
             // Minimize to tray on close instead of quitting
             if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_decorations(false);
                 let handle = app.handle().clone();
                 window.on_window_event(move |event| {
                     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -321,6 +374,24 @@ pub fn run() {
             get_tool_schema,
             invoke_tool,
             list_toolsets,
+            // Kanban
+            get_kanban_board,
+            list_kanban_boards,
+            get_current_kanban_board,
+            switch_kanban_board,
+            create_kanban_board,
+            update_kanban_board,
+            set_kanban_board_archived,
+            get_kanban_task,
+            get_kanban_stats,
+            get_kanban_tenants,
+            create_kanban_task,
+            update_kanban_task,
+            delete_kanban_task,
+            move_kanban_task,
+            add_kanban_comment,
+            add_kanban_link,
+            remove_kanban_link,
             // Chat interrupt
             interrupt_session,
         ])

@@ -55,7 +55,7 @@ const getEventColor = (eventType: ConnectionEvent['event_type']): string => {
     case 'connect': return 'var(--color-success)';
     case 'disconnect': return 'var(--color-warning)';
     case 'error': return 'var(--color-error)';
-    default: return 'var(--text-tertiary)';
+    default: return 'var(--color-text-tertiary)';
   }
 };
 

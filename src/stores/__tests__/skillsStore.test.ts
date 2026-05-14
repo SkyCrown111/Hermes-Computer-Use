@@ -8,6 +8,7 @@ vi.mock('../../services/skillsApi', () => ({
   listSkills: vi.fn(),
   getSkillCategories: vi.fn(),
   getSkillDetail: vi.fn(),
+  getSkillExecutionHistory: vi.fn(),
   toggleSkill: vi.fn(),
   createSkill: vi.fn(),
   deleteSkill: vi.fn(),
@@ -41,6 +42,8 @@ describe('SkillsStore', () => {
       searchQuery: '',
       selectedSkill: null,
       isLoadingDetail: false,
+      executionHistory: [],
+      isLoadingHistory: false,
       error: null,
     });
     vi.clearAllMocks();
@@ -110,9 +113,9 @@ describe('SkillsStore', () => {
         ],
       });
 
-      vi.mocked(skillsApi.toggleSkill).mockResolvedValue({ ok: true, name: 'code_review', enabled: false });
+      vi.mocked(skillsApi.toggleSkill).mockResolvedValue({ ok: true, name: 'code_review', category: 'dev', enabled: false });
 
-      await useSkillsStore.getState().toggleSkill('code_review', false);
+      await useSkillsStore.getState().toggleSkill('dev', 'code_review', false);
 
       const skill = useSkillsStore.getState().skills.find(s => s.name === 'code_review');
       expect(skill?.enabled).toBe(false);
@@ -164,6 +167,71 @@ describe('SkillsStore', () => {
       });
 
       expect(result).toBe(true);
+    });
+
+    it('should create replacement before deleting original when renaming', async () => {
+      vi.mocked(skillsApi.createSkill).mockResolvedValue({ ok: true });
+      vi.mocked(skillsApi.deleteSkill).mockResolvedValue({ ok: true });
+      vi.mocked(skillsApi.listSkills).mockResolvedValue([]);
+
+      await useSkillsStore.getState().updateSkill('dev', 'old_name', {
+        name: 'new_name',
+        category: 'ops',
+        description: 'Updated',
+        content: '# Updated',
+      });
+
+      const createOrder = vi.mocked(skillsApi.createSkill).mock.invocationCallOrder[0];
+      const deleteOrder = vi.mocked(skillsApi.deleteSkill).mock.invocationCallOrder[0];
+      expect(createOrder).toBeLessThan(deleteOrder);
+    });
+
+    it('should not delete original skill if replacement creation fails', async () => {
+      vi.mocked(skillsApi.createSkill).mockRejectedValue(new Error('Create failed'));
+
+      const result = await useSkillsStore.getState().updateSkill('dev', 'old_name', {
+        name: 'new_name',
+        category: 'ops',
+        description: 'Updated',
+        content: '# Updated',
+      });
+
+      expect(result).toBe(false);
+      expect(skillsApi.deleteSkill).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('fetchExecutionHistory', () => {
+    it('should filter history to the selected category', async () => {
+      vi.mocked(skillsApi.getSkillExecutionHistory).mockResolvedValue([
+        {
+          id: '1',
+          skill_name: 'code_review',
+          skill_category: 'dev',
+          executed_at: '2025-01-01T00:00:00Z',
+          status: 'success',
+        },
+        {
+          id: '2',
+          skill_name: 'code_review',
+          skill_category: 'ops',
+          executed_at: '2025-01-02T00:00:00Z',
+          status: 'success',
+        },
+      ]);
+
+      await useSkillsStore.getState().fetchExecutionHistory('code_review', 'dev');
+
+      expect(skillsApi.getSkillExecutionHistory).toHaveBeenCalledWith('code_review', 20, 'dev');
+      expect(useSkillsStore.getState().executionHistory).toEqual([
+        {
+          id: '1',
+          skill_name: 'code_review',
+          skill_category: 'dev',
+          executed_at: '2025-01-01T00:00:00Z',
+          status: 'success',
+        },
+      ]);
     });
   });
 

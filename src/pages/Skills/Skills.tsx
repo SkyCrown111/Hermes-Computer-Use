@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+﻿import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { Card, Button, Input, ConfirmModal } from '../../components';
 import { PlusIcon, XIcon, EditIcon, TrashIcon, SearchIcon, WarningIcon, FolderIcon, TargetIcon, PlayIcon, ClockIcon, CopyIcon, CheckIcon, RefreshIcon } from '../../components';
-import { useSkillsStore, useNavigationStore } from '../../stores';
+import { useSkillsStore, useNavigationStore, useChatStore } from '../../stores';
+import type { Skill, SkillDetail } from '../../types/skill';
 import { useTranslation } from '../../hooks/useTranslation';
 import { logger } from '../../lib/logger';
 import { toast } from '../../stores/toastStore';
@@ -38,9 +39,35 @@ const formatRelativeTime = (dateStr: string, lang: 'zh' | 'en'): string => {
   const diffDays = Math.floor(diffMs / 86400000);
 
   if (diffMins < 1) return lang === 'zh' ? '刚刚' : 'Just now';
-  if (diffMins < 60) return lang === 'zh' ? `${diffMins}分钟前` : `${diffMins} min ago`;
-  if (diffHours < 24) return lang === 'zh' ? `${diffHours}小时前` : `${diffHours}h ago`;
-  return lang === 'zh' ? `${diffDays}天前` : `${diffDays}d ago`;
+  if (diffMins < 60) return lang === 'zh' ? `${diffMins} 分钟前` : `${diffMins} min ago`;
+  if (diffHours < 24) return lang === 'zh' ? `${diffHours} 小时前` : `${diffHours}h ago`;
+  return lang === 'zh' ? `${diffDays} 天前` : `${diffDays}d ago`;
+};
+
+const buildSkillExecutionPrompt = (
+  skill: Pick<Skill, 'name' | 'category' | 'description'>,
+  lang: 'zh' | 'en',
+  options?: {
+    detailContent?: string;
+    inputText?: string;
+    parameters?: Record<string, string>;
+  }
+): string => {
+  const parameterEntries = Object.entries(options?.parameters || {}).filter(([key, value]) => key.trim() && value.trim());
+  const parameterBlock = parameterEntries.length > 0
+    ? `\nParameters:\n${parameterEntries.map(([key, value]) => `- ${key}: ${value}`).join('\n')}`
+    : '';
+  const detailBlock = options?.detailContent
+    ? `\nSkill content:\n\`\`\`md\n${options.detailContent}\n\`\`\`\n`
+    : '';
+  const userTask = options?.inputText?.trim()
+    || (lang === 'zh'
+      ? '请使用这个 skill 开始处理任务，并在必要时先说明你将如何使用它。'
+      : 'Use this skill to start the task, and explain how you will apply it if needed.');
+
+  return lang === 'zh'
+    ? `请使用 skill "${skill.name}"（分类：${skill.category}）处理下面的任务。\n\nSkill 描述：${skill.description || '无'}${parameterBlock}${detailBlock}\n用户任务：\n${userTask}`
+    : `Use the skill "${skill.name}" (category: ${skill.category}) for the task below.\n\nSkill description: ${skill.description || 'None'}${parameterBlock}${detailBlock}\nUser task:\n${userTask}`;
 };
 
 export const Skills: React.FC = () => {
@@ -48,6 +75,7 @@ export const Skills: React.FC = () => {
   // Individual Zustand selectors to avoid unnecessary re-renders
   const openTab = useNavigationStore(s => s.openTab);
   const setActiveItem = useNavigationStore(s => s.setActiveItem);
+  const queuePendingPrompt = useChatStore(s => s.queuePendingPrompt);
 
   const skills = useSkillsStore(s => s.skills);
   const isLoadingSkills = useSkillsStore(s => s.isLoadingSkills);
@@ -68,7 +96,6 @@ export const Skills: React.FC = () => {
   const createSkill = useSkillsStore(s => s.createSkill);
   const updateSkill = useSkillsStore(s => s.updateSkill);
   const deleteSkill = useSkillsStore(s => s.deleteSkill);
-  const executeSkill = useSkillsStore(s => s.executeSkill);
   const setSearchQuery = useSkillsStore(s => s.setSearchQuery);
   const setSelectedCategory = useSkillsStore(s => s.setSelectedCategory);
   const clearSelectedSkill = useSkillsStore(s => s.clearSelectedSkill);
@@ -123,26 +150,56 @@ export const Skills: React.FC = () => {
   // Load execution history when skill is selected
   useEffect(() => {
     if (selectedSkill) {
-      fetchExecutionHistory(selectedSkill.name);
+      fetchExecutionHistory(selectedSkill.name, selectedSkill.category);
     }
   }, [selectedSkill, fetchExecutionHistory]);
+
+  const launchSkillChat = useCallback((
+    skill: Pick<Skill, 'name' | 'category' | 'description' | 'enabled'>,
+    options?: {
+      detail?: Pick<SkillDetail, 'content'> | null;
+      inputText?: string;
+      parameters?: Record<string, string>;
+      closeDetail?: boolean;
+    }
+  ) => {
+    if (!skill.enabled) {
+      toast.error(lang === 'zh' ? '该 Skill 已禁用，无法执行。' : 'This skill is disabled and cannot be run.');
+      return;
+    }
+
+    const sessionId = `new_skill_${skill.category}_${Date.now()}`;
+    const prompt = buildSkillExecutionPrompt(skill, lang, {
+      detailContent: options?.detail?.content,
+      inputText: options?.inputText,
+      parameters: options?.parameters,
+    });
+
+    queuePendingPrompt(sessionId, prompt, true);
+    openTab(sessionId, skill.name, 'new');
+    setActiveItem('chat');
+
+    if (options?.closeDetail) {
+      clearSelectedSkill();
+    }
+  }, [clearSelectedSkill, lang, openTab, queuePendingPrompt, setActiveItem]);
 
   // Execute skill - starts a new chat session with skill context
   const handleExecuteSkill = useCallback(async (skill: typeof selectedSkill) => {
     if (!skill) return;
-
-    // Create a new session
-    const sessionId = `skill_${skill.name}_${Date.now()}`;
-
-    // Open a new chat tab
-    openTab(sessionId, skill.name, 'new');
-
-    // Navigate to chat
-    setActiveItem('chat');
-
-    // Close the detail panel
-    clearSelectedSkill();
-  }, [openTab, setActiveItem, clearSelectedSkill]);
+    launchSkillChat(
+      {
+        name: skill.name,
+        category: skill.category,
+        description: skill.metadata.description,
+        enabled: true,
+      },
+      {
+        detail: skill,
+        closeDetail: true,
+      }
+    );
+  }, [launchSkillChat]);
 
   // Open execution modal
   const openExecutionModal = useCallback(() => {
@@ -164,27 +221,28 @@ export const Skills: React.FC = () => {
         }
       });
 
-      const sessionId = await executeSkill({
-        skill_name: selectedSkill.name,
-        skill_category: selectedSkill.category,
-        input_text: executionInput,
-        parameters: params,
-      });
-
-      if (sessionId) {
-        // Open a new chat tab
-        openTab(sessionId, selectedSkill.name, 'new');
-        setActiveItem('chat');
-        setShowExecutionModal(false);
-        clearSelectedSkill();
-        toast.success(t('skills.execution.success'));
-      }
+      launchSkillChat(
+        {
+          name: selectedSkill.name,
+          category: selectedSkill.category,
+          description: selectedSkill.metadata.description,
+          enabled: true,
+        },
+        {
+          detail: selectedSkill,
+          inputText: executionInput,
+          parameters: params,
+          closeDetail: true,
+        }
+      );
+      setShowExecutionModal(false);
+      toast.success(t('skills.execution.success'));
     } catch {
       toast.error(t('skills.execution.failed'));
     } finally {
       setIsExecuting(false);
     }
-  }, [selectedSkill, executionInput, executionParams, executeSkill, openTab, setActiveItem, clearSelectedSkill, t]);
+  }, [selectedSkill, executionInput, executionParams, launchSkillChat, t]);
 
   // Handle edit skill
   const handleEditSkill = useCallback((skill: typeof selectedSkill) => {
@@ -205,7 +263,7 @@ export const Skills: React.FC = () => {
     if (!deleteConfirm) return;
     const success = await deleteSkill(deleteConfirm.category, deleteConfirm.name);
     if (success) {
-      toast.success(`Skill "${deleteConfirm.name}" ${t('skills.deleted')}`);
+      toast.success(t('skills.toastDeleted').replace('{name}', deleteConfirm.name));
     } else {
       toast.error(t('skills.deleteFailed'));
     }
@@ -225,7 +283,7 @@ export const Skills: React.FC = () => {
       }
     );
     if (success) {
-      toast.success(`Skill "${editingSkill.name}" ${t('skills.updated')}`);
+      toast.success(t('skills.toastUpdated').replace('{name}', editingSkill.name));
       setShowEditModal(false);
     } else {
       toast.error(t('skills.updateFailed'));
@@ -400,18 +458,18 @@ export const Skills: React.FC = () => {
                             <span className="skill-category-badge">{skill.category}</span>
                           </div>
                         </div>
-                        <label className="skill-toggle">
+                        <label className="skill-toggle toggle-switch">
                           <input
                             type="checkbox"
                             checked={skill.enabled}
-                            onChange={(e) => toggleSkill(skill.name, e.target.checked)}
+                            onChange={(e) => toggleSkill(skill.category || '', skill.name, e.target.checked)}
                           />
                           <span className="toggle-slider" />
                         </label>
                       </div>
                       <p className="skill-description">{skill.description || t('skills.noDescription')}</p>
                       <div className="skill-meta">
-                        <span className="skill-author">{skill.author || (lang === 'zh' ? '未知' : 'Unknown')}</span>
+                        <span className="skill-author">{skill.author || (lang === 'zh' ? '鏈煡' : 'Unknown')}</span>
                         <div className="skill-tags">
                           {(skill.tags || []).slice(0, 3).map((tag) => (
                             <span key={tag} className="skill-tag">
@@ -436,9 +494,7 @@ export const Skills: React.FC = () => {
                           size="sm"
                           disabled={!skill.enabled}
                           onClick={() => {
-                            const sessionId = `skill_${skill.name}_${Date.now()}`;
-                            openTab(sessionId, skill.name, 'new');
-                            setActiveItem('chat');
+                            launchSkillChat(skill);
                           }}
                         >
                           <PlayIcon size={14} />
@@ -452,7 +508,7 @@ export const Skills: React.FC = () => {
             ))
           ) : (
             <div className="empty-state">
-              <span className="empty-icon">🔧</span>
+              <span className="empty-icon">馃敡</span>
               <p>{t('skills.noSkills')}</p>
             </div>
           )}
@@ -465,7 +521,7 @@ export const Skills: React.FC = () => {
               <div className="detail-header">
                 <div className="detail-title-group">
                   <span className="detail-icon">
-                    {SKILL_CATEGORY_DEFINITIONS[selectedSkill.category]?.icon || '🎯'}
+                    {SKILL_CATEGORY_DEFINITIONS[selectedSkill.category]?.icon || '馃幆'}
                   </span>
                   <div>
                     <h2 className="detail-title">{selectedSkill.name}</h2>
@@ -539,7 +595,7 @@ export const Skills: React.FC = () => {
                             <div key={record.id} className="execution-record">
                               <div className="record-header">
                                 <span className={`record-status status-${record.status}`}>
-                                  {record.status === 'success' ? '✓' : record.status === 'failed' ? '✗' : '○'}
+                                  {record.status === 'success' ? 'OK' : record.status === 'failed' ? 'ERR' : '...'}
                                 </span>
                                 <span className="record-time">
                                   {formatRelativeTime(record.executed_at, lang)}
@@ -562,7 +618,7 @@ export const Skills: React.FC = () => {
                         </div>
                       ) : (
                         <div className="empty-history">
-                          <span className="empty-icon">📋</span>
+                          <span className="empty-icon">馃搵</span>
                           <p>{t('skills.execution.noHistory')}</p>
                         </div>
                       )}
@@ -733,7 +789,7 @@ export const Skills: React.FC = () => {
                 onClick={async () => {
                   const success = await createSkill(newSkill);
                   if (success) {
-                    toast.success(`Skill "${newSkill.name}" ${lang === 'zh' ? '已创建' : 'created'}`);
+                    toast.success(t('skills.toastCreated').replace('{name}', newSkill.name));
                     setShowAddModal(false);
                     setNewSkill({ name: '', category: '', description: '', content: '' });
                   }
@@ -751,7 +807,7 @@ export const Skills: React.FC = () => {
         <div className="add-skill-modal-overlay" onClick={() => setShowEditModal(false)}>
           <div className="add-skill-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>{t('skills.editSkill') || '编辑 Skill'}</h2>
+              <h2>{t('skills.editSkill') || '缂栬緫 Skill'}</h2>
               <button className="close-button" onClick={() => setShowEditModal(false)}>
                 <XIcon size={18} />
               </button>
@@ -892,8 +948,8 @@ export const Skills: React.FC = () => {
       {/* Delete Confirmation Modal */}
       <ConfirmModal
         isOpen={deleteConfirm !== null}
-        title={t('skills.delete') || '删除 Skill'}
-        message={t('skills.deleteConfirm') || `确定要删除这个 Skill 吗？此操作无法撤销。`}
+        title={t('skills.delete')}
+        message={t('skills.deleteConfirm')}
         confirmText={t('common.delete')}
         cancelText={t('common.cancel')}
         variant="danger"

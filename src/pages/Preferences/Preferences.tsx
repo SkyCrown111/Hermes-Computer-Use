@@ -17,8 +17,16 @@ import {
   SidebarLeftIcon,
   SidebarRightIcon,
   XIcon,
+  HomeIcon,
+  ChatIcon,
+  ClockIcon,
+  FolderIcon,
+  GridIcon,
+  TargetIcon,
+  ServerIcon,
+  PlugIcon,
 } from '../../components/ui/Icons';
-import { useThemeStore } from '../../stores';
+import { useNavigationStore, useThemeStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
 import { getCurrentVersion } from '../../services/updateApi';
 import './Preferences.css';
@@ -27,10 +35,6 @@ const aboutInfo = {
   author: 'Crown_22',
   email: 'akangx@foxmail.com',
   github: 'https://github.com/SkyCrown111',
-  description: {
-    zh: 'Hermes Console - AI Agent 管理控制台',
-    en: 'Hermes Console - AI Agent Management Console',
-  },
   credits: [
     { name: 'Tauri', url: 'https://tauri.app', desc: 'Desktop application framework' },
     { name: 'React', url: 'https://react.dev', desc: 'UI library' },
@@ -83,9 +87,23 @@ export const Preferences: React.FC = () => {
   const setNotificationsEnabled = useThemeStore(s => s.setNotificationsEnabled);
   const setNotificationSound = useThemeStore(s => s.setNotificationSound);
   const setNotificationDesktop = useThemeStore(s => s.setNotificationDesktop);
+  const setActiveItem = useNavigationStore(s => s.setActiveItem);
   const { t } = useTranslation();
   const [version, setVersion] = useState('0.1.0');
   const [showShortcuts, setShowShortcuts] = useState(false);
+
+  const utilityPages = [
+    { id: 'dashboard', label: t('nav.home'), icon: HomeIcon },
+    { id: 'sessions', label: t('nav.sessions'), icon: ChatIcon },
+    { id: 'tasks', label: t('nav.tasks'), icon: ClockIcon },
+    { id: 'kanban', label: t('nav.kanban'), icon: GridIcon },
+    { id: 'files', label: t('nav.files'), icon: FolderIcon },
+    { id: 'skills', label: t('nav.skills'), icon: TargetIcon },
+    { id: 'gateway', label: 'Gateway', icon: ServerIcon },
+    { id: 'mcp', label: t('nav.mcp'), icon: PlugIcon },
+    { id: 'settings', label: t('nav.settings'), icon: SettingsIcon },
+    { id: 'help', label: t('nav.help') || 'Help', icon: InfoIcon },
+  ] as const;
 
   useEffect(() => {
     getCurrentVersion().then(setVersion).catch(() => setVersion('0.1.0'));
@@ -120,6 +138,31 @@ export const Preferences: React.FC = () => {
         <h1>{t('prefs.title')}</h1>
         <p>{t('prefs.subtitle')}</p>
       </div>
+
+      <Card className="preferences-card">
+        <div className="preferences-section">
+          <div className="section-header">
+            <span className="section-icon"><SettingsIcon size={18} /></span>
+            <div>
+              <h2>More Pages</h2>
+              <p>Low-frequency tools and utility pages live here instead of the chat sidebar.</p>
+            </div>
+          </div>
+
+          <div className="preferences-link-grid">
+            {utilityPages.map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                className="preferences-link-tile"
+                onClick={() => setActiveItem(id)}
+              >
+                <span className="preferences-link-icon"><Icon size={16} /></span>
+                <span>{label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </Card>
 
       {/* Appearance Section */}
       <Card className="preferences-card">
@@ -355,12 +398,12 @@ export const Preferences: React.FC = () => {
             <div className="about-logo">
               <span className="logo-icon"><CrownIcon size={24} /></span>
               <div className="logo-text">
-                <h3>Hermes Crown</h3>
+                <h3>{t('prefs.productName')}</h3>
                 {version ? <span className="version">v{version}</span> : <SkeletonText lines={1} lineHeight="0.9em" />}
               </div>
             </div>
 
-            <p className="about-description">{aboutInfo.description[language]}</p>
+            <p className="about-description">{t('prefs.productDesc')}</p>
 
             <div className="about-details">
               <div className="about-item">
@@ -383,7 +426,7 @@ export const Preferences: React.FC = () => {
                 className="social-link"
               >
                 <span className="social-icon"><GlobeIcon size={14} /></span>
-                <span>GitHub</span>
+                <span>{t('prefs.github')}</span>
               </a>
             </div>
 

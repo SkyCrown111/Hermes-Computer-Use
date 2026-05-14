@@ -23,10 +23,19 @@ const AuxiliaryConfigForm: React.FC<{
 
   const taskTypes = Object.keys(AUXILIARY_TASK_INFO) as AuxiliaryTaskType[];
 
-  // 遮蔽 API Key 显示
   const maskApiKey = (key: string | undefined): string => {
     if (!key || key.length < 8) return key || '';
     return key.slice(0, 4) + '*'.repeat(Math.min(key.length - 8, 20)) + key.slice(-4);
+  };
+
+  const resetForm = () => {
+    setFormData({
+      provider: 'auto',
+      model: '',
+      base_url: '',
+      api_key: '',
+      timeout: 120,
+    });
   };
 
   const handleTaskSelect = (taskType: AuxiliaryTaskType) => {
@@ -35,14 +44,7 @@ const AuxiliaryConfigForm: React.FC<{
     if (taskConfig) {
       setFormData(taskConfig);
     } else {
-      // Reset to defaults
-      setFormData({
-        provider: 'auto',
-        model: '',
-        base_url: '',
-        api_key: '',
-        timeout: 120,
-      });
+      resetForm();
     }
   };
 
@@ -58,23 +60,16 @@ const AuxiliaryConfigForm: React.FC<{
     setShowDeleteConfirm(null);
     if (selectedTask === taskType) {
       setSelectedTask(null);
-      setFormData({
-        provider: 'auto',
-        model: '',
-        base_url: '',
-        api_key: '',
-        timeout: 120,
-      });
+      resetForm();
     }
   };
 
   return (
     <div className="auxiliary-config-container">
-      {/* Task List */}
       <div className="auxiliary-task-list">
         <label className="form-label">{t('settings.auxiliaryTask')}</label>
         <div className="task-list">
-          {taskTypes.map(taskType => {
+          {taskTypes.map((taskType) => {
             const hasConfig = config?.[taskType];
             const info = AUXILIARY_TASK_INFO[taskType];
             return (
@@ -108,7 +103,6 @@ const AuxiliaryConfigForm: React.FC<{
         </div>
       </div>
 
-      {/* Task Config Form */}
       {selectedTask && (
         <form onSubmit={handleSubmit} className="config-form auxiliary-form">
           <div className="form-header">
@@ -123,11 +117,11 @@ const AuxiliaryConfigForm: React.FC<{
               onChange={(e) => setFormData({ ...formData, provider: e.target.value })}
               className="form-select"
             >
-              <option value="auto">Auto (使用默认配置)</option>
+              <option value="auto">{t('settings.providerAutoWithDefault')}</option>
               <option value="openai">OpenAI</option>
               <option value="anthropic">Anthropic</option>
               <option value="openrouter">OpenRouter</option>
-              <option value="custom">Custom</option>
+              <option value="custom">{t('settings.providerCustom')}</option>
             </select>
           </div>
 
@@ -157,7 +151,7 @@ const AuxiliaryConfigForm: React.FC<{
             <div className="api-key-input-wrapper">
               <Input
                 type={showApiKey ? 'text' : 'password'}
-                value={showApiKey ? (formData.api_key || '') : maskApiKey(formData.api_key)}
+                value={showApiKey ? formData.api_key || '' : maskApiKey(formData.api_key)}
                 onChange={(e) => setFormData({ ...formData, api_key: e.target.value })}
                 placeholder="sk-..."
                 className="form-input"
@@ -173,11 +167,11 @@ const AuxiliaryConfigForm: React.FC<{
           </div>
 
           <div className="form-group">
-            <label className="form-label">{t('settings.auxiliaryTimeout')} (秒)</label>
+            <label className="form-label">{t('settings.auxiliaryTimeout')} (s)</label>
             <Input
               type="number"
               value={formData.timeout || 120}
-              onChange={(e) => setFormData({ ...formData, timeout: parseInt(e.target.value) || 120 })}
+              onChange={(e) => setFormData({ ...formData, timeout: parseInt(e.target.value, 10) || 120 })}
               placeholder="120"
               className="form-input"
             />
@@ -201,7 +195,6 @@ const AuxiliaryConfigForm: React.FC<{
         </form>
       )}
 
-      {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (
         <div className="modal-overlay" onClick={() => setShowDeleteConfirm(null)}>
           <div className="modal-content delete-confirm-modal" onClick={(e) => e.stopPropagation()}>

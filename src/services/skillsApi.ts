@@ -55,6 +55,7 @@ export async function getSkillCategories(): Promise<SkillCategoriesResponse> {
 export async function toggleSkill(params: ToggleSkillParams): Promise<ToggleSkillResponse> {
   return apiClient.invoke<ToggleSkillResponse>('toggle_skill', {
     name: params.name,
+    category: params.category,
     enabled: params.enabled,
   });
 }
@@ -100,11 +101,12 @@ export async function getSkillsPath(): Promise<string> {
   }
 }
 
-export async function getSkillExecutionHistory(skillName: string, limit?: number): Promise<SkillExecutionRecord[]> {
+export async function getSkillExecutionHistory(skillName: string, limit?: number, skillCategory?: string): Promise<SkillExecutionRecord[]> {
   try {
     return await apiClient.invoke<SkillExecutionRecord[]>('get_skill_execution_history', {
       skill_name: skillName,
       limit,
+      skill_category: skillCategory,
     });
   } catch (error) {
     logger.error(`[SkillsApi] getSkillExecutionHistory failed: ${getErrorDetail(error)}`);

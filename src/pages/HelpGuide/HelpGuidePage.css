@@ -1,0 +1,177 @@
+.help-guide-page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding-bottom: 24px;
+}
+
+.help-guide-hero,
+.help-guide-panel {
+  border: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-surface) 92%, transparent);
+  border-radius: 12px;
+}
+
+.help-guide-hero {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 22px 24px;
+}
+
+.help-guide-hero-mark,
+.help-guide-panel-icon,
+.help-guide-link-icon {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: rgba(var(--color-primary-rgb), 0.12);
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.help-guide-hero-copy h1,
+.help-guide-panel-header h2 {
+  margin: 0;
+}
+
+.help-guide-hero-copy h1 {
+  font-size: 28px;
+  line-height: 1.15;
+}
+
+.help-guide-hero-copy p,
+.help-guide-list-item p,
+.help-guide-link-copy span,
+.help-guide-tips li,
+.help-guide-panel > p {
+  color: var(--color-text-secondary);
+}
+
+.help-guide-hero-copy p {
+  margin: 10px 0 0;
+  max-width: 780px;
+}
+
+.help-guide-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.help-guide-panel {
+  padding: 20px 22px;
+}
+
+.help-guide-panel-wide {
+  grid-column: span 2;
+}
+
+.help-guide-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.help-guide-lead {
+  margin: 0 0 8px;
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+.help-guide-list,
+.help-guide-links {
+  display: grid;
+  gap: 12px;
+}
+
+.help-guide-list-item strong,
+.help-guide-link-copy strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.help-guide-list-item p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.help-guide-steps,
+.help-guide-tips {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.help-guide-steps li,
+.help-guide-tips li {
+  margin-bottom: 10px;
+  line-height: 1.5;
+}
+
+.help-guide-link-card {
+  width: 100%;
+  min-height: 72px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-surface-container-low) 88%, transparent);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+  text-align: left;
+}
+
+.help-guide-link-card:hover {
+  background: var(--color-surface-hover);
+  border-color: rgba(var(--color-primary-rgb), 0.18);
+}
+
+.help-guide-link-copy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.help-guide-link-copy span {
+  line-height: 1.45;
+}
+
+.help-guide-link-action {
+  color: var(--color-primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+@media (max-width: 900px) {
+  .help-guide-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .help-guide-panel-wide {
+    grid-column: span 1;
+  }
+}
+
+@media (max-width: 767px) {
+  .help-guide-hero,
+  .help-guide-panel {
+    padding: 16px;
+  }
+
+  .help-guide-hero-copy h1 {
+    font-size: 24px;
+  }
+
+  .help-guide-link-card {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+}

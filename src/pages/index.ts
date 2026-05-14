@@ -11,3 +11,4 @@ export { ChatPage } from './Chat';
 export { Preferences } from './Preferences';
 export { Gateway } from './Gateway';
 export { MCP } from './MCP';
+export { HelpGuidePage } from './HelpGuide';

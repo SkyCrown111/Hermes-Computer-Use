@@ -61,7 +61,7 @@ const SessionCard: React.FC<SessionCardProps> = React.memo(({ session, isSelecte
       <div className="session-actions">
         <button
           className="action-btn"
-          title={t('sessions.detail') || '详情'}
+          title={t('sessions.detail') || 'Details'}
           onClick={(e) => {
             e.stopPropagation();
             onDetail();
@@ -107,16 +107,15 @@ const SessionCard: React.FC<SessionCardProps> = React.memo(({ session, isSelecte
 // Message Item Component
 interface MessageItemProps {
   message: SessionMessage;
-  t: (key: string) => string;
   lang: 'zh' | 'en';
 }
 
-const MessageItem: React.FC<MessageItemProps> = React.memo(({ message, t, lang }) => {
+const MessageItem: React.FC<MessageItemProps> = React.memo(({ message, lang }) => {
   const getRoleName = (role: string, lang: 'zh' | 'en'): string => {
     const names: Record<string, { zh: string; en: string }> = {
-      user: { zh: '用户', en: 'User' },
-      assistant: { zh: '助手', en: 'Assistant' },
-      system: { zh: '系统', en: 'System' },
+      user: { zh: '\u7528\u6237', en: 'User' },
+      assistant: { zh: '\u52a9\u624b', en: 'Assistant' },
+      system: { zh: '\u7cfb\u7edf', en: 'System' },
     };
     return names[role]?.[lang] || role;
   };
@@ -132,7 +131,7 @@ const MessageItem: React.FC<MessageItemProps> = React.memo(({ message, t, lang }
               <div key={index} className="tool-call-item">
                 <span className="tool-call-icon"><ToolIcon size={14} /></span>
                 <span>{tool.name}</span>
-                <span style={{ color: 'var(--text-tertiary)' }}>
+                <span style={{ color: 'var(--color-text-tertiary)' }}>
                   {JSON.stringify(tool.args).slice(0, 50)}...
                 </span>
               </div>
@@ -283,9 +282,14 @@ export const Sessions: React.FC = () => {
     const succeeded = results.filter(r => r.status === 'fulfilled');
 
     if (failed.length > 0) {
-      toast.error(`Deleted ${succeeded.length}/${ids.length} sessions. ${failed.length} failed.`);
+      toast.error(
+        t('sessions.batchDeletePartial')
+          .replace('{success}', String(succeeded.length))
+          .replace('{total}', String(ids.length))
+          .replace('{fail}', String(failed.length)),
+      );
     } else {
-      toast.success(`Successfully deleted ${succeeded.length} sessions`);
+      toast.success(t('sessions.batchDeleteSuccess').replace('{count}', String(succeeded.length)));
     }
 
     clearSelection();
@@ -300,7 +304,7 @@ export const Sessions: React.FC = () => {
       return;
     }
 
-    toast.info(`Exporting ${ids.length} sessions...`);
+    toast.info(t('sessions.exporting').replace('{count}', String(ids.length)));
 
     try {
       const zip = new JSZip();
@@ -350,9 +354,14 @@ export const Sessions: React.FC = () => {
       URL.revokeObjectURL(url);
 
       if (failed.length > 0) {
-        toast.warning(`Exported ${succeeded.length}/${ids.length} sessions. ${failed.length} failed.`);
+        toast.warning(
+          t('sessions.exportSomeFailed')
+            .replace('{success}', String(succeeded.length))
+            .replace('{total}', String(ids.length))
+            .replace('{fail}', String(failed.length)),
+        );
       } else {
-        toast.success(`Successfully exported ${succeeded.length} sessions as ZIP`);
+        toast.success(t('sessions.exportSuccess').replace('{count}', String(succeeded.length)));
       }
     } catch (err) {
       logger.error('[Sessions] Batch export failed:', err);
@@ -458,17 +467,23 @@ export const Sessions: React.FC = () => {
 
     try {
       const exportData = await sessionApi.exportSessions({ format: format as 'jsonl' | 'json' | 'markdown', session_id: selectedSessionForExport.id });
-      const blob = new Blob([typeof exportData === 'string' ? exportData : JSON.stringify(exportData)], { type: 'application/json' });
+      const mimeType =
+        format === 'markdown'
+          ? 'text/markdown;charset=utf-8'
+          : format === 'jsonl'
+            ? 'application/x-ndjson;charset=utf-8'
+            : 'application/json;charset=utf-8';
+      const blob = new Blob([typeof exportData === 'string' ? exportData : JSON.stringify(exportData)], { type: mimeType });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = `session-${selectedSessionForExport.id}.${format}`;
       a.click();
       URL.revokeObjectURL(url);
-      toast.success('Session exported successfully');
+      toast.success(t('sessions.exportSingleSuccess'));
     } catch (err) {
       logger.error('[Sessions] Export failed:', err);
-      toast.error('Failed to export session');
+      toast.error(t('sessions.exportSingleFailed'));
     }
 
     setShowExportModal(false);
@@ -661,17 +676,19 @@ export const Sessions: React.FC = () => {
             disabled={currentPage === 0}
             onClick={() => handlePageChange(currentPage - 1)}
           >
-            ← {t('sessions.prevPage')}
+            {'< '}
+            {t('sessions.prevPage')}
           </button>
           <span className="pagination-info">
-            {t('sessions.page')} {currentPage + 1} / {totalPages} · {t('sessions.total')} {total} {t('sessions.items')}
+            {t('sessions.page')} {currentPage + 1} / {totalPages} | {t('sessions.total')} {total} {t('sessions.items')}
           </span>
           <button
             className="pagination-btn"
             disabled={currentPage >= totalPages - 1}
             onClick={() => handlePageChange(currentPage + 1)}
           >
-            {t('sessions.nextPage')} →
+            {' >'}
+            {t('sessions.nextPage')}
           </button>
         </div>
       )}
@@ -695,11 +712,11 @@ export const Sessions: React.FC = () => {
                     </div>
                   ) : messages.length > 0 ? (
                     messages.map((message: SessionMessage) => (
-                      <MessageItem key={`${message.timestamp}-${message.role}`} message={message} t={t} lang={lang} />
+                      <MessageItem key={`${message.timestamp}-${message.role}`} message={message} lang={lang} />
                     ))
                   ) : (
                     <div className="empty-state">
-                      <span style={{ color: 'var(--text-tertiary)' }}>{t('common.noData')}</span>
+                      <span style={{ color: 'var(--color-text-tertiary)' }}>{t('common.noData')}</span>
                     </div>
                   )}
                 </div>

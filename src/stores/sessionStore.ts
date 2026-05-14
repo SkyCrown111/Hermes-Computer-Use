@@ -50,7 +50,7 @@ interface SessionState {
   // Actions - 会话列表
   fetchSessions: (platform?: string, limit?: number, offset?: number) => Promise<void>;
   refreshSessions: () => void; // 强制刷新
-  deleteSession: (id: string) => Promise<void>;
+  deleteSession: (id: string) => Promise<boolean>;
   updateSessionTitle: (id: string, title: string) => Promise<void>;
   updateSessionActivity: (sessionId: string) => void; // 实时更新会话活动
   addSessionOptimistic: (sessionId: string) => void; // 乐观添加新会话（立即显示在列表中）
@@ -529,9 +529,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         messageCache: newCache,
         isLoading: false,
       });
+      return true;
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       set({ error: errorMsg || 'Unknown error', isLoading: false });
+      return false;
     }
   },
 

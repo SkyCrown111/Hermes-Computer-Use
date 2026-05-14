@@ -4,13 +4,18 @@
 import { create } from 'zustand';
 import { logger } from '../lib/logger';
 import { getSession } from '../services/sessionApi';
-
-// LocalStorage key for message persistence
-const CHAT_MESSAGES_KEY = 'hermes-chat-messages';
+import { useNavigationStore } from './navigationStore';
+import {
+  CHAT_MESSAGES_KEY,
+  markPendingSessions,
+  restorePersistedMessages,
+} from './chatPersistence';
 
 // 每个会话的状态
 export interface PerSessionState {
   messages: ChatMessage[];
+  pendingPrompt: string | null;
+  autoSendPendingPrompt: boolean;
   streamingText: string;
   isStreaming: boolean;
   isThinking: boolean;
@@ -70,6 +75,8 @@ export interface ToolCallInfo {
 // 默认会话状态
 const DEFAULT_SESSION_STATE: PerSessionState = {
   messages: [],
+  pendingPrompt: null,
+  autoSendPendingPrompt: false,
   streamingText: '',
   isStreaming: false,
   isThinking: false,
@@ -101,6 +108,8 @@ interface ChatStore {
 
   // 获取指定会话的状态
   getSession: (sessionId: string) => PerSessionState;
+  queuePendingPrompt: (sessionId: string, prompt: string, autoSend?: boolean) => void;
+  consumePendingPrompt: (sessionId: string) => { prompt: string | null; autoSend: boolean };
 
   // 添加消息
   addMessage: (sessionId: string, message: Omit<ChatMessage, 'id' | 'timestamp'>) => void;
@@ -185,6 +194,32 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   getSession: (sessionId) => {
     return get().sessions[sessionId] ?? createDefaultSessionState();
+  },
+
+  queuePendingPrompt: (sessionId, prompt, autoSend = false) => {
+    set((s) => ({
+      sessions: updateSessionIn(s.sessions, sessionId, () => ({
+        pendingPrompt: prompt,
+        autoSendPendingPrompt: autoSend,
+      })),
+    }));
+  },
+
+  consumePendingPrompt: (sessionId) => {
+    const session = get().sessions[sessionId] ?? createDefaultSessionState();
+    const payload = {
+      prompt: session.pendingPrompt,
+      autoSend: session.autoSendPendingPrompt,
+    };
+
+    set((s) => ({
+      sessions: updateSessionIn(s.sessions, sessionId, () => ({
+        pendingPrompt: null,
+        autoSendPendingPrompt: false,
+      })),
+    }));
+
+    return payload;
   },
 
   addMessage: (sessionId, message) => {
@@ -609,35 +644,8 @@ const PERSIST_DEBOUNCE_MS = 500; // Debounce to batch rapid updates
 // Track pending sessions (sessions with messages that haven't been persisted yet)
 // This helps restoreTabs know about new_ sessions even before persistence completes.
 // Capped to prevent unbounded growth if clearPendingSession is never called.
-const pendingSessionIds: Set<string> = new Set();
-const MAX_PENDING_SESSIONS = 100;
-
-// Export for use in navigationStore
-export function hasPendingSession(sessionId: string): boolean {
-  return pendingSessionIds.has(sessionId);
-}
-
-export function clearPendingSession(sessionId: string): void {
-  pendingSessionIds.delete(sessionId);
-}
-
 function persistMessages(sessions: Record<string, PerSessionState>) {
-  // Track sessions that have messages pending persistence
-  for (const [sessionId, state] of Object.entries(sessions)) {
-    if (state.messages.length > 0) {
-      pendingSessionIds.add(sessionId);
-    }
-  }
-
-  // Prevent unbounded growth: if the set gets too large, remove oldest entries
-  if (pendingSessionIds.size > MAX_PENDING_SESSIONS) {
-    const excess = pendingSessionIds.size - MAX_PENDING_SESSIONS;
-    const iter = pendingSessionIds.values();
-    for (let i = 0; i < excess; i++) {
-      const next = iter.next();
-      if (!next.done) pendingSessionIds.delete(next.value);
-    }
-  }
+  markPendingSessions(sessions);
 
   // Debounce: cancel pending write and schedule new one
   if (persistTimeoutId) {
@@ -743,17 +751,7 @@ function doPersist(sessions: Record<string, PerSessionState>) {
 
 // Restore messages from localStorage
 export function restoreMessages(): Record<string, ChatMessage[]> {
-  try {
-    const raw = localStorage.getItem(CHAT_MESSAGES_KEY);
-    if (!raw) return {};
-
-    const messages = JSON.parse(raw) as Record<string, ChatMessage[]>;
-    logger.debug('[ChatStore] Restored messages for', Object.keys(messages).length, 'sessions');
-    return messages;
-  } catch (err) {
-    logger.error('[ChatStore] Failed to restore messages:', err);
-    return {};
-  }
+  return restorePersistedMessages<ChatMessage>();
 }
 
 // Initialize store with persisted messages
@@ -776,7 +774,7 @@ export function initializeChatStore() {
   // This handles the case where localStorage was cleared but sessions still exist.
   setTimeout(async () => {
     try {
-      const { openTabs } = (await import('./navigationStore')).useNavigationStore.getState();
+      const { openTabs } = useNavigationStore.getState();
       const currentSessions = useChatStore.getState().sessions;
 
       for (const tab of openTabs) {

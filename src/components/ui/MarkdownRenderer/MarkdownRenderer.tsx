@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import type { Components } from 'react-markdown';
 import { Lightbox } from '../Lightbox';
+import { CheckIcon, CopyIcon } from '../Icons';
 import { useTranslation } from '../../../hooks/useTranslation';
 import './MarkdownRenderer.css';
 
@@ -115,12 +116,12 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, sea
             >
               {copiedCode === codeString ? (
                 <>
-                  <span className="material-symbols-outlined md-code-copy-icon">check</span>
+                  <span className="md-code-copy-icon"><CheckIcon size={14} /></span>
                   {t('common.copied') || 'Copied'}
                 </>
               ) : (
                 <>
-                  <span className="material-symbols-outlined md-code-copy-icon">content_copy</span>
+                  <span className="md-code-copy-icon"><CopyIcon size={14} /></span>
                   {t('common.copy') || 'Copy'}
                 </>
               )}

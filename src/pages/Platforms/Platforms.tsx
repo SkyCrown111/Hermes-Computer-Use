@@ -85,7 +85,7 @@ export function Platforms() {
   const reconnect = usePlatformStore(s => s.reconnect);
 
   // Controlled form state for config modal
-  const [configForm, setConfigForm] = useState<Record<string, string>>({});
+  const [configForm, setConfigForm] = useState<Record<string, string | boolean>>({});
 
   useEffect(() => {
     fetchPlatforms();
@@ -95,10 +95,15 @@ export function Platforms() {
   useEffect(() => {
     if (isConfigModalOpen && selectedPlatform) {
       const platformData = platforms.find(p => p.type === selectedPlatform);
-      const initialConfig: Record<string, string> = {};
+      const initialConfig: Record<string, string | boolean> = {};
       const fields = platformConfigFields[selectedPlatform] || [];
       for (const field of fields) {
-        initialConfig[field.key] = (platformData?.config?.[field.key] as string) || '';
+        const rawValue = platformData?.config?.[field.key];
+        if (field.type === 'checkbox') {
+          initialConfig[field.key] = rawValue === true || rawValue === 'true';
+        } else {
+          initialConfig[field.key] = rawValue == null ? '' : String(rawValue);
+        }
       }
       setConfigForm(initialConfig);
     }
@@ -141,8 +146,13 @@ export function Platforms() {
   }, [testConnection, t]);
 
   const handleConfigChange = useCallback((key: string, value: string | boolean) => {
-    setConfigForm(prev => ({ ...prev, [key]: String(value) }));
+    setConfigForm(prev => ({ ...prev, [key]: value }));
   }, []);
+
+  const getTextConfigValue = useCallback((key: string): string => {
+    const value = configForm[key];
+    return typeof value === 'string' ? value : '';
+  }, [configForm]);
 
   const handleSaveConfig = useCallback(async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -337,7 +347,7 @@ export function Platforms() {
                             id={field.key}
                             name={field.key}
                             type="checkbox"
-                            checked={configForm[field.key] === 'true'}
+                            checked={configForm[field.key] === true}
                             onChange={(e) => handleConfigChange(field.key, e.target.checked)}
                           />
                           <span className="checkbox-text">{field.label}</span>
@@ -351,7 +361,7 @@ export function Platforms() {
                             name={field.key}
                             type={field.type}
                             placeholder={field.placeholder}
-                            value={configForm[field.key] || ''}
+                            value={getTextConfigValue(field.key)}
                             onChange={(e) => handleConfigChange(field.key, e.target.value)}
                           />
                           {field.hint && <span className="field-hint">{field.hint}</span>}

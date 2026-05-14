@@ -1,21 +1,23 @@
 .gateway-page {
-  padding: var(--space-6);
-  max-width: 1000px;
-  margin: 0 auto;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--page-gap);
+  max-width: var(--page-max-width);
 }
 
 .gateway-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: var(--space-6);
+  margin-bottom: 0;
 }
 
 .gateway-header h1 {
   margin: 0;
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: var(--text-primary);
+  font-size: var(--page-title-size);
+  font-weight: 650;
+  color: var(--color-text-primary);
 }
 
 .gateway-actions {
@@ -65,7 +67,7 @@
 
 .gateway-info-item .info-label {
   font-size: 0.75rem;
-  color: var(--text-tertiary);
+  color: var(--color-text-tertiary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -73,7 +75,7 @@
 .gateway-info-item .info-value {
   font-size: 1rem;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--color-text-primary);
 }
 
 .gateway-content {
@@ -96,14 +98,17 @@
 }
 
 .gateway-metric-card {
-  padding: var(--space-4);
+  padding: var(--panel-padding);
+  border-radius: var(--panel-radius);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-container-low);
 }
 
 .gateway-metric-card h3 {
   margin: 0 0 var(--space-3) 0;
   font-size: 0.875rem;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -121,13 +126,13 @@
   flex-direction: column;
   gap: var(--space-1);
   padding: var(--space-2);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--color-surface-container);
   border-radius: var(--radius-md);
 }
 
 .metric-detail-label {
   font-size: 0.7rem;
-  color: var(--text-tertiary);
+  color: var(--color-text-tertiary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -135,7 +140,7 @@
 .metric-detail-value {
   font-size: 1.25rem;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--color-text-primary);
 }
 
 /* Queue Indicator */
@@ -147,7 +152,7 @@
 
 .queue-bar {
   height: 8px;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--color-surface-container-high);
   border-radius: var(--radius-full);
   overflow: hidden;
 }
@@ -172,7 +177,7 @@
 
 .queue-label {
   font-size: 0.7rem;
-  color: var(--text-tertiary);
+  color: var(--color-text-tertiary);
 }
 
 /* Resource Metrics */
@@ -196,18 +201,18 @@
 
 .resource-label {
   font-size: 0.8rem;
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
 }
 
 .resource-value {
   font-size: 0.875rem;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--color-text-primary);
 }
 
 .metric-bar {
   height: 6px;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--color-surface-container-high);
   border-radius: var(--radius-full);
   overflow: hidden;
 }
@@ -264,13 +269,13 @@
   flex-direction: column;
   gap: var(--space-1);
   padding: var(--space-2);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--color-surface-container);
   border-radius: var(--radius-md);
 }
 
 .throughput-label {
   font-size: 0.7rem;
-  color: var(--text-tertiary);
+  color: var(--color-text-tertiary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -278,7 +283,7 @@
 .throughput-value {
   font-size: 1rem;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--color-text-primary);
 }
 
 /* Error Statistics */
@@ -288,7 +293,7 @@
   gap: var(--space-4);
   margin-bottom: var(--space-3);
   padding-bottom: var(--space-3);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .error-total {
@@ -296,7 +301,7 @@
   flex-direction: column;
   align-items: center;
   padding: var(--space-3);
-  background: rgba(255, 69, 58, 0.1);
+  background: rgba(186, 26, 26, 0.1);
   border-radius: var(--radius-md);
   min-width: 80px;
 }
@@ -309,7 +314,7 @@
 
 .error-total-label {
   font-size: 0.7rem;
-  color: var(--text-tertiary);
+  color: var(--color-text-tertiary);
 }
 
 .error-time-stats {
@@ -327,12 +332,12 @@
 .error-time-value {
   font-size: 1.25rem;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--color-text-primary);
 }
 
 .error-time-label {
   font-size: 0.7rem;
-  color: var(--text-tertiary);
+  color: var(--color-text-tertiary);
 }
 
 /* Error Type Distribution */
@@ -342,7 +347,7 @@
 
 .error-type-title {
   font-size: 0.75rem;
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
   margin-bottom: var(--space-2);
   display: block;
 }
@@ -361,7 +366,7 @@
 
 .error-type-name {
   font-size: 0.75rem;
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
   min-width: 80px;
   text-transform: capitalize;
 }
@@ -369,7 +374,7 @@
 .error-type-bar-container {
   flex: 1;
   height: 6px;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--color-surface-container-high);
   border-radius: var(--radius-full);
   overflow: hidden;
 }
@@ -383,7 +388,7 @@
 
 .error-type-count {
   font-size: 0.75rem;
-  color: var(--text-tertiary);
+  color: var(--color-text-tertiary);
   min-width: 30px;
   text-align: right;
 }
@@ -400,14 +405,14 @@
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
-  background: var(--bg-secondary);
+  background: var(--color-surface-container-low);
   border-radius: var(--radius-md);
   font-size: 0.875rem;
 }
 
 .connection-platform {
   font-weight: 500;
-  color: var(--text-primary);
+  color: var(--color-text-primary);
   text-transform: capitalize;
 }
 
@@ -424,8 +429,8 @@
 }
 
 .connection-disconnected {
-  background: color-mix(in srgb, var(--text-tertiary) 20%, transparent);
-  color: var(--text-tertiary);
+  background: color-mix(in srgb, var(--color-text-tertiary) 20%, transparent);
+  color: var(--color-text-tertiary);
 }
 
 .connection-error {
@@ -479,7 +484,7 @@
 
 .timeline-platform {
   font-weight: 500;
-  color: var(--text-primary);
+  color: var(--color-text-primary);
   text-transform: capitalize;
 }
 
@@ -507,12 +512,12 @@
 
 .timeline-message {
   font-size: 0.8rem;
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
 }
 
 .timeline-time {
   font-size: 0.7rem;
-  color: var(--text-tertiary);
+  color: var(--color-text-tertiary);
   display: flex;
   align-items: center;
   gap: var(--space-1);
@@ -525,7 +530,7 @@
   justify-content: center;
   gap: var(--space-3);
   padding: var(--space-8);
-  color: var(--text-tertiary);
+  color: var(--color-text-tertiary);
 }
 
 /* Error state with retry button */
@@ -538,7 +543,7 @@
 
 .gateway-error .error-hint {
   font-size: 0.75rem;
-  color: var(--text-tertiary);
+  color: var(--color-text-tertiary);
   font-style: italic;
 }
 
@@ -629,3 +634,4 @@
     font-size: var(--text-xs);
   }
 }
+

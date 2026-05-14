@@ -8,7 +8,7 @@
 .input-label {
   font-size: var(--text-sm);
   font-weight: var(--font-medium);
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
 }
 
 .input-wrapper {
@@ -24,7 +24,7 @@
 .input-wrapper:focus-within {
   border-color: var(--color-border-focus);
   background: var(--color-surface-container-lowest);
-  box-shadow: 0 0 0 3px rgba(143, 72, 47, 0.1);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.08);
 }
 
 .input-wrapper:hover:not(:focus-within) {
@@ -37,12 +37,12 @@
   border: none;
   outline: none;
   font-family: var(--font-body);
-  color: var(--text-primary);
+  color: var(--color-text-primary);
   width: 100%;
 }
 
 .input-field::placeholder {
-  color: var(--text-tertiary);
+  color: var(--color-text-tertiary);
 }
 
 /* Size variants */
@@ -71,7 +71,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-tertiary);
+  color: var(--color-text-tertiary);
   padding: 0 var(--space-3);
 }
 
@@ -94,7 +94,7 @@
 
 .input-message {
   font-size: var(--text-xs);
-  color: var(--text-tertiary);
+  color: var(--color-text-tertiary);
   margin: 0;
 }
 
@@ -111,7 +111,7 @@
   padding: var(--space-3);
   font-family: var(--font-body);
   font-size: var(--text-sm);
-  color: var(--text-primary);
+  color: var(--color-text-primary);
   outline: none;
   transition: all var(--duration-normal) var(--ease-out);
 }
@@ -119,11 +119,11 @@
 .textarea-field:focus {
   border-color: var(--color-border-focus);
   background: var(--color-surface-container-lowest);
-  box-shadow: 0 0 0 3px rgba(143, 72, 47, 0.1);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.08);
 }
 
 .textarea-field::placeholder {
-  color: var(--text-tertiary);
+  color: var(--color-text-tertiary);
 }
 
 .textarea-field.input-error {

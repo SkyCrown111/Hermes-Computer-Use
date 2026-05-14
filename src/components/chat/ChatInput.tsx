@@ -1,15 +1,13 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { useTranslation } from '../../hooks/useTranslation';
-import { PlusIcon, PlayIcon, StopIcon, XIcon } from '../ui/Icons';
+import { FileIcon, FileTextIcon, PlusIcon, SendIcon, StopIcon, XIcon } from '../ui/Icons';
 import { logger } from '../../lib/logger';
-
-// ---- Types ----
 
 export interface AttachedFile {
   name: string;
   type: string;
   size: number;
-  content: string; // text content or base64
+  content: string;
   isText: boolean;
 }
 
@@ -25,9 +23,7 @@ interface ChatInputProps {
   disabled?: boolean;
 }
 
-// ---- Constants ----
-
-const MAX_TEXTAREA_HEIGHT = 200; // px, matches CSS max-height
+const MAX_TEXTAREA_HEIGHT = 200;
 
 const getHermesCommands = (t: (key: string) => string) => [
   { command: '/help', description: t('chat.cmd.help') },
@@ -42,45 +38,37 @@ const getHermesCommands = (t: (key: string) => string) => [
   { command: '/search', description: t('chat.cmd.search') },
 ];
 
-// ---- Component ----
-
 export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
   ({ onSendMessage, onStop, isStreaming, hasPendingInput, disabled }, ref) => {
     const { t } = useTranslation();
-    const HERMES_COMMANDS = useMemo(() => getHermesCommands(t), [t]);
+    const hermesCommands = useMemo(() => getHermesCommands(t), [t]);
 
-    // ---- State ----
     const [inputValue, setInputValue] = useState('');
     const [showAddMenu, setShowAddMenu] = useState(false);
     const [showCommands, setShowCommands] = useState(false);
-    const [filteredCommands, setFilteredCommands] = useState(HERMES_COMMANDS);
+    const [filteredCommands, setFilteredCommands] = useState(hermesCommands);
     const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
     const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
 
-    // ---- Refs ----
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const imageInputRef = useRef<HTMLInputElement>(null);
     const addMenuRef = useRef<HTMLDivElement>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
-    const containerRef = useRef<HTMLDivElement>(null);
 
-    // ---- Imperative handle ----
     useImperativeHandle(ref, () => ({
       triggerSend: (text: string) => {
         setInputValue(text);
-        inputRef.current?.focus();
+        requestAnimationFrame(() => {
+          inputRef.current?.focus();
+        });
       },
     }));
 
-    // ---- Effects ----
-
-    // Focus input on mount
     useEffect(() => {
       inputRef.current?.focus();
     }, []);
 
-    // Close menus on outside click
     useEffect(() => {
       const handleClickOutside = (e: MouseEvent) => {
         if (addMenuRef.current && !addMenuRef.current.contains(e.target as Node)) {
@@ -94,14 +82,11 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    // Scroll selected dropdown item into view
     useEffect(() => {
       if (!showCommands || !dropdownRef.current) return;
       const items = dropdownRef.current.querySelectorAll('[data-cmd-item]');
       items[selectedCommandIndex]?.scrollIntoView({ block: 'nearest' });
     }, [selectedCommandIndex, showCommands]);
-
-    // ---- Handlers ----
 
     const resizeTextarea = useCallback(() => {
       const el = inputRef.current;
@@ -117,36 +102,36 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 
       if (value.startsWith('/')) {
         const query = value.toLowerCase();
-        const filtered = HERMES_COMMANDS.filter(cmd =>
-          cmd.command.toLowerCase().startsWith(query)
-        );
+        const filtered = hermesCommands.filter(cmd => cmd.command.toLowerCase().startsWith(query));
         setFilteredCommands(filtered);
         setShowCommands(filtered.length > 0);
         setSelectedCommandIndex(0);
       } else {
         setShowCommands(false);
       }
-    }, [HERMES_COMMANDS, resizeTextarea]);
+    }, [hermesCommands, resizeTextarea]);
 
     const insertCommand = useCallback((command: string) => {
-      setInputValue(command + ' ');
+      setInputValue(`${command} `);
       setShowCommands(false);
-      inputRef.current?.focus();
-    }, []);
+      requestAnimationFrame(() => {
+        resizeTextarea();
+        inputRef.current?.focus();
+      });
+    }, [resizeTextarea]);
 
     const handleSend = useCallback(() => {
       if (!inputValue.trim()) return;
-
-      if (inputRef.current) {
-        inputRef.current.style.height = 'auto';
-      }
-
       const text = inputValue.trim();
       const files = attachedFiles;
       setInputValue('');
       setAttachedFiles([]);
+      setShowCommands(false);
+      if (inputRef.current) {
+        inputRef.current.style.height = 'auto';
+      }
       onSendMessage(text, files);
-    }, [inputValue, attachedFiles, onSendMessage]);
+    }, [attachedFiles, inputValue, onSendMessage]);
 
     const readFileAsContent = useCallback((file: File): Promise<AttachedFile> => {
       return new Promise((resolve, reject) => {
@@ -185,6 +170,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           logger.error('[ChatInput] Failed to read files:', err);
         }
       }
+      e.target.value = '';
       setShowAddMenu(false);
     }, [readFileAsContent]);
 
@@ -221,18 +207,16 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         e.preventDefault();
         handleSend();
       }
-    }, [showCommands, filteredCommands, selectedCommandIndex, insertCommand, handleSend]);
+    }, [filteredCommands, handleSend, insertCommand, selectedCommandIndex, showCommands]);
 
-    // ---- Derived ----
     const canSend = inputValue.trim().length > 0;
     const showStop = isStreaming && !hasPendingInput;
+    const activeCommand = inputValue.startsWith('/') ? filteredCommands[selectedCommandIndex] : null;
+    const showFooter = inputValue.startsWith('/') || attachedFiles.length > 0 || isStreaming || !!hasPendingInput;
 
-    // ---- Render ----
     return (
       <div className="chat-input-area">
-        {/* Inner container with relative positioning for dropdowns */}
-        <div style={{ position: 'relative' }}>
-          {/* Slash Command Dropdown */}
+        <div className="chat-input-shell">
           {showCommands && filteredCommands.length > 0 && (
             <div className="chat-input-dropdown" ref={dropdownRef} role="listbox">
               {filteredCommands.map((cmd, index) => (
@@ -253,12 +237,13 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             </div>
           )}
 
-          {/* Attached Files */}
           {attachedFiles.length > 0 && (
             <div className="chat-input-files">
               {attachedFiles.map((file, idx) => (
-                <span key={idx} className="file-chip">
-                  <span className="file-icon">{file.isText ? '📄' : '🖼'}</span>
+                <span key={`${file.name}-${idx}`} className="file-chip">
+                  <span className="file-icon" aria-hidden="true">
+                    {file.isText ? <FileTextIcon size={12} /> : <FileIcon size={12} />}
+                  </span>
                   <span className="file-name">{file.name}</span>
                   <button
                     className="file-remove"
@@ -272,85 +257,109 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             </div>
           )}
 
-          {/* Main Input Container */}
-          <div className="chat-input-container" ref={containerRef}>
-            {/* Textarea */}
-            <textarea
-              ref={inputRef}
-              className="chat-textarea"
-              value={inputValue}
-              onChange={handleInputChange}
-              onKeyDown={handleKeyDown}
-              placeholder={t('chat.inputPlaceholder')}
-              rows={1}
-              disabled={disabled}
-            />
+          <div className="chat-input-container">
+            <div className="chat-input-main">
+              <div className="chat-input-editor">
+                <textarea
+                  ref={inputRef}
+                  className="chat-textarea"
+                  value={inputValue}
+                  onChange={handleInputChange}
+                  onKeyDown={handleKeyDown}
+                  placeholder={t('chat.inputPlaceholder')}
+                  rows={1}
+                  disabled={disabled}
+                />
+              </div>
+            </div>
 
-            {/* Action Buttons */}
-            <div className="chat-input-actions">
-              {/* Add File Button */}
-              <div ref={addMenuRef} style={{ position: 'relative' }}>
-                <button
-                  className="action-btn"
-                  onClick={() => setShowAddMenu(!showAddMenu)}
-                  disabled={isStreaming || disabled}
-                  title={t('chat.addFile')}
-                  aria-label={t('chat.addFile')}
-                >
-                  <PlusIcon size={14} />
-                </button>
+            <div className="chat-input-footer">
+              <div className="chat-input-footer-left">
+                <div ref={addMenuRef} style={{ position: 'relative' }}>
+                  <button
+                    className="action-btn chat-composer-btn"
+                    onClick={() => setShowAddMenu(prev => !prev)}
+                    disabled={isStreaming || disabled}
+                    title={t('chat.addFile')}
+                    aria-label={t('chat.addFile')}
+                  >
+                    <PlusIcon size={14} />
+                  </button>
 
-                {showAddMenu && (
-                  <div className="add-menu-popup">
-                    <button
-                      className="add-menu-item"
-                      onClick={() => { fileInputRef.current?.click(); setShowAddMenu(false); }}
-                    >
-                      <span>📄</span> {t('chat.addFile')}
-                    </button>
-                    <button
-                      className="add-menu-item"
-                      onClick={() => { imageInputRef.current?.click(); setShowAddMenu(false); }}
-                    >
-                      <span>🖼</span> {t('chat.addImage')}
-                    </button>
-                    <button
-                      className="add-menu-item"
-                      onClick={() => { setInputValue('/'); inputRef.current?.focus(); setShowAddMenu(false); }}
-                    >
-                      <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>/</span> {t('chat.slashCommands')}
-                    </button>
+                  {showAddMenu && (
+                    <div className="add-menu-popup">
+                      <button
+                        className="add-menu-item"
+                        onClick={() => { fileInputRef.current?.click(); setShowAddMenu(false); }}
+                      >
+                        <span className="add-menu-item-icon"><FileTextIcon size={14} /></span>
+                        {t('chat.addFile')}
+                      </button>
+                      <button
+                        className="add-menu-item"
+                        onClick={() => { imageInputRef.current?.click(); setShowAddMenu(false); }}
+                      >
+                        <span className="add-menu-item-icon"><FileIcon size={14} /></span>
+                        {t('chat.addImage')}
+                      </button>
+                      <button
+                        className="add-menu-item"
+                        onClick={() => { setInputValue('/'); setShowCommands(true); setShowAddMenu(false); requestAnimationFrame(() => inputRef.current?.focus()); }}
+                      >
+                        <span className="add-menu-item-icon add-menu-command-icon">/</span>
+                        {t('chat.slashCommands')}
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {showFooter && (
+                  <div className="chat-input-metadata">
+                    {inputValue.startsWith('/') && (
+                      <span className="chat-input-badge">
+                        <span className="chat-input-badge-mark">/</span>
+                        <span className="chat-input-badge-text">{activeCommand?.command ?? '/'}</span>
+                      </span>
+                    )}
+                    {attachedFiles.length > 0 && (
+                      <span className="chat-input-badge">
+                        <FileTextIcon size={12} />
+                        <span className="chat-input-badge-text">{attachedFiles.length}</span>
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
 
-              {/* Send / Stop Button */}
-              {showStop ? (
-                <button
-                  className="action-btn stop"
-                  onClick={onStop}
-                  title={t('chat.stop')}
-                  aria-label={t('chat.stop')}
-                >
-                  <StopIcon size={14} />
-                </button>
-              ) : (
-                <button
-                  className="action-btn send"
-                  onClick={handleSend}
-                  disabled={!canSend}
-                  title={t('chat.run')}
-                  aria-label={t('chat.run')}
-                  style={{ opacity: canSend ? 1 : 0.4, cursor: canSend ? 'pointer' : 'default' }}
-                >
-                  <PlayIcon size={14} />
-                </button>
-              )}
+              <div className="chat-input-trailing">
+                {(isStreaming || hasPendingInput) && (
+                  <span className={`chat-input-presence${isStreaming ? ' streaming' : ''}${hasPendingInput ? ' pending' : ''}`} />
+                )}
+                {showStop ? (
+                  <button
+                    className="action-btn stop chat-send-btn"
+                    onClick={onStop}
+                    title={t('chat.stop')}
+                    aria-label={t('chat.stop')}
+                  >
+                    <StopIcon size={14} />
+                  </button>
+                ) : (
+                  <button
+                    className="action-btn send chat-send-btn"
+                    onClick={handleSend}
+                    disabled={!canSend}
+                    title={t('chat.run')}
+                    aria-label={t('chat.run')}
+                  >
+                    <SendIcon size={14} />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Hidden File Inputs */}
         <input
           ref={fileInputRef}
           type="file"

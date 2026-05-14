@@ -7,6 +7,7 @@ use super::utils::create_command;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// MCP Server Status
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -166,7 +167,61 @@ except Exception as e:
     }
 }
 
+/// Write MCP config using ConfigLock for safe concurrent access
+async fn write_mcp_config_with_lock(mcp_config: &serde_json::Value) -> Result<(), String> {
+    // Get config path
+    let home = std::env::var("USERPROFILE").unwrap_or_else(|_| String::from("C:\\Users\\Default"));
+    let config_path = std::path::PathBuf::from(home)
+        .join("AppData")
+        .join("Local")
+        .join("Packages")
+        .join("CanonicalGroupLimited.Ubuntu_79rhkp1fndgsc")
+        .join("LocalState")
+        .join("rootfs")
+        .join("home")
+        .join(std::env::var("USER").unwrap_or_else(|_| String::from("user")))
+        .join(".hermes")
+        .join("config.yaml");
+    
+    // Create ConfigLock instance
+    let config_lock = crate::core::config_lock::ConfigLock::new(config_path);
+    
+    // Acquire lock
+    let mut guard = config_lock.acquire().await?;
+    
+    // Read existing config
+    let mut config = config_lock.read_config().await.unwrap_or_else(|_| {
+        serde_yaml::Value::Mapping(serde_yaml::Mapping::new())
+    });
+    
+    // Ensure top-level is a mapping
+    let config_map = match config.as_mapping_mut() {
+        Some(m) => m,
+        None => {
+            config = serde_yaml::Value::Mapping(serde_yaml::Mapping::new());
+            config.as_mapping_mut().unwrap()
+        }
+    };
+    
+    // Convert MCP config to YAML value
+    let mcp_yaml = serde_yaml::to_value(mcp_config)
+        .map_err(|e| format!("Failed to convert MCP config to YAML: {}", e))?;
+    
+    // Update MCP section
+    config_map.insert(
+        serde_yaml::Value::String("mcp".to_string()),
+        mcp_yaml
+    );
+    
+    // Write back with lock
+    config_lock.write_config(&mut guard, &config).await?;
+    
+    println!("[MCP] MCP config saved successfully with ConfigLock");
+    Ok(())
+}
+
 /// Write MCP config to WSL using base64 encoding via stdin for safe transport
+/// NOTE: This is the legacy implementation. New code should use write_mcp_config_with_lock.
 fn write_mcp_config(mcp_config: &serde_json::Value) -> Result<(), String> {
     let mcp_str = serde_json::to_string(mcp_config)
         .map_err(|e| format!("Failed to serialize MCP config: {}", e))?;
@@ -230,7 +285,9 @@ print("Config saved successfully")
 
 /// List all MCP servers
 #[tauri::command(rename_all = "snake_case")]
-pub fn list_mcp_servers() -> Result<Vec<McpServer>, String> {
+pub async fn list_mcp_servers(
+    mcp_manager: tauri::State<'_, Arc<crate::features::McpServerManager>>,
+) -> Result<Vec<McpServer>, String> {
     println!("[MCP] Listing MCP servers...");
 
     let mcp_config = read_mcp_config()?;
@@ -241,8 +298,8 @@ pub fn list_mcp_servers() -> Result<Vec<McpServer>, String> {
     for (name, server_config) in servers {
         let config = parse_server_config(&name, &server_config);
 
-        // Determine server status (for now, all are disconnected as we don't have runtime)
-        let status = McpServerStatus::Disconnected;
+        // Get real-time status from manager
+        let status = mcp_manager.get_server_status(&name).await.unwrap_or(McpServerStatus::Disconnected);
 
         result.push(McpServer {
             name: name.clone(),
@@ -311,7 +368,7 @@ pub fn get_mcp_server(name: String) -> Result<McpServer, String> {
 
 /// Add a new MCP server
 #[tauri::command(rename_all = "snake_case")]
-pub fn add_mcp_server(request: AddMcpServerRequest) -> Result<(), String> {
+pub async fn add_mcp_server(request: AddMcpServerRequest) -> Result<(), String> {
     println!("[MCP] Adding MCP server: {}", request.name);
 
     if request.name.is_empty() {
@@ -354,7 +411,7 @@ pub fn add_mcp_server(request: AddMcpServerRequest) -> Result<(), String> {
 
     servers.insert(request.name.clone(), serde_json::Value::Object(server_obj));
 
-    write_mcp_config(&mcp_config)?;
+    write_mcp_config_with_lock(&mcp_config).await?;
     println!("[MCP] Added MCP server: {}", request.name);
 
     Ok(())
@@ -362,7 +419,7 @@ pub fn add_mcp_server(request: AddMcpServerRequest) -> Result<(), String> {
 
 /// Remove an MCP server
 #[tauri::command(rename_all = "snake_case")]
-pub fn remove_mcp_server(name: String) -> Result<(), String> {
+pub async fn remove_mcp_server(name: String) -> Result<(), String> {
     println!("[MCP] Removing MCP server: {}", name);
 
     let mut mcp_config = read_mcp_config()?;
@@ -375,7 +432,7 @@ pub fn remove_mcp_server(name: String) -> Result<(), String> {
         return Err(format!("Server not found: {}", name));
     }
 
-    write_mcp_config(&mcp_config)?;
+    write_mcp_config_with_lock(&mcp_config).await?;
     println!("[MCP] Removed MCP server: {}", name);
 
     Ok(())
@@ -383,31 +440,22 @@ pub fn remove_mcp_server(name: String) -> Result<(), String> {
 
 /// Start an MCP server
 #[tauri::command(rename_all = "snake_case")]
-pub fn start_mcp_server(name: String) -> Result<(), String> {
+pub async fn start_mcp_server(
+    name: String,
+    mcp_manager: tauri::State<'_, Arc<crate::features::McpServerManager>>,
+) -> Result<(), String> {
     println!("[MCP] Starting MCP server: {}", name);
-
-    // Verify server exists
-    let mcp_config = read_mcp_config()?;
-    let servers = mcp_config.get("servers").and_then(|s| s.as_object()).cloned().unwrap_or_default();
-
-    let _server_config = servers.get(&name)
-        .ok_or_else(|| format!("Server not found: {}", name))?;
-
-    Err(format!(
-        "Starting MCP server '{}' is not implemented in this desktop build yet",
-        name
-    ))
+    mcp_manager.start_server(&name).await
 }
 
 /// Stop an MCP server
 #[tauri::command(rename_all = "snake_case")]
-pub fn stop_mcp_server(name: String) -> Result<(), String> {
+pub async fn stop_mcp_server(
+    name: String,
+    mcp_manager: tauri::State<'_, Arc<crate::features::McpServerManager>>,
+) -> Result<(), String> {
     println!("[MCP] Stopping MCP server: {}", name);
-
-    Err(format!(
-        "Stopping MCP server '{}' is not implemented in this desktop build yet",
-        name
-    ))
+    mcp_manager.stop_server(&name).await
 }
 
 /// Test MCP connection
@@ -440,64 +488,42 @@ pub fn test_mcp_connection(config: McpServerConfig) -> Result<McpConnectionTestR
 
 /// Get MCP tools for a server
 #[tauri::command(rename_all = "snake_case")]
-pub fn get_mcp_tools(name: String) -> Result<Vec<McpTool>, String> {
+pub async fn get_mcp_tools(
+    name: String,
+    mcp_manager: tauri::State<'_, Arc<crate::features::McpServerManager>>,
+) -> Result<Vec<McpTool>, String> {
     println!("[MCP] Getting tools for server: {}", name);
-
-    // Verify server exists
-    let mcp_config = read_mcp_config()?;
-    let servers = mcp_config.get("servers").and_then(|s| s.as_object()).cloned().unwrap_or_default();
-
-    if !servers.contains_key(&name) {
-        return Err(format!("Server not found: {}", name));
-    }
-
-    // In a real implementation, this would query the server for its tools
-    // For now, return empty list
-    Ok(vec![])
+    mcp_manager.get_server_tools(&name).await
 }
 
 /// Get MCP resources for a server
 #[tauri::command(rename_all = "snake_case")]
-pub fn get_mcp_resources(name: String) -> Result<Vec<McpResource>, String> {
+pub async fn get_mcp_resources(
+    name: String,
+    mcp_manager: tauri::State<'_, Arc<crate::features::McpServerManager>>,
+) -> Result<Vec<McpResource>, String> {
     println!("[MCP] Getting resources for server: {}", name);
-
-    // Verify server exists
-    let mcp_config = read_mcp_config()?;
-    let servers = mcp_config.get("servers").and_then(|s| s.as_object()).cloned().unwrap_or_default();
-
-    if !servers.contains_key(&name) {
-        return Err(format!("Server not found: {}", name));
-    }
-
-    // In a real implementation, this would query the server for its resources
-    // For now, return empty list
-    Ok(vec![])
+    mcp_manager.get_server_resources(&name).await
 }
 
 /// Get MCP server logs
 #[tauri::command(rename_all = "snake_case")]
-pub fn get_mcp_logs(name: String) -> Result<Vec<McpLogEntry>, String> {
+pub async fn get_mcp_logs(
+    name: String,
+    mcp_manager: tauri::State<'_, Arc<crate::features::McpServerManager>>,
+) -> Result<Vec<McpLogEntry>, String> {
     println!("[MCP] Getting logs for server: {}", name);
-
-    // Verify server exists
-    let mcp_config = read_mcp_config()?;
-    let servers = mcp_config.get("servers").and_then(|s| s.as_object()).cloned().unwrap_or_default();
-
-    if !servers.contains_key(&name) {
-        return Err(format!("Server not found: {}", name));
-    }
-
-    // In a real implementation, this would retrieve actual logs
-    // For now, return empty list
-    Ok(vec![])
+    mcp_manager.get_server_logs(&name, 100).await
 }
 
 /// Get MCP server statistics
 #[tauri::command(rename_all = "snake_case")]
-pub fn get_mcp_stats() -> Result<McpServerStats, String> {
+pub async fn get_mcp_stats(
+    mcp_manager: tauri::State<'_, Arc<crate::features::McpServerManager>>,
+) -> Result<McpServerStats, String> {
     println!("[MCP] Getting MCP statistics...");
 
-    let servers = list_mcp_servers()?;
+    let servers = list_mcp_servers(mcp_manager).await?;
 
     let total_servers = servers.len() as i32;
     let connected = servers.iter().filter(|s| s.status == McpServerStatus::Connected).count() as i32;
@@ -518,7 +544,7 @@ pub fn get_mcp_stats() -> Result<McpServerStats, String> {
 
 /// Update MCP server configuration
 #[tauri::command(rename_all = "snake_case")]
-pub fn update_mcp_server(name: String, config: McpServerConfig) -> Result<(), String> {
+pub async fn update_mcp_server(name: String, config: McpServerConfig) -> Result<(), String> {
     println!("[MCP] Updating MCP server: {}", name);
 
     let mut mcp_config = read_mcp_config()?;
@@ -557,7 +583,7 @@ pub fn update_mcp_server(name: String, config: McpServerConfig) -> Result<(), St
 
     servers.insert(name.clone(), serde_json::Value::Object(server_obj));
 
-    write_mcp_config(&mcp_config)?;
+    write_mcp_config_with_lock(&mcp_config).await?;
     println!("[MCP] Updated MCP server: {}", name);
 
     Ok(())

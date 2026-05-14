@@ -15,29 +15,28 @@ const ModelConfigForm: React.FC<{
     base_url: '',
   });
   const [showApiKey, setShowApiKey] = useState(false);
-  // Track whether the user has actually edited the API key field
   const [apiKeyEdited, setApiKeyEdited] = useState(false);
-  // Track the new API key value (separate from masked display)
   const [newApiKey, setNewApiKey] = useState('');
 
-  // Check if an API key value is a masked placeholder from the backend
   const isMaskedKey = (key: string | undefined): boolean => {
     if (!key) return false;
-    return key.startsWith('__MASKED__') || key.startsWith('•') || (key.includes('****') && key.length > 8);
+    return key.startsWith('__MASKED__') || (key.includes('****') && key.length > 8);
   };
 
-  // Display the API key status
   const getApiKeyDisplay = (): string => {
     if (apiKeyEdited && newApiKey) {
-      return showApiKey ? newApiKey : newApiKey.slice(0, 4) + '*'.repeat(Math.min(newApiKey.length - 8, 20)) + newApiKey.slice(-4);
+      return showApiKey
+        ? newApiKey
+        : newApiKey.slice(0, 4) + '*'.repeat(Math.min(newApiKey.length - 8, 20)) + newApiKey.slice(-4);
     }
     if (formData.api_key && isMaskedKey(formData.api_key)) {
-      // Show a friendly masked display
-      const suffix = formData.api_key.replace(/^(__MASKED__|[•]+)/, '');
+      const suffix = formData.api_key.replace(/^__MASKED__/, '');
       return showApiKey ? formData.api_key : `****${suffix}`;
     }
     if (formData.api_key) {
-      return showApiKey ? formData.api_key : formData.api_key.slice(0, 4) + '*'.repeat(Math.min(formData.api_key.length - 8, 20)) + formData.api_key.slice(-4);
+      return showApiKey
+        ? formData.api_key
+        : formData.api_key.slice(0, 4) + '*'.repeat(Math.min(formData.api_key.length - 8, 20)) + formData.api_key.slice(-4);
     }
     return '';
   };
@@ -54,7 +53,6 @@ const ModelConfigForm: React.FC<{
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Build save data — only include api_key if the user actually entered a new one
     const saveData: Partial<ModelConfig> = {
       default: formData.default,
       provider: formData.provider,
@@ -63,7 +61,6 @@ const ModelConfigForm: React.FC<{
     if (apiKeyEdited && newApiKey) {
       saveData.api_key = newApiKey;
     }
-    // If not edited, don't include api_key at all — backend will preserve existing value
     onSave(saveData);
   };
 
@@ -73,8 +70,6 @@ const ModelConfigForm: React.FC<{
   };
 
   const handleApiKeyFocus = () => {
-    // When focusing the API key field and it's showing a masked value,
-    // switch to edit mode showing the placeholder
     if (!apiKeyEdited && isMaskedKey(formData.api_key)) {
       setShowApiKey(true);
     }
@@ -94,18 +89,18 @@ const ModelConfigForm: React.FC<{
       </div>
 
       <div className="form-group">
-        <label className="form-label">Provider</label>
+        <label className="form-label">{t('settings.provider')}</label>
         <select
           value={formData.provider || 'auto'}
           onChange={(e) => setFormData({ ...formData, provider: e.target.value })}
           className="form-select"
         >
-          <option value="auto">Auto</option>
+          <option value="auto">{t('settings.providerAuto')}</option>
           <option value="openai">OpenAI</option>
           <option value="anthropic">Anthropic</option>
           <option value="openrouter">OpenRouter</option>
           <option value="ollama">Ollama</option>
-          <option value="custom">Custom</option>
+          <option value="custom">{t('settings.providerCustom')}</option>
         </select>
       </div>
 
@@ -114,7 +109,7 @@ const ModelConfigForm: React.FC<{
         <div className="api-key-input-wrapper">
           <Input
             type={showApiKey ? 'text' : 'password'}
-            value={apiKeyEdited ? getApiKeyDisplay() : getApiKeyDisplay()}
+            value={getApiKeyDisplay()}
             onChange={(e) => handleApiKeyChange(e.target.value)}
             onFocus={handleApiKeyFocus}
             placeholder={isApiKeyConfigured ? t('settings.enterNewApiKey') || 'Enter new API key to update' : 'sk-...'}
@@ -130,9 +125,11 @@ const ModelConfigForm: React.FC<{
         </div>
         <span className="form-hint">
           {isApiKeyConfigured
-            ? (apiKeyEdited
-              ? (t('settings.willBeUpdated') || 'API key will be updated on save')
-              : (t('settings.configured') + ' - ' + (t('settings.leaveEmptyToKeep') || 'leave empty to keep current')))
+            ? (
+              apiKeyEdited
+                ? (t('settings.willBeUpdated') || 'API key will be updated on save')
+                : `${t('settings.configured')} - ${(t('settings.leaveEmptyToKeep') || 'leave empty to keep current')}`
+            )
             : t('settings.notConfigured')} - {t('settings.apiKeyStored')}
         </span>
       </div>

@@ -33,7 +33,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(247, 244, 238, 0.14);
   border: none;
   border-radius: var(--radius-full);
   color: white;
@@ -43,7 +43,7 @@
 }
 
 .lightbox-close:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(247, 244, 238, 0.24);
   transform: scale(1.1);
 }
 
@@ -94,4 +94,12 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+[data-theme="dark"] .lightbox-close {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .lightbox-close:hover {
+  background: rgba(255, 255, 255, 0.2);
 }

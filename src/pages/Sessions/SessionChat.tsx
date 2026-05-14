@@ -250,7 +250,9 @@ export const SessionChat: React.FC<SessionChatProps> = ({ session, initialMessag
     isStreamingRef.current = false;
     try {
       await abortChat(session.id);
-    } catch {}
+    } catch {
+      // Ignore abort errors when the stream has already finished.
+    }
     streamingContentRef.current = '';
     streamingToolsRef.current = [];
     setStreamingContent('');

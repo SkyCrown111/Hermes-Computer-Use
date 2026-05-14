@@ -3,41 +3,41 @@
    ============================================ */
 
 :root {
-  /* ─── Primary Colors (Warm Brown/Copper) ─── */
-  --color-primary: #8F482F;
-  --color-primary-rgb: 143, 72, 47;
-  --color-primary-container: #AD5F45;
-  --color-primary-fixed: #FFDBD0;
-  --color-primary-fixed-dim: #FFB59D;
+  /* Primary Colors (Warm Brown/Copper) */
+  --color-primary: #c27a47;
+  --color-primary-rgb: 194, 122, 71;
+  --color-primary-container: #d08a59;
+  --color-primary-fixed: #f3dfcf;
+  --color-primary-fixed-dim: #e1b189;
 
-  --color-on-primary: #FFFFFF;
-  --color-on-surface: #1B1C1A;
-  --color-on-surface-variant: #54433E;
+  --color-on-primary: #fffaf6;
+  --color-on-surface: #2f2923;
+  --color-on-surface-variant: #6f655a;
 
-  /* ─── Surface Colors (Light Theme) ─── */
-  --color-surface: #FAF9F5;
-  --color-surface-bright: #FAF9F5;
-  --color-surface-dim: #DBDAD6;
-  --color-surface-container: #EFEEEA;
-  --color-surface-container-low: #F4F4F0;
-  --color-surface-container-high: #E9E8E4;
-  --color-surface-container-highest: #E3E2DF;
-  --color-surface-container-lowest: #FFFFFF;
-  --color-surface-variant: #E3E2DF;
+  /* Surface Colors (Light Theme) */
+  --color-surface: #f7f4ee;
+  --color-surface-bright: #fcfaf6;
+  --color-surface-dim: #e8e1d7;
+  --color-surface-container: #f1ebe2;
+  --color-surface-container-low: #faf7f2;
+  --color-surface-container-high: #ebe3d8;
+  --color-surface-container-highest: #e1d7ca;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-variant: #ece5db;
 
-  --color-background: #FAF9F5;
+  --color-background: #f5f1ea;
 
-  /* ─── Outline Colors ─── */
-  --color-outline: #87736D;
-  --color-outline-variant: #E5D8D2;
+  /* Outline Colors */
+  --color-outline: #9b8f82;
+  --color-outline-variant: #ddd2c5;
 
-  /* ─── Secondary & Tertiary ─── */
-  --color-secondary: #2D628F;
-  --color-secondary-container: #9ACBFE;
-  --color-tertiary: #4F6237;
-  --color-tertiary-container: #677B4E;
+  /* Secondary and Tertiary Colors */
+  --color-secondary: #7e8ea1;
+  --color-secondary-container: #d9e4f0;
+  --color-tertiary: #7b8668;
+  --color-tertiary-container: #dde5d1;
 
-  /* ─── Status Colors ─── */
+  /* Status Colors */
   --color-error: #BA1A1A;
   --color-error-container: #FFDAD6;
   --color-success: #16A34A;
@@ -47,32 +47,37 @@
   --color-info: #2563EB;
   --color-info-container: #DBEAFE;
 
-  /* ─── Inverse Colors (for dark elements on light bg) ─── */
-  --color-inverse-surface: #2F312E;
-  --color-inverse-on-surface: #F2F1ED;
-  --color-inverse-primary: #FFB59D;
+  /* Inverse Colors (for dark elements on light backgrounds) */
+  --color-inverse-surface: #28231f;
+  --color-inverse-on-surface: #f4eee6;
+  --color-inverse-primary: #dfab83;
 
-  /* ─── Brand & Accents ─── */
+  /* Brand and Accent Colors */
   --color-brand: var(--color-primary);
   --color-text-accent: var(--color-secondary);
 
-  /* ─── Fonts ─── */
+  /* Fonts */
   --font-headline: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
   --font-body: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
   --font-label: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
   --font-mono: 'SF Mono', 'Fira Code', Consolas, monospace;
 
-  /* ─── Semantic Aliases ─── */
+  /* Semantic Aliases */
   /* Layout dimensions */
   --sidebar-width: 240px;
   --sidebar-collapsed-width: 64px;
   --titlebar-height: 40px;
 
   /* Surface aliases */
-  --color-surface-sidebar: var(--color-surface-container-low);
+  --color-surface-sidebar: #f3eee6;
+  --color-surface-elevated: rgba(255, 255, 255, 0.72);
   --color-surface-hover: var(--color-surface-container-high);
   --color-surface-selected: var(--color-surface-container);
   --color-surface-user-msg: var(--color-surface-container);
+  --color-overlay: rgba(34, 30, 26, 0.48);
+  --color-scrim: rgba(20, 17, 16, 0.6);
+  --color-code-surface: rgba(47, 41, 35, 0.06);
+  --color-control-thumb: var(--color-surface-container-lowest);
 
   /* Border aliases */
   --color-border: var(--color-outline-variant);
@@ -88,10 +93,10 @@
   --color-surface-info: var(--color-surface-container-low);
 
   /* Shadows */
-  --shadow-sm: 0 2px 8px rgba(27, 28, 26, 0.04);
-  --shadow-md: 0 4px 16px rgba(27, 28, 26, 0.08);
-  --shadow-lg: 0 8px 32px rgba(27, 28, 26, 0.12);
-  --shadow-dropdown: 0 4px 20px rgba(27, 28, 26, 0.04), 0 12px 40px rgba(27, 28, 26, 0.08);
+  --shadow-sm: 0 8px 20px rgba(47, 41, 35, 0.05);
+  --shadow-md: 0 16px 38px rgba(47, 41, 35, 0.08);
+  --shadow-lg: 0 24px 56px rgba(47, 41, 35, 0.11);
+  --shadow-dropdown: 0 12px 28px rgba(47, 41, 35, 0.08), 0 24px 64px rgba(47, 41, 35, 0.12);
 
   /* Button colors */
   --color-btn-primary-bg: var(--color-primary);
@@ -99,26 +104,12 @@
   --color-btn-primary-bg-hover: var(--color-primary-container);
   --color-btn-primary-bg-active: var(--color-primary);
 
-  /* ─── Legacy Variables (for backwards compatibility) ─── */
-  --bg-primary: var(--color-surface);
-  --bg-secondary: var(--color-surface-container);
-  --bg-tertiary: var(--color-surface-container-high);
-  --bg-glass: rgba(244, 244, 240, 0.8);
-
-  --text-primary: var(--color-text-primary);
-  --text-secondary: var(--color-text-secondary);
-  --text-tertiary: var(--color-text-tertiary);
-
-  --accent-primary: var(--color-brand);
-  --accent-secondary: var(--color-secondary);
-  --accent-success: var(--color-success);
-  --accent-warning: var(--color-warning);
-  --accent-error: var(--color-error);
-
+  /* Glass Tokens */
+  --bg-glass: rgba(255, 255, 255, 0.72);
   --glass-blur: blur(20px);
   --glass-border: var(--color-border);
 
-  /* ─── Typography ─── */
+  /* Typography */
   --font-sans: var(--font-body);
   --text-xs: 12px;
   --text-sm: 14px;
@@ -133,7 +124,7 @@
   --font-semibold: 600;
   --font-bold: 700;
 
-  /* ─── Spacing ─── */
+  /* Spacing */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -145,14 +136,25 @@
   --space-12: 48px;
   --space-16: 64px;
 
-  /* ─── Radii ─── */
+  /* Page system */
+  --page-max-width: 1180px;
+  --page-gap: 20px;
+  --page-title-size: 28px;
+  --page-subtitle-size: 14px;
+  --panel-radius: 12px;
+  --panel-padding: 18px;
+  --panel-padding-lg: 20px;
+  --control-height: 40px;
+  --control-radius: 10px;
+
+  /* Radii */
   --radius-sm: 4px;
   --radius-md: 8px;
   --radius-lg: 12px;
   --radius-xl: 16px;
   --radius-full: 9999px;
 
-  /* ─── Transitions ─── */
+  /* Transitions */
   --duration-fast: 150ms;
   --duration-normal: 250ms;
   --duration-slow: 400ms;
@@ -162,48 +164,57 @@
   --ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
-/* ─── Dark Theme ─── */
+/* Dark Theme */
 [data-theme="dark"] {
-  /* ─── Surface Colors (Dark Theme) ─── */
-  --color-surface: #1B1C1A;
-  --color-surface-bright: #2F312E;
-  --color-surface-dim: #1B1C1A;
-  --color-surface-container: #252624;
-  --color-surface-container-low: #1F201E;
-  --color-surface-container-high: #2B2C29;
-  --color-surface-container-highest: #353633;
-  --color-surface-container-lowest: #151614;
-  --color-surface-variant: #2F312E;
+  /* Surface Colors (Dark Theme) */
+  --color-surface: #181818;
+  --color-surface-bright: #202020;
+  --color-surface-dim: #111111;
+  --color-surface-container: #1d1d1d;
+  --color-surface-container-low: #171717;
+  --color-surface-container-high: #242424;
+  --color-surface-container-highest: #2d2d2d;
+  --color-surface-container-lowest: #0f0f0f;
+  --color-surface-variant: #222222;
 
-  --color-background: #1B1C1A;
+  --color-background: #121212;
+  --color-surface-sidebar: #151515;
+  --color-surface-elevated: rgba(24, 24, 24, 0.84);
+  --color-overlay: rgba(0, 0, 0, 0.58);
+  --color-scrim: rgba(0, 0, 0, 0.6);
+  --color-code-surface: rgba(0, 0, 0, 0.24);
+  --color-control-thumb: #f5f5f5;
+  --color-surface-hover: #202020;
+  --color-surface-selected: #252525;
+  --color-surface-user-msg: #252525;
 
-  /* ─── Outline Colors (Dark) ─── */
-  --color-outline: #A09B96;
-  --color-outline-variant: #6B6560;
+  /* Outline Colors (Dark Theme) */
+  --color-outline: #8f8f8f;
+  --color-outline-variant: rgba(255, 255, 255, 0.12);
 
   /* Border aliases for dark theme */
   --color-border: var(--color-outline-variant);
   --color-border-focus: var(--color-primary);
   --color-border-separator: var(--color-outline-variant);
 
-  /* ─── Text Colors (Dark) ─── */
-  --color-on-surface: #E3E2DF;
-  --color-on-surface-variant: #C9C5C0;
+  /* Text Colors (Dark Theme) */
+  --color-on-surface: #f3f3f3;
+  --color-on-surface-variant: #b3b3b3;
 
-  /* ─── Primary Colors (Dark) - Muted for dark theme ─── */
-  --color-primary: #9A6248;
-  --color-primary-rgb: 154, 98, 72;
-  --color-primary-container: #B87A5E;
-  --color-primary-fixed: #4A2215;
-  --color-primary-fixed-dim: #3D1A10;
-  --color-on-primary: #FFFFFF;
+  /* Primary Colors (Dark Theme) */
+  --color-primary: #f1f1f1;
+  --color-primary-rgb: 241, 241, 241;
+  --color-primary-container: #d6d6d6;
+  --color-primary-fixed: #343434;
+  --color-primary-fixed-dim: #2a2a2a;
+  --color-on-primary: #121212;
 
-  /* ─── Inverse Colors (for light elements on dark bg) ─── */
-  --color-inverse-surface: #E3E2DF;
-  --color-inverse-on-surface: #2F312E;
-  --color-inverse-primary: #8F482F;
+  /* Inverse Colors (for light elements on dark backgrounds) */
+  --color-inverse-surface: #f2f2f2;
+  --color-inverse-on-surface: #1b1b1b;
+  --color-inverse-primary: #d8d8d8;
 
-  /* ─── Status Colors (Dark) ─── */
+  /* Status Colors (Dark Theme) */
   --color-error: #FFB4AB;
   --color-error-container: #93000A;
   --color-success: #4ADE80;
@@ -213,25 +224,80 @@
   --color-info: #60A5FA;
   --color-info-container: #1E3A5F;
 
-  /* ─── Shadows (Dark) ─── */
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
-  --shadow-dropdown: 0 4px 20px rgba(0, 0, 0, 0.3), 0 12px 40px rgba(0, 0, 0, 0.4);
+  /* Shadows (Dark Theme) */
+  --shadow-sm: 0 8px 20px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 18px 40px rgba(0, 0, 0, 0.24);
+  --shadow-lg: 0 32px 70px rgba(0, 0, 0, 0.3);
+  --shadow-dropdown: 0 14px 34px rgba(0, 0, 0, 0.26), 0 28px 72px rgba(0, 0, 0, 0.3);
 
-  /* ─── Legacy Variables Update ─── */
-  --bg-glass: rgba(27, 28, 26, 0.8);
+  /* Legacy Glass Tokens */
+  --bg-glass: rgba(18, 18, 18, 0.84);
 
-  /* ─── Brand Override for Dark Theme ─── */
-  --color-brand: var(--color-primary);
-  --accent-primary: var(--color-primary);
-  --accent-secondary: var(--color-secondary);
-  --accent-success: var(--color-success);
-  --accent-warning: var(--color-warning);
-  --accent-error: var(--color-error);
+  /* Brand Overrides (Dark Theme) */
+  --color-brand: #f1f1f1;
+  --color-text-accent: #d6d6d6;
+  --color-surface-info: #1b1b1b;
 }
 
-/* ─── Base Styles ─── */
+:root[data-theme="dark"] .theme-btn.active,
+:root[data-theme="dark"] .lang-btn.active,
+:root[data-theme="dark"] .position-btn.active,
+:root[data-theme="dark"] .section-nav-item.active,
+:root[data-theme="dark"] .task-item.active,
+:root[data-theme="dark"] .providers-tab.active,
+:root[data-theme="dark"] .approval-mode-option.selected,
+:root[data-theme="dark"] .nav-link-active,
+:root[data-theme="dark"] .sidebar-nav-bottom .nav-link-active,
+:root[data-theme="dark"] .session-sidebar-nav-item.active,
+:root[data-theme="dark"] .session-sidebar-item.active {
+  background: var(--color-surface-selected) !important;
+  border-color: var(--color-border) !important;
+  color: var(--color-text-primary) !important;
+  box-shadow: inset 0 0 0 1px var(--color-border) !important;
+}
+
+:root[data-theme="dark"] .nav-link-active::before {
+  background: #f1f1f1 !important;
+}
+
+:root[data-theme="dark"] .preferences-page .toggle-switch input:checked + .toggle-slider,
+:root[data-theme="dark"] .settings-page .toggle-switch input:checked + .toggle-slider {
+  background: #383838 !important;
+  border-color: var(--color-border) !important;
+}
+
+:root[data-theme="dark"] .preferences-page .toggle-switch input:checked + .toggle-slider:before,
+:root[data-theme="dark"] .settings-page .toggle-switch input:checked + .toggle-slider:before {
+  background: #f1f1f1 !important;
+}
+
+:root[data-theme="dark"] .new-chat-btn,
+:root[data-theme="dark"] .session-sidebar-new-chat,
+:root[data-theme="dark"] .btn-primary {
+  background: var(--color-surface-selected) !important;
+  border-color: var(--color-border) !important;
+  color: var(--color-text-primary) !important;
+  box-shadow: none !important;
+}
+
+:root[data-theme="dark"] .new-chat-btn:hover,
+:root[data-theme="dark"] .session-sidebar-new-chat:hover,
+:root[data-theme="dark"] .btn-primary:hover:not(:disabled),
+:root[data-theme="dark"] .btn-primary:active:not(:disabled) {
+  background: var(--color-surface-hover) !important;
+  border-color: var(--color-border) !important;
+  color: var(--color-text-primary) !important;
+  transform: none !important;
+}
+
+:root[data-theme="dark"] .card-icon,
+:root[data-theme="dark"] .preferences-link-icon,
+:root[data-theme="dark"] .session-sidebar-new-chat-icon,
+:root[data-theme="dark"] .session-sidebar-nav-item.active .session-sidebar-nav-icon {
+  color: #d8d8d8 !important;
+}
+
+/* Base Styles */
 * {
   margin: 0;
   padding: 0;
@@ -253,7 +319,7 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ─── Form Elements ─── */
+/* Form Elements */
 select {
   padding: var(--space-2) var(--space-3);
   background: var(--color-surface);
@@ -279,7 +345,7 @@ select:hover {
 select:focus {
   outline: none;
   border-color: var(--color-border-focus);
-  box-shadow: 0 0 0 3px rgba(143, 72, 47, 0.15);
+  box-shadow: 0 0 0 3px rgba(var(--color-primary-rgb), 0.16);
 }
 
 select option {
@@ -287,33 +353,24 @@ select option {
   color: var(--color-text-primary);
 }
 
-/* ─── Scrollbar ─── */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* Hide scrollbars while preserving scroll */
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
-::-webkit-scrollbar-track {
-  background: transparent;
+*::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
-::-webkit-scrollbar-thumb {
-  background: var(--color-outline);
-  border-radius: var(--radius-full);
-  opacity: 0.3;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  opacity: 0.6;
-}
-
-/* ─── Selection ─── */
+/* Selection */
 ::selection {
-  background: rgba(143, 72, 47, 0.2);
+  background: rgba(var(--color-primary-rgb), 0.2);
   color: var(--color-text-primary);
 }
 
-/* ─── Glass Card ─── */
+/* Glass Card */
 .glass-card {
   background: var(--bg-glass);
   backdrop-filter: var(--glass-blur);
@@ -323,7 +380,7 @@ select option {
   box-shadow: var(--shadow-md);
 }
 
-/* ─── Transitions ─── */
+/* Transition Utilities */
 .transition-base {
   transition: all var(--duration-normal) var(--ease-out);
 }
@@ -336,7 +393,7 @@ select option {
   transform: scale(1.02);
 }
 
-/* ─── Animations ─── */
+/* Animations */
 @keyframes shimmer {
   0%, 100% { opacity: 0.4; }
   50% { opacity: 1; }
@@ -371,7 +428,7 @@ select option {
 .animate-spin { animation: spin 1s linear infinite; }
 .animate-pulse-dot { animation: pulse-dot 1.5s ease-in-out infinite; }
 
-/* ─── Material Symbols ─── */
+/* Material Symbols */
 .material-symbols-outlined {
   font-family: 'Material Symbols Outlined';
   font-weight: normal;
@@ -394,7 +451,7 @@ select option {
    Responsive Design - Breakpoints & Utilities
    ============================================ */
 
-/* ─── Responsive Variables ─── */
+/* Responsive Variables */
 :root {
   --breakpoint-sm: 640px;
   --breakpoint-md: 768px;
@@ -402,7 +459,7 @@ select option {
   --breakpoint-xl: 1280px;
 }
 
-/* ─── Responsive Display Utilities ─── */
+/* Responsive Display Utilities */
 .hide-mobile {
   display: block;
 }
@@ -459,7 +516,7 @@ select option {
    Common Utility Classes
    ============================================ */
 
-/* ─── Loading Spinner ─── */
+/* Loading Spinner */
 .loading-spinner {
   width: 32px;
   height: 32px;
@@ -482,7 +539,7 @@ select option {
   padding: var(--space-8);
 }
 
-/* ─── Error Message ─── */
+/* Error Message */
 .error-message {
   display: flex;
   align-items: center;
@@ -510,7 +567,7 @@ select option {
   opacity: 1;
 }
 
-/* ─── Empty State ─── */
+/* Empty State */
 .empty-state {
   display: flex;
   flex-direction: column;
@@ -540,7 +597,7 @@ select option {
   max-width: 300px;
 }
 
-/* ─── Toggle Switch ─── */
+/* Toggle Switch */
 .toggle-switch {
   position: relative;
   display: inline-block;
@@ -595,7 +652,7 @@ select option {
 
 .toggle-switch input:checked + .toggle-slider::before {
   transform: translateX(20px);
-  background: white;
+  background: var(--color-control-thumb);
 }
 
 .toggle-switch input:disabled + .toggle-slider {
@@ -613,7 +670,7 @@ select option {
 }
 
 
-/* ─── Success Message ─── */
+/* Success Message */
 .success-message {
   display: flex;
   align-items: center;
@@ -640,3 +697,17 @@ select option {
 .success-message .dismiss-btn:hover {
   opacity: 1;
 }
+
+.dashboard,
+.sessions-page,
+.settings-page,
+.files,
+.monitor,
+.memory,
+.cron-jobs-page,
+.platforms-page,
+.preferences-page {
+  width: min(var(--page-max-width), 100%);
+  margin: 0 auto;
+}
+
