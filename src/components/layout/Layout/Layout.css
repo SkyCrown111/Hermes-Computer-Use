@@ -39,6 +39,19 @@
   user-select: none;
   opacity: var(--window-chrome-opacity, 1);
   z-index: 300;
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+/* Interactive controls inside the title bar must not initiate window drag */
+.app-titlebar-tools,
+.app-titlebar-tool-btn,
+.app-titlebar-help-menu,
+.app-titlebar-help-item,
+.app-titlebar-window-actions,
+.app-titlebar-btn {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 .layout-has-custom-titlebar .layout-body {
@@ -50,13 +63,6 @@
   display: flex;
   align-items: center;
   gap: 18px;
-}
-
-.app-titlebar-left .app-titlebar-tools,
-.app-titlebar-left .app-titlebar-tool-btn,
-.app-titlebar-left .app-titlebar-help-menu,
-.app-titlebar-left .app-titlebar-help-item {
-  -webkit-app-region: no-drag;
 }
 
 .app-titlebar-brand {

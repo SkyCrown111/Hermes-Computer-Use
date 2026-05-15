@@ -172,9 +172,40 @@ export const Layout: React.FC<LayoutProps> = ({
     window.close();
   }, [showCustomTitlebar]);
 
-  const swallowTitlebarPointer = React.useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+  const swallowTitlebarPointer = React.useCallback((event: React.MouseEvent) => {
     event.stopPropagation();
   }, []);
+
+  /** Start native window drag (fallback when CSS drag-region is insufficient). */
+  const handleTitlebarDragMouseDown = React.useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      if (event.button !== 0) return;
+      const target = event.target as HTMLElement;
+      if (target.closest('.app-titlebar-tools, .app-titlebar-help-menu, .app-titlebar-window-actions, button, a, input')) {
+        return;
+      }
+      void (async () => {
+        try {
+          const { getCurrentWindow } = await import('@tauri-apps/api/window');
+          await getCurrentWindow().startDragging();
+        } catch {
+          // ignore when not in Tauri or drag already handled by data-tauri-drag-region
+        }
+      })();
+    },
+    [],
+  );
+
+  const handleTitlebarDoubleClick = React.useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      const target = event.target as HTMLElement;
+      if (target.closest('.app-titlebar-tools, .app-titlebar-help-menu, .app-titlebar-window-actions, button, a, input')) {
+        return;
+      }
+      void handleMinimize();
+    },
+    [handleMinimize],
+  );
 
   const handleThemeCycle = React.useCallback(() => {
     const nextMode = mode === 'dark' ? 'light' : mode === 'light' ? 'system' : 'dark';
@@ -190,13 +221,14 @@ export const Layout: React.FC<LayoutProps> = ({
     : 'Open theme, layout, and notification preferences';
 
   const titlebar = showCustomTitlebar ? (
-    <div className="app-titlebar">
-      <div
-        className="app-titlebar-left"
-        data-tauri-drag-region
-        onDoubleClick={() => { void handleToggleMaximize(); }}
-      >
-        <div className="app-titlebar-brand" data-tauri-drag-region>
+    <div
+      className="app-titlebar"
+      data-tauri-drag-region
+      onMouseDown={handleTitlebarDragMouseDown}
+      onDoubleClick={handleTitlebarDoubleClick}
+    >
+      <div className="app-titlebar-left">
+        <div className="app-titlebar-brand">
           <span className="app-titlebar-mark" aria-hidden="true">H</span>
           <span className="app-titlebar-name">Hermes</span>
         </div>
@@ -204,6 +236,8 @@ export const Layout: React.FC<LayoutProps> = ({
           <button
             type="button"
             className="app-titlebar-tool-btn"
+            onMouseDown={swallowTitlebarPointer}
+            onDoubleClick={swallowTitlebarPointer}
             onClick={handleThemeCycle}
             title={`${t('prefs.theme') || 'Theme'}: ${mode}`}
             aria-label={t('prefs.theme') || 'Theme'}
@@ -213,6 +247,8 @@ export const Layout: React.FC<LayoutProps> = ({
           <button
             type="button"
             className={`app-titlebar-tool-btn ${helpMenuOpen ? 'active' : ''}`}
+            onMouseDown={swallowTitlebarPointer}
+            onDoubleClick={swallowTitlebarPointer}
             onClick={() => setHelpMenuOpen((open) => !open)}
             title={t('nav.help') || 'Help'}
             aria-label={t('nav.help') || 'Help'}
@@ -220,10 +256,12 @@ export const Layout: React.FC<LayoutProps> = ({
             <BookIcon size={15} />
           </button>
         {helpMenuOpen && (
-          <div className="app-titlebar-help-menu">
+          <div className="app-titlebar-help-menu" onMouseDown={swallowTitlebarPointer}>
               <button
                 type="button"
                 className="app-titlebar-help-item"
+                onMouseDown={swallowTitlebarPointer}
+                onDoubleClick={swallowTitlebarPointer}
                 onClick={() => {
                   setActiveItem('help');
                   setHelpMenuOpen(false);
@@ -235,6 +273,8 @@ export const Layout: React.FC<LayoutProps> = ({
               <button
                 type="button"
                 className="app-titlebar-help-item"
+                onMouseDown={swallowTitlebarPointer}
+                onDoubleClick={swallowTitlebarPointer}
                 onClick={() => {
                   setActiveItem('preferences');
                   setHelpMenuOpen(false);
@@ -248,11 +288,7 @@ export const Layout: React.FC<LayoutProps> = ({
         </div>
       </div>
 
-      <div
-        className="app-titlebar-center"
-        data-tauri-drag-region
-        onDoubleClick={() => { void handleToggleMaximize(); }}
-      />
+      <div className="app-titlebar-center" />
 
       <div className="app-titlebar-window-actions">
         <button
