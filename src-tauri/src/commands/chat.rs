@@ -1,4 +1,4 @@
-﻿// Hermes Chat Proxy Commands
+// Hermes Chat Proxy Commands
 // Direct Hermes Agent calling with real-time streaming via Python wrapper
 
 use super::utils::{create_command, run_shell_command};
@@ -47,7 +47,7 @@ const STREAM_AGENT_SCRIPT: &str = include_str!("../../scripts/stream_agent.py");
 static SCRIPTS_INSTALL_CHECK: OnceLock<Result<(), String>> = OnceLock::new();
 
 /// Initialize hermes-app scripts in user directory
-fn ensure_scripts_installed() -> Result<(), String> {
+pub(crate) fn ensure_scripts_installed() -> Result<(), String> {
     SCRIPTS_INSTALL_CHECK.get_or_init(|| {
         let env = resolve_environment().map_err(|e| e.to_string())?;
         let app_dir = &env.paths.app_dir;
@@ -91,7 +91,7 @@ fn ensure_scripts_installed() -> Result<(), String> {
 
 /// Find the Python executable path for running Hermes
 /// Returns the Python command to use (with path if needed)
-fn find_python_path() -> Result<String, String> {
+pub(crate) fn find_python_path() -> Result<String, String> {
     let env = resolve_environment().map_err(|e| e.to_string())?;
     env.runtime
         .python_path
@@ -288,29 +288,51 @@ pub fn send_chat_message(
     Err("No response received".to_string())
 }
 
-/// Start Hermes Gateway (now just checks CLI)
+/// Start Hermes Gateway process via GatewayManager
 #[tauri::command(rename_all = "snake_case")]
-pub fn start_hermes_gateway() -> Result<GatewayCommandResponse, String> {
-    let health = check_hermes_health()?;
-    let status = health.get("status").and_then(|v| v.as_str()).unwrap_or("unhealthy");
-    if status == "healthy" || status == "degraded" {
-        return Ok(GatewayCommandResponse {
-            ok: true,
-            status: status.to_string(),
-            message: Some(format!("Hermes CLI available (status: {}) - direct mode enabled", status)),
-        });
-    }
-    Err("Hermes CLI not found".to_string())
+pub async fn start_hermes_gateway(
+    gateway_manager: tauri::State<'_, Arc<crate::features::GatewayManager>>,
+) -> Result<GatewayCommandResponse, String> {
+    gateway_manager
+        .start_gateway()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(GatewayCommandResponse {
+        ok: true,
+        status: "online".to_string(),
+        message: Some("Gateway started".to_string()),
+    })
 }
 
-/// Restart Hermes Gateway
+/// Stop Hermes Gateway process
 #[tauri::command(rename_all = "snake_case")]
-pub fn restart_hermes_gateway() -> Result<GatewayCommandResponse, String> {
-    let response = start_hermes_gateway()?;
+pub async fn stop_hermes_gateway(
+    gateway_manager: tauri::State<'_, Arc<crate::features::GatewayManager>>,
+) -> Result<GatewayCommandResponse, String> {
+    gateway_manager
+        .stop_gateway()
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(GatewayCommandResponse {
-        ok: response.ok,
-        status: response.status,
-        message: Some(response.message.unwrap_or_else(|| "Hermes gateway checked".to_string())),
+        ok: true,
+        status: "offline".to_string(),
+        message: Some("Gateway stopped".to_string()),
+    })
+}
+
+/// Restart Hermes Gateway process
+#[tauri::command(rename_all = "snake_case")]
+pub async fn restart_hermes_gateway(
+    gateway_manager: tauri::State<'_, Arc<crate::features::GatewayManager>>,
+) -> Result<GatewayCommandResponse, String> {
+    gateway_manager
+        .restart_gateway()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(GatewayCommandResponse {
+        ok: true,
+        status: "online".to_string(),
+        message: Some("Gateway restarted".to_string()),
     })
 }
 

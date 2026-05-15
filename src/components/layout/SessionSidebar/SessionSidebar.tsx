@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { useSessionStore, useNavigationStore, useChatStore, useThemeStore } from '../../../stores';
+import { useSessionStore, useNavigationStore, useChatStore, useThemeStore, isChatSessionStreaming } from '../../../stores';
 import { usePageVisibility, usePolling, useWindowFocus } from '../../../hooks';
 import { useTranslation } from '../../../hooks/useTranslation';
 import {
@@ -9,7 +9,7 @@ import {
   LayoutIcon,
 } from '../../index';
 import { InputModal } from '../../ui/Modal';
-import { formatRelativeTimeShort, groupByTime, type TimeGroup, TIME_GROUP_ORDER } from '../../../utils/format';
+import { groupByTime, type TimeGroup, TIME_GROUP_ORDER } from '../../../utils/format';
 import { FOCUS_SEARCH_EVENT } from '../../../hooks/useKeyboardShortcuts';
 import { OPEN_COMMAND_PALETTE_EVENT } from '../../ui/CommandPalette/CommandPalette';
 import { logger } from '../../../lib/logger';
@@ -71,8 +71,10 @@ export const SessionSidebar: React.FC = () => {
   const mobileSidebarOpen = useThemeStore((s) => s.mobileSidebarOpen);
   const setMobileSidebarOpen = useThemeStore((s) => s.setMobileSidebarOpen);
 
-  const isStreamingActive = useChatStore(s =>
-    Object.values(s.sessions).some(session => session?.isStreaming)
+  const chatSessions = useChatStore((s) => s.sessions);
+  const isStreamingActive = useMemo(
+    () => Object.values(chatSessions).some((session) => session?.isStreaming),
+    [chatSessions],
   );
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -329,20 +331,27 @@ export const SessionSidebar: React.FC = () => {
                 </button>
                 {!isCollapsed && items.map((session) => {
                   const displayTitle = session.chat_name || t('sessions.untitled').replace('{id}', session.id.slice(0, 12));
+                  const isStreaming = isChatSessionStreaming(session.id, chatSessions);
                   return (
                     <div
                       key={session.id}
-                      className={`session-sidebar-item ${activeTabId === session.id ? 'active' : ''}`}
+                      className={`session-sidebar-item ${activeTabId === session.id ? 'active' : ''} ${isStreaming ? 'session-sidebar-item-streaming' : ''}`}
                       onClick={() => {
                         openTab(session.id, displayTitle, 'session');
                         closeSidebarOnMobile();
                       }}
                       onContextMenu={(e) => handleContextMenu(e, session)}
-                      title={displayTitle}
+                      title={isStreaming ? `${displayTitle} (${t('sidebar.streaming')})` : displayTitle}
                     >
                       <span className="session-sidebar-item-title">{displayTitle}</span>
                       <span className="session-sidebar-item-time">
-                        {formatRelativeTimeShort(session.last_activity_at)}
+                        {isStreaming && (
+                          <span
+                            className="session-sidebar-stream-spinner"
+                            role="status"
+                            aria-label={t('sidebar.streaming')}
+                          />
+                        )}
                       </span>
                     </div>
                   );

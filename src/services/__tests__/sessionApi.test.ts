@@ -197,41 +197,40 @@ describe('SessionApi', () => {
   });
 
   describe('checkpoint helpers', () => {
-    it('should return checkpoint info directly', async () => {
-      const checkpoint = {
+    it('should map v2 checkpoint info to frontend shape', async () => {
+      const meta = {
         id: 'cp-1',
-        session_id: 'session-1',
+        sessionId: 'session-1',
         name: 'Checkpoint 1',
-        created_at: new Date().toISOString(),
-        message_count: 12,
-        size_bytes: 256,
+        createdAt: new Date().toISOString(),
+        messageCount: 12,
+        sizeBytes: 256,
         description: 'snapshot',
       };
-      vi.mocked(safeInvoke).mockResolvedValue(checkpoint);
+      vi.mocked(safeInvoke).mockResolvedValue(meta);
 
       const result = await getCheckpointInfo('cp-1');
 
-      expect(result).toEqual(checkpoint);
-      expect(safeInvoke).toHaveBeenCalledWith('get_checkpoint_info', { checkpoint_id: 'cp-1' });
+      expect(result).toMatchObject({
+        id: 'cp-1',
+        session_id: 'session-1',
+        name: 'Checkpoint 1',
+        message_count: 12,
+        size_bytes: 256,
+        description: 'snapshot',
+      });
+      expect(safeInvoke).toHaveBeenCalledWith('get_checkpoint_info_v2', { checkpoint_id: 'cp-1' });
     });
 
-    it('should return restore checkpoint payload', async () => {
-      const restored = {
-        success: true,
-        session_id: 'session-1',
-        checkpoint_id: 'cp-1',
-        restored_at: new Date().toISOString(),
-        message_count: 12,
-      };
-      vi.mocked(safeInvoke).mockResolvedValue(restored);
+    it('should restore checkpoint via v2 and return success payload', async () => {
+      vi.mocked(safeInvoke).mockResolvedValue(undefined);
 
       const result = await restoreCheckpoint('session-1', 'cp-1');
 
-      expect(result).toEqual(restored);
-      expect(safeInvoke).toHaveBeenCalledWith('restore_checkpoint', {
-        session_id: 'session-1',
-        checkpoint_id: 'cp-1',
-      });
+      expect(result.success).toBe(true);
+      expect(result.session_id).toBe('session-1');
+      expect(result.checkpoint_id).toBe('cp-1');
+      expect(safeInvoke).toHaveBeenCalledWith('restore_checkpoint_v2', { checkpoint_id: 'cp-1' });
     });
 
     it('should normalize delete checkpoint to ok response', async () => {
@@ -240,7 +239,7 @@ describe('SessionApi', () => {
       const result = await deleteCheckpoint('cp-1');
 
       expect(result).toEqual({ ok: true });
-      expect(safeInvoke).toHaveBeenCalledWith('delete_checkpoint', { checkpoint_id: 'cp-1' });
+      expect(safeInvoke).toHaveBeenCalledWith('delete_checkpoint_v2', { checkpoint_id: 'cp-1' });
     });
   });
 });

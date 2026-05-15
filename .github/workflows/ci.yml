@@ -29,6 +29,10 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: npm audit (high+)
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
   rust-check:
     runs-on: ubuntu-latest
     steps:
@@ -39,3 +43,11 @@ jobs:
       - name: Cargo test
         working-directory: src-tauri
         run: cargo test --lib
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: cargo audit
+        working-directory: src-tauri
+        run: cargo audit
+        continue-on-error: true

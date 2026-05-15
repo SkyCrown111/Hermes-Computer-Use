@@ -2,7 +2,7 @@
 //!
 //! Provides real-time log streaming functionality for monitoring Hermes Agent logs.
 
-use crate::core::event_bus::EventBus;
+use crate::core::event_bus::{Event, EventBus};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -177,7 +177,7 @@ impl LogStreamManager {
     async fn stream_logs_task(
         log_path: String,
         filter: Option<LogFilter>,
-        _event_bus: Arc<EventBus>,
+        event_bus: Arc<EventBus>,
         cancel_token: CancellationToken,
         stream_id: String,
     ) -> Result<(), String> {
@@ -211,17 +211,16 @@ impl LogStreamManager {
                         Ok(Some(line)) => {
                             let entry = Self::parse_log_line(&line);
                             if Self::matches_filter(&entry, &filter) {
-                                // Create a custom log entry event
-                                // Since Event::LogEntry expects specific fields, we'll format it
-                                let log_message = format!(
-                                    "[{}] {}",
-                                    entry.module.as_deref().unwrap_or("unknown"),
-                                    entry.message
-                                );
-                                
-                                // For now, we'll just print it
-                                // In a real implementation, you might want to add a new Event variant
-                                println!("[LogStream] {} [{}] {}", entry.timestamp, entry.level, log_message);
+                                let log_message = if let Some(module) = &entry.module {
+                                    format!("[{}] {}", module, entry.message)
+                                } else {
+                                    entry.message.clone()
+                                };
+                                event_bus.publish(Event::LogEntry {
+                                    timestamp: entry.timestamp.clone(),
+                                    level: entry.level.clone(),
+                                    message: log_message,
+                                });
                             }
                         }
                         Ok(None) => {

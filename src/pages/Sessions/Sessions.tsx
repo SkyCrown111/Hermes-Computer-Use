@@ -307,6 +307,7 @@ export const Sessions: React.FC = () => {
 
     try {
       const { default: JSZip } = await import('jszip');
+      const { sessionExportZipName } = await import('../../lib/zipSafe');
       const zip = new JSZip();
       const sessionsFolder = zip.folder('sessions');
 
@@ -328,7 +329,7 @@ export const Sessions: React.FC = () => {
       // Add each successful session to the ZIP
       for (const result of succeeded) {
         const { id, text } = result.value;
-        sessionsFolder.file(`session-${id}.json`, text);
+        sessionsFolder.file(sessionExportZipName(id), text);
       }
 
       // Add a summary file

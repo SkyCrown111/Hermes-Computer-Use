@@ -44,8 +44,15 @@ export async function getConfigSection<T = unknown>(section: ConfigSection): Pro
     return await apiClient.invoke<ConfigSectionResponse<T>>('get_config_section', { section });
   } catch (error) {
     logger.error(`[SettingsApi] getConfigSection failed: ${getErrorDetail(error)}`);
-    return { section, data: {} as T };
+    throw error;
   }
+}
+
+export async function validateConfigSection(
+  section: ConfigSection,
+  data: Record<string, unknown>
+): Promise<{ valid: boolean; section: string }> {
+  return apiClient.invoke<{ valid: boolean; section: string }>('validate_config_section', { section, data });
 }
 
 export async function updateConfigSection<T = unknown>(
@@ -60,16 +67,7 @@ export async function exportConfig(): Promise<ExportConfigData> {
     return await apiClient.invoke<ExportConfigData>('export_config');
   } catch (error) {
     logger.error(`[SettingsApi] exportConfig failed: ${getErrorDetail(error)}`);
-    const now = new Date().toISOString();
-    return {
-      model: { default: '', provider: '' },
-      agent: {},
-      terminal: {},
-      compression: {},
-      checkpoint: {},
-      exported_at: now,
-      version: '0.1.0',
-    };
+    throw error;
   }
 }
 
@@ -93,6 +91,16 @@ export async function checkDataDirExists(): Promise<boolean> {
 
 export async function reloadGatewayConfig(): Promise<ApiOkResponse> {
   return apiClient.invoke<ApiOkResponse>('reload_gateway_config');
+}
+
+export async function startGateway(): Promise<ApiOkResponse> {
+  const result = await apiClient.invoke<GatewayCommandResponse>('start_hermes_gateway');
+  return { ok: result.ok };
+}
+
+export async function stopGateway(): Promise<ApiOkResponse> {
+  const result = await apiClient.invoke<GatewayCommandResponse>('stop_hermes_gateway');
+  return { ok: result.ok };
 }
 
 export async function restartGateway(): Promise<ApiOkResponse> {

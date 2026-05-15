@@ -1,4 +1,4 @@
-﻿// Internationalization (i18n) System
+// Internationalization (i18n) System
 import { logger } from './logger';
 
 type Language = 'zh' | 'en';
@@ -16,6 +16,7 @@ const translations: Translations = {
   'nav.home': { zh: '首页', en: 'Home' },
   'nav.sessions': { zh: '会话', en: 'Sessions' },
   'nav.skills': { zh: 'Skills', en: 'Skills' },
+  'nav.tools': { zh: '工具', en: 'Tools' },
   'nav.tasks': { zh: '任务', en: 'Tasks' },
   'nav.settings': { zh: '配置', en: 'Settings' },
   'nav.monitor': { zh: '监控', en: 'Monitor' },
@@ -329,6 +330,7 @@ const translations: Translations = {
   'sidebar.newChat': { zh: '新会话', en: 'New Chat' },
   'sidebar.renameSession': { zh: '重命名会话', en: 'Rename Session' },
   'sidebar.enterSessionName': { zh: '请输入会话名称', en: 'Enter session name' },
+  'sidebar.streaming': { zh: '回复中', en: 'Replying' },
 
   // Status Bar
   'status.gateway': { zh: '网关', en: 'Gateway' },
@@ -856,6 +858,23 @@ const translations: Translations = {
   'monitor.allComponents': { zh: '所有组件', en: 'All Components' },
   'monitor.searchLogs': { zh: '搜索日志...', en: 'Search logs...' },
   'monitor.autoRefresh': { zh: '自动刷新', en: 'Auto Refresh' },
+  'monitor.liveStream': { zh: '实时流', en: 'Live Stream' },
+  'monitor.liveStreamOn': { zh: '实时流已开启', en: 'Live Stream On' },
+  'monitor.liveStreamHint': { zh: '通过 tail -f 实时接收新日志（关闭自动刷新）', en: 'Stream new log lines via tail -f (disables auto-refresh)' },
+  'tools.title': { zh: '工具调用', en: 'Tool Invocation' },
+  'tools.search': { zh: '搜索工具...', en: 'Search tools...' },
+  'tools.available': { zh: '可用工具', en: 'Available Tools' },
+  'tools.noTools': { zh: '暂无可用工具', en: 'No tools available' },
+  'tools.selectTool': { zh: '从左侧选择一个工具', en: 'Select a tool from the list' },
+  'tools.schema': { zh: '参数 Schema', en: 'Parameter Schema' },
+  'tools.argsJson': { zh: '参数 (JSON)', en: 'Arguments (JSON)' },
+  'tools.invoke': { zh: '执行', en: 'Invoke' },
+  'tools.invoking': { zh: '执行中...', en: 'Invoking...' },
+  'tools.invalidJson': { zh: '参数 JSON 格式无效', en: 'Invalid JSON for arguments' },
+  'tools.invokeSuccess': { zh: '工具执行成功', en: 'Tool executed successfully' },
+  'tools.invokeFailed': { zh: '工具执行失败', en: 'Tool execution failed' },
+  'tools.resultOk': { zh: '输出', en: 'Output' },
+  'tools.resultErr': { zh: '错误', en: 'Error' },
   'monitor.autoRefreshing': { zh: '自动刷新中', en: 'Auto Refreshing' },
   'monitor.refresh': { zh: '刷新', en: 'Refresh' },
   'monitor.lines': { zh: '行', en: 'lines' },
@@ -912,6 +931,11 @@ const translations: Translations = {
   'memory.searchMemory': { zh: '搜索记忆内容...', en: 'Search memory content...' },
   'memory.expandAll': { zh: '展开全部', en: 'Expand All' },
   'memory.collapseAll': { zh: '折叠全部', en: 'Collapse All' },
+  'memory.runCleanup': { zh: '清理记忆', en: 'Cleanup Memory' },
+  'memory.cleaning': { zh: '清理中...', en: 'Cleaning...' },
+  'memory.cleanupSuccess': { zh: '已清理旧记忆段落', en: 'Old memory sections removed' },
+  'memory.cleanupNoop': { zh: '记忆未超过阈值，无需清理', en: 'Memory within threshold, no cleanup needed' },
+  'memory.cleanupFailed': { zh: '记忆清理失败', en: 'Memory cleanup failed' },
   'memory.close': { zh: '关闭', en: 'Close' },
   'memory.saveFailed': { zh: '保存失败', en: 'Save Failed' },
   'memory.searchResults': { zh: '搜索结果', en: 'Search Results' },
@@ -1103,6 +1127,14 @@ const translations: Translations = {
   // Gateway Page
   'gateway.title': { zh: 'Gateway 管理', en: 'Gateway' },
   'gateway.refresh': { zh: '刷新', en: 'Refresh' },
+  'gateway.start': { zh: '启动 Gateway', en: 'Start Gateway' },
+  'gateway.stop': { zh: '停止 Gateway', en: 'Stop Gateway' },
+  'gateway.starting': { zh: '启动中...', en: 'Starting...' },
+  'gateway.stopping': { zh: '停止中...', en: 'Stopping...' },
+  'gateway.startSuccess': { zh: 'Gateway 已启动', en: 'Gateway started' },
+  'gateway.startFailed': { zh: '启动 Gateway 失败', en: 'Failed to start gateway' },
+  'gateway.stopSuccess': { zh: 'Gateway 已停止', en: 'Gateway stopped' },
+  'gateway.stopFailed': { zh: '停止 Gateway 失败', en: 'Failed to stop gateway' },
   'gateway.restart': { zh: '重启 Gateway', en: 'Restart Gateway' },
   'gateway.restarting': { zh: '重启中...', en: 'Restarting...' },
   'gateway.refreshing': { zh: '刷新中...', en: 'Refreshing...' },

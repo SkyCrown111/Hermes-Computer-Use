@@ -614,6 +614,18 @@ export function resolveSessionId(id: string): string {
   return id;
 }
 
+/** Whether a sidebar/session id has an active chat stream (including pre-migration new_* tabs). */
+export function isChatSessionStreaming(
+  sessionId: string,
+  sessions: Record<string, PerSessionState>,
+): boolean {
+  if (sessions[sessionId]?.isStreaming) return true;
+  for (const [key, state] of Object.entries(sessions)) {
+    if (state?.isStreaming && resolveSessionId(key) === sessionId) return true;
+  }
+  return false;
+}
+
 export function clearSessionMigration(oldId: string) {
   delete sessionIdMap[oldId];
 }

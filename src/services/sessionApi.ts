@@ -13,6 +13,30 @@ import type {
 import type { ApiOkResponse } from '../types/common';
 import type { Checkpoint, RestoreCheckpointResult } from '../types/checkpoint';
 
+/** Checkpoint metadata from CheckpointManager v2 (camelCase from backend) */
+interface CheckpointMetadataV2 {
+  id: string;
+  sessionId: string;
+  name: string;
+  description?: string | null;
+  createdAt: string;
+  messageCount: number;
+  sizeBytes: number;
+  tags?: string[];
+}
+
+function mapCheckpointV2(meta: CheckpointMetadataV2): Checkpoint {
+  return {
+    id: meta.id,
+    session_id: meta.sessionId,
+    name: meta.name,
+    created_at: meta.createdAt,
+    message_count: meta.messageCount,
+    size_bytes: meta.sizeBytes,
+    description: meta.description ?? null,
+  };
+}
+
 export async function listSessions(params?: SessionListParams): Promise<SessionListResponse> {
   try {
     const result = await apiClient.invokeShared<SessionListResponse>('list_sessions', {
@@ -84,7 +108,6 @@ export async function getSessionsPath(): Promise<string> {
   }
 }
 
-// 统计会话数量
 export async function countSessions(): Promise<number> {
   try {
     const result = await apiClient.invoke<{ count: number }>('count_sessions', { platform: null });
@@ -95,24 +118,31 @@ export async function countSessions(): Promise<number> {
   }
 }
 
-// Checkpoint 相关功能
+// Checkpoint v2 (CheckpointManager)
 export async function listCheckpoints(sessionId: string): Promise<Checkpoint[]> {
   try {
-    const resp = await apiClient.invoke<{ checkpoints: Checkpoint[]; total: number }>('list_checkpoints', { session_id: sessionId });
-    return resp.checkpoints ?? [];
+    const list = await apiClient.invoke<CheckpointMetadataV2[]>('list_checkpoints_v2', {
+      session_id: sessionId,
+    });
+    return (list ?? []).map(mapCheckpointV2);
   } catch (error) {
     logger.error(`[SessionApi] listCheckpoints failed: ${getErrorDetail(error)}`);
     return [];
   }
 }
 
-export async function createCheckpoint(sessionId: string, name?: string, description?: string): Promise<Checkpoint | null> {
+export async function createCheckpoint(
+  sessionId: string,
+  name?: string,
+  description?: string,
+): Promise<Checkpoint | null> {
   try {
-    return await apiClient.invoke<Checkpoint>('create_checkpoint', {
+    const descParts = [name, description].filter(Boolean);
+    const meta = await apiClient.invoke<CheckpointMetadataV2>('create_checkpoint_v2', {
       session_id: sessionId,
-      name,
-      description,
+      description: descParts.length > 0 ? descParts.join(' — ') : null,
     });
+    return mapCheckpointV2(meta);
   } catch (error) {
     logger.error(`[SessionApi] createCheckpoint failed: ${getErrorDetail(error)}`);
     return null;
@@ -121,19 +151,32 @@ export async function createCheckpoint(sessionId: string, name?: string, descrip
 
 export async function getCheckpointInfo(checkpointId: string): Promise<Checkpoint | null> {
   try {
-    return await apiClient.invoke<Checkpoint>('get_checkpoint_info', { checkpoint_id: checkpointId });
+    const meta = await apiClient.invoke<CheckpointMetadataV2>('get_checkpoint_info_v2', {
+      checkpoint_id: checkpointId,
+    });
+    return mapCheckpointV2(meta);
   } catch (error) {
     logger.error(`[SessionApi] getCheckpointInfo failed: ${getErrorDetail(error)}`);
     return null;
   }
 }
 
-export async function restoreCheckpoint(sessionId: string, checkpointId: string): Promise<RestoreCheckpointResult> {
-  return apiClient.invoke<RestoreCheckpointResult>('restore_checkpoint', { session_id: sessionId, checkpoint_id: checkpointId });
+export async function restoreCheckpoint(
+  sessionId: string,
+  checkpointId: string,
+): Promise<RestoreCheckpointResult> {
+  await apiClient.invoke<void>('restore_checkpoint_v2', { checkpoint_id: checkpointId });
+  return {
+    success: true,
+    session_id: sessionId,
+    checkpoint_id: checkpointId,
+    restored_at: new Date().toISOString(),
+    message_count: 0,
+  };
 }
 
 export async function deleteCheckpoint(checkpointId: string): Promise<ApiOkResponse> {
-  await apiClient.invoke<void>('delete_checkpoint', { checkpoint_id: checkpointId });
+  await apiClient.invoke<void>('delete_checkpoint_v2', { checkpoint_id: checkpointId });
   return { ok: true };
 }
 

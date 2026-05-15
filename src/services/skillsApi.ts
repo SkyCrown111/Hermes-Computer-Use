@@ -101,6 +101,25 @@ export async function getSkillsPath(): Promise<string> {
   }
 }
 
+export interface SkillExecutionResult {
+  id: string;
+  skillName: string;
+  args: string[];
+  startedAt: string;
+  completedAt?: string;
+  success: boolean;
+  output: string;
+  error?: string;
+}
+
+export async function executeSkill(skillName: string, args: string[] = []): Promise<SkillExecutionResult> {
+  return apiClient.invoke<SkillExecutionResult>('execute_skill', { skill_name: skillName, args });
+}
+
+export async function testSkill(skillName: string, args: string[] = []): Promise<SkillExecutionResult> {
+  return apiClient.invoke<SkillExecutionResult>('test_skill', { skill_name: skillName, args });
+}
+
 export async function getSkillExecutionHistory(skillName: string, limit?: number, skillCategory?: string): Promise<SkillExecutionRecord[]> {
   try {
     return await apiClient.invoke<SkillExecutionRecord[]>('get_skill_execution_history', {

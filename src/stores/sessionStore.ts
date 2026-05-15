@@ -8,6 +8,7 @@ import { sessionApi } from '../services';
 import * as sessionApiRaw from '../services/sessionApi';
 import { useNavigationStore } from './navigationStore';
 import { useChatStore } from './chatStore';
+import { adaptSessionMessagesToChat } from '../lib/sessionMessageAdapter';
 import { logger } from '../lib/logger';
 
 interface SessionState {
@@ -687,9 +688,18 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       const newCache = { ...messageCache };
       delete newCache[sessionId];
 
-      const { currentSession } = get();
-      if (currentSession?.id === sessionId) {
-        await get().fetchMessages(sessionId);
+      await get().fetchSession(sessionId);
+
+      // Sync open chat tabs after restore
+      const { openTabs } = useNavigationStore.getState();
+      if (openTabs.some((tab) => tab.id === sessionId)) {
+        const response = await sessionApi.getSession(sessionId);
+        if (response?.messages) {
+          useChatStore.getState().loadMessages(
+            sessionId,
+            adaptSessionMessagesToChat(sessionId, response.messages),
+          );
+        }
       }
 
       set({

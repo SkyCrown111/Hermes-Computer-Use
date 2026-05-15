@@ -1,6 +1,19 @@
 import { apiClient, getErrorDetail } from './apiClient';
 import { logger } from '../lib/logger';
-import type { LogsResponse, LogsQueryParams, LogStats, GatewayDetailedStatus, PerformanceMetrics, LogFile, ErrorStats, ConnectionEvent, ThroughputStats } from '../types/monitor';
+import type { LogsResponse, LogsQueryParams, LogStats, GatewayDetailedStatus, PerformanceMetrics, LogFile, ErrorStats, ConnectionEvent, ThroughputStats, LogLevel } from '../types/monitor';
+
+const LOG_FILE_PATHS: Record<LogFile, string> = {
+  agent: '~/.hermes/logs/agent.log',
+  gateway: '~/.hermes/logs/gateway.log',
+  cron: '~/.hermes/logs/cron.log',
+  mcp: '~/.hermes/logs/mcp.log',
+};
+
+export interface LogStreamFilter {
+  level?: LogLevel;
+  module?: string;
+  keyword?: string;
+}
 
 const defaultErrorStats: ErrorStats = {
   total_errors: 0,
@@ -172,5 +185,22 @@ export const monitorApi = {
       logger.error('[MonitorApi] reloadGatewayConfig failed:', getErrorDetail(err));
       throw err;
     }
+  },
+
+  startLogStream: async (file: LogFile = 'agent', filter?: LogStreamFilter): Promise<string> => {
+    return apiClient.invoke<string>('start_log_stream', {
+      log_path: LOG_FILE_PATHS[file],
+      filter: filter
+        ? {
+            level: filter.level ?? null,
+            module: filter.module ?? null,
+            keyword: filter.keyword ?? null,
+          }
+        : null,
+    });
+  },
+
+  stopLogStream: async (streamId: string): Promise<void> => {
+    await apiClient.invoke<void>('stop_log_stream', { stream_id: streamId });
   },
 };

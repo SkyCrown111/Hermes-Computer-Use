@@ -56,6 +56,10 @@ interface MonitorState {
   // 自动刷新
   autoRefresh: boolean;
   refreshInterval: number;
+
+  // 实时日志流
+  liveStream: boolean;
+  liveStreamId: string | null;
   
   // 错误
   error: string | null;
@@ -72,6 +76,9 @@ interface MonitorState {
   fetchComponents: () => Promise<void>;
   setAutoRefresh: (enabled: boolean) => void;
   setRefreshInterval: (interval: number) => void;
+  startLiveStream: () => Promise<void>;
+  stopLiveStream: () => Promise<void>;
+  appendLiveLogEntry: (entry: { timestamp: string; level: string; message: string }) => void;
   clearLogs: () => void;
   clearError: () => void;
 }
@@ -92,8 +99,10 @@ export const useMonitorStore = create<MonitorState>((set, get) => ({
   performanceMetrics: null,
   isLoadingMetrics: false,
   availableComponents: [],
-  autoRefresh: false,
+  autoRefresh: true,
   refreshInterval: 5000,
+  liveStream: false,
+  liveStreamId: null,
   error: null,
 
   // 获取日志
@@ -216,6 +225,54 @@ export const useMonitorStore = create<MonitorState>((set, get) => ({
   // 设置刷新间隔
   setRefreshInterval: (interval) => {
     set({ refreshInterval: interval });
+  },
+
+  appendLiveLogEntry: (entry) => {
+    const raw = `[${entry.timestamp}] ${entry.level} ${entry.message}`;
+    const parsed = parseLogLine(raw);
+    const line: LogLine = parsed.message
+      ? parsed
+      : {
+          raw,
+          timestamp: entry.timestamp,
+          level: entry.level as LogLevel | undefined,
+          message: entry.message,
+        };
+    set((state) => ({
+      logs: [...state.logs, line].slice(-2000),
+      rawLines: [...state.rawLines, raw].slice(-2000),
+    }));
+  },
+
+  startLiveStream: async () => {
+    const { currentFile, filterLevel, filterComponent, searchQuery, liveStreamId } = get();
+    try {
+      if (liveStreamId) {
+        await monitorApi.stopLogStream(liveStreamId);
+      }
+      const streamId = await monitorApi.startLogStream(currentFile, {
+        level: filterLevel ?? undefined,
+        module: filterComponent ?? undefined,
+        keyword: searchQuery || undefined,
+      });
+      set({ liveStream: true, liveStreamId: streamId, autoRefresh: false });
+    } catch (err) {
+      set({ error: getErrorMessage(err) });
+      throw err;
+    }
+  },
+
+  stopLiveStream: async () => {
+    const { liveStreamId } = get();
+    try {
+      if (liveStreamId) {
+        await monitorApi.stopLogStream(liveStreamId);
+      }
+    } catch (err) {
+      logger.error('[MonitorStore] stopLiveStream failed:', err);
+    } finally {
+      set({ liveStream: false, liveStreamId: null });
+    }
   },
 
   // 清除日志

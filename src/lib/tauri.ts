@@ -8,6 +8,22 @@ declare global {
   }
 }
 
+/** True when running in a browser dev server without the Tauri shell. */
+export const isMockEnvironment = (): boolean => !isTauri();
+
+let mockEnvironmentWarned = false;
+
+/** Log once that IPC results are mocked (browser-only dev). */
+export function warnMockEnvironment(): void {
+  if (!isMockEnvironment() || mockEnvironmentWarned) {
+    return;
+  }
+  mockEnvironmentWarned = true;
+  logger.warn(
+    '[Tauri] Running outside the Tauri shell — IPC calls return mock data. Use `npm run tauri:dev` for real backend behavior.',
+  );
+}
+
 export const isTauri = (): boolean => {
   if (typeof window !== 'undefined') {
     if (window.__TAURI_INTERNALS__) return true;
@@ -52,7 +68,8 @@ export async function safeInvoke<T>(cmd: string, args?: Record<string, unknown>)
   logger.debug(`[Tauri] isTauri() = ${inTauri}, command: ${cmd}`);
 
   if (!inTauri) {
-    logger.warn(`[Tauri] Not in Tauri environment, returning mock data for: ${cmd}`);
+    warnMockEnvironment();
+    logger.debug(`[Tauri] Mock IPC for: ${cmd}`);
     return getMockData(cmd, args) as T;
   }
 

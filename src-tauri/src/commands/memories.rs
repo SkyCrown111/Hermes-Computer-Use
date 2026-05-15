@@ -453,3 +453,96 @@ print('ok')
         "char_count": new_content.chars().count()
     }))
 }
+
+/// Trim oldest MEMORY.md sections when usage exceeds threshold (default 90% of char_limit)
+#[tauri::command(rename_all = "snake_case")]
+pub fn run_memory_cleanup(threshold_percent: Option<u32>) -> Result<serde_json::Value, String> {
+    let threshold = threshold_percent.unwrap_or(90).clamp(50, 100);
+    println!("[Memory] Running cleanup at {}% threshold", threshold);
+
+    let memory = read_memory_file("MEMORY.md")?;
+    let limit = memory.char_limit;
+    let target = (limit as u64 * threshold as u64 / 100) as usize;
+
+    if memory.char_count <= target {
+        return Ok(serde_json::json!({
+            "ok": true,
+            "trimmed_sections": 0,
+            "char_count": memory.char_count,
+            "char_limit": limit,
+            "message": "Memory within threshold, no cleanup needed"
+        }));
+    }
+
+    let rebuild = |secs: &[MemorySection]| -> String {
+        let mut rebuilt = String::new();
+        for section in secs {
+            if let Some(title) = &section.title {
+                rebuilt.push_str(&format!("## {}\n\n", title));
+            }
+            rebuilt.push_str(&section.content);
+            rebuilt.push('\n');
+        }
+        rebuilt.trim_end().to_string()
+    };
+
+    let mut sections = memory.sections.clone();
+    let mut trimmed = 0usize;
+    let mut rebuilt = rebuild(&sections);
+    let mut char_count = rebuilt.chars().count();
+
+    while char_count > target && sections.len() > 1 {
+        sections.remove(0);
+        trimmed += 1;
+        rebuilt = rebuild(&sections);
+        char_count = rebuilt.chars().count();
+    }
+
+    if trimmed == 0 {
+        return Ok(serde_json::json!({
+            "ok": true,
+            "trimmed_sections": 0,
+            "char_count": memory.char_count,
+            "char_limit": limit,
+            "message": "Could not trim further (only one section remains)"
+        }));
+    }
+
+    let encoded = STANDARD.encode(&rebuilt);
+    let script = format!(
+        r#"
+import os
+import base64
+
+filepath = os.path.expanduser("~/.hermes/memories/MEMORY.md")
+content = base64.b64decode("{}").decode('utf-8')
+with open(filepath, 'w', encoding='utf-8') as f:
+    f.write(content)
+print('ok')
+"#,
+        encoded
+    );
+
+    let output = create_command("wsl")
+        .args(["python3", "-c", &script])
+        .output()
+        .map_err(|e| format!("Failed to run memory cleanup: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to run memory cleanup: {}", stderr));
+    }
+
+    let final_count = char_count;
+    println!(
+        "[Memory] Cleanup removed {} sections, {} -> {} chars",
+        trimmed, memory.char_count, final_count
+    );
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "trimmed_sections": trimmed,
+        "char_count": final_count,
+        "char_limit": limit
+    }))
+}

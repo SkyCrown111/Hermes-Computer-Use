@@ -54,7 +54,7 @@ export async function getToolSchema(toolName: string): Promise<Record<string, un
     return { schema: {}, description: 'Mock schema' };
   }
 
-  return apiClient.invoke<Record<string, unknown>>('get_tool_schema', { toolName });
+  return apiClient.invoke<Record<string, unknown>>('get_tool_schema', { tool_name: toolName });
 }
 
 /**
@@ -75,9 +75,9 @@ export async function invokeTool(
   }
 
   return apiClient.invoke<ToolResult>('invoke_tool', {
-    toolName,
+    tool_name: toolName,
     args,
-    sessionId,
+    session_id: sessionId ?? null,
   });
 }
 

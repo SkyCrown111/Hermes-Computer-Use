@@ -277,6 +277,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
               <div className="chat-input-footer-left">
                 <div ref={addMenuRef} style={{ position: 'relative' }}>
                   <button
+                    type="button"
                     className="action-btn chat-composer-btn"
                     onClick={() => setShowAddMenu(prev => !prev)}
                     disabled={isStreaming || disabled}
@@ -289,6 +290,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                   {showAddMenu && (
                     <div className="add-menu-popup">
                       <button
+                        type="button"
                         className="add-menu-item"
                         onClick={() => { fileInputRef.current?.click(); setShowAddMenu(false); }}
                       >
@@ -296,6 +298,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                         {t('chat.addFile')}
                       </button>
                       <button
+                        type="button"
                         className="add-menu-item"
                         onClick={() => { imageInputRef.current?.click(); setShowAddMenu(false); }}
                       >
@@ -303,6 +306,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                         {t('chat.addImage')}
                       </button>
                       <button
+                        type="button"
                         className="add-menu-item"
                         onClick={() => { setInputValue('/'); setShowCommands(true); setShowAddMenu(false); requestAnimationFrame(() => inputRef.current?.focus()); }}
                       >
@@ -337,6 +341,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                 )}
                 {showStop ? (
                   <button
+                    type="button"
                     className="action-btn stop chat-send-btn"
                     onClick={onStop}
                     title={t('chat.stop')}
@@ -346,6 +351,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                   </button>
                 ) : (
                   <button
+                    type="button"
                     className="action-btn send chat-send-btn"
                     onClick={handleSend}
                     disabled={!canSend}

@@ -4,6 +4,36 @@
 //! Reads from and writes to ~/.hermes/config.yaml mcp section.
 
 use super::utils::create_command;
+
+/// Validate MCP server command for shell injection patterns.
+fn validate_mcp_command(command: &str) -> Result<(), String> {
+    let trimmed = command.trim();
+    if trimmed.is_empty() {
+        return Err("Command cannot be empty".to_string());
+    }
+
+    let forbidden = [';', '|', '&', '`', '$', '\n', '\r', '<', '>', '(', ')'];
+    for ch in forbidden {
+        if trimmed.contains(ch) {
+            return Err(format!("MCP command contains forbidden character: '{}'", ch));
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_mcp_server_name(name: &str) -> Result<(), String> {
+    if name.trim().is_empty() {
+        return Err("Server name cannot be empty".to_string());
+    }
+    if name
+        .chars()
+        .any(|c| !c.is_alphanumeric() && c != '_' && c != '-' && c != '.')
+    {
+        return Err("Invalid MCP server name".to_string());
+    }
+    Ok(())
+}
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -341,9 +371,12 @@ fn parse_server_config(name: &str, value: &serde_json::Value) -> McpServerConfig
     }
 }
 
-/// Get a single MCP server by name
+/// Get a single MCP server by name (includes live status from manager)
 #[tauri::command(rename_all = "snake_case")]
-pub fn get_mcp_server(name: String) -> Result<McpServer, String> {
+pub async fn get_mcp_server(
+    name: String,
+    mcp_manager: tauri::State<'_, Arc<crate::features::McpServerManager>>,
+) -> Result<McpServer, String> {
     println!("[MCP] Getting MCP server: {}", name);
 
     let mcp_config = read_mcp_config()?;
@@ -353,10 +386,14 @@ pub fn get_mcp_server(name: String) -> Result<McpServer, String> {
         .ok_or_else(|| format!("Server not found: {}", name))?;
 
     let config = parse_server_config(&name, server_config);
+    let status = mcp_manager
+        .get_server_status(&name)
+        .await
+        .unwrap_or(McpServerStatus::Disconnected);
 
     Ok(McpServer {
         name: name.clone(),
-        status: McpServerStatus::Disconnected,
+        status,
         config,
         uptime_seconds: None,
         tools_count: None,
@@ -373,13 +410,8 @@ pub fn get_mcp_server(name: String) -> Result<McpServer, String> {
 pub async fn add_mcp_server(request: AddMcpServerRequest) -> Result<(), String> {
     println!("[MCP] Adding MCP server: {}", request.name);
 
-    if request.name.is_empty() {
-        return Err("Server name cannot be empty".to_string());
-    }
-
-    if request.command.is_empty() {
-        return Err("Command cannot be empty".to_string());
-    }
+    validate_mcp_server_name(&request.name)?;
+    validate_mcp_command(&request.command)?;
 
     let mut mcp_config = read_mcp_config()?;
 
@@ -465,14 +497,13 @@ pub async fn stop_mcp_server(
 pub async fn test_mcp_connection(config: McpServerConfig) -> Result<McpConnectionTestResult, String> {
     println!("[MCP] Testing MCP connection for: {}", config.name);
 
-    // Basic validation
-    if config.command.is_empty() {
+    if let Err(message) = validate_mcp_command(&config.command) {
         return Ok(McpConnectionTestResult {
             success: false,
-            message: "Command is required".to_string(),
+            message: message.clone(),
             tools: None,
             resources: None,
-            error: Some("Command cannot be empty".to_string()),
+            error: Some(message),
         });
     }
 
@@ -624,6 +655,9 @@ pub async fn get_mcp_stats(
 #[tauri::command(rename_all = "snake_case")]
 pub async fn update_mcp_server(name: String, config: McpServerConfig) -> Result<(), String> {
     println!("[MCP] Updating MCP server: {}", name);
+
+    validate_mcp_server_name(&name)?;
+    validate_mcp_command(&config.command)?;
 
     let mut mcp_config = read_mcp_config()?;
 

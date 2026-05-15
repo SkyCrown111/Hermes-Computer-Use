@@ -65,9 +65,13 @@ fn hermes_agent_available() -> bool {
         .unwrap_or(false)
 }
 
-/// List all available tools from Hermes Agent
-#[tauri::command(rename_all = "snake_case")]
-pub fn list_available_tools() -> Result<Vec<ToolInfo>, String> {
+/// Fetch registered tool names from Hermes Agent registry.
+fn fetch_registered_tool_names() -> Result<Vec<String>, String> {
+    Ok(fetch_registered_tools()?.into_iter().map(|t| t.name).collect())
+}
+
+/// Fetch registered tools from Hermes Agent registry.
+fn fetch_registered_tools() -> Result<Vec<ToolInfo>, String> {
     let env = resolve_environment().map_err(|e| e.to_string())?;
     let import_root = env
         .runtime
@@ -121,6 +125,12 @@ except Exception as e:
         .map_err(|e| format!("Failed to parse tools: {}", e))?;
 
     Ok(tools)
+}
+
+/// List all available tools from Hermes Agent
+#[tauri::command(rename_all = "snake_case")]
+pub fn list_available_tools() -> Result<Vec<ToolInfo>, String> {
+    fetch_registered_tools()
 }
 
 /// Get schema for a specific tool.
@@ -226,6 +236,14 @@ pub async fn invoke_tool(
     }
 
     validate_invoke_args(&args)?;
+
+    let registered = fetch_registered_tool_names()?;
+    if !registered.iter().any(|name| name == &tool_name) {
+        return Err(format!(
+            "Tool '{}' is not registered in Hermes Agent",
+            tool_name
+        ));
+    }
 
     let env = resolve_environment().map_err(|e| e.to_string())?;
     let import_root = env

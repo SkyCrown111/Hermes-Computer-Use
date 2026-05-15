@@ -3,7 +3,7 @@ import { Card, Button, AlertIcon, RefreshIcon, SettingsIcon, ZapIcon, ClockIcon 
 import { usePageVisibility, usePolling } from '../../hooks';
 import { useTranslation } from '../../hooks/useTranslation';
 import { monitorApi } from '../../services/monitorApi';
-import { restartGateway } from '../../services/settingsApi';
+import { restartGateway, startGateway, stopGateway } from '../../services/settingsApi';
 import { logger } from '../../lib/logger';
 import { toast } from '../../stores/toastStore';
 import type { GatewayDetailedStatus, ConnectionEvent } from '../../types/monitor';
@@ -72,6 +72,8 @@ export const Gateway: React.FC = () => {
   const [status, setStatus] = useState<GatewayDetailedStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRestarting, setIsRestarting] = useState(false);
+  const [isStarting, setIsStarting] = useState(false);
+  const [isStopping, setIsStopping] = useState(false);
   const [isReloadingConfig, setIsReloadingConfig] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [consecutiveErrors, setConsecutiveErrors] = useState(0);
@@ -124,6 +126,39 @@ export const Gateway: React.FC = () => {
     setConsecutiveErrors(0);
     fetchStatus(true);
   }, [fetchStatus]);
+
+  const handleStart = useCallback(async () => {
+    setIsStarting(true);
+    setError(null);
+    try {
+      await startGateway();
+      setConsecutiveErrors(0);
+      setTimeout(() => fetchStatus(), 3000);
+      toast.success(t('gateway.startSuccess'));
+    } catch (err) {
+      logger.error('[Gateway] Start failed:', err);
+      setError(t('gateway.startFailed'));
+      toast.error(t('gateway.startFailed'));
+    } finally {
+      setIsStarting(false);
+    }
+  }, [fetchStatus, t]);
+
+  const handleStop = useCallback(async () => {
+    setIsStopping(true);
+    setError(null);
+    try {
+      await stopGateway();
+      setTimeout(() => fetchStatus(), 2000);
+      toast.success(t('gateway.stopSuccess'));
+    } catch (err) {
+      logger.error('[Gateway] Stop failed:', err);
+      setError(t('gateway.stopFailed'));
+      toast.error(t('gateway.stopFailed'));
+    } finally {
+      setIsStopping(false);
+    }
+  }, [fetchStatus, t]);
 
   const handleRestart = useCallback(async () => {
     setIsRestarting(true);
@@ -195,7 +230,15 @@ export const Gateway: React.FC = () => {
             <SettingsIcon size={14} className={isReloadingConfig ? 'spinning' : ''} />
             {isReloadingConfig ? t('gateway.reloadingConfig') : t('gateway.reloadConfig')}
           </Button>
-          <Button variant="primary" onClick={handleRestart} disabled={isRestarting}>
+          <Button variant="secondary" onClick={handleStart} disabled={isStarting || isStopping}>
+            <ZapIcon size={14} />
+            {isStarting ? t('gateway.starting') : t('gateway.start')}
+          </Button>
+          <Button variant="secondary" onClick={handleStop} disabled={isStarting || isStopping}>
+            <ZapIcon size={14} />
+            {isStopping ? t('gateway.stopping') : t('gateway.stop')}
+          </Button>
+          <Button variant="primary" onClick={handleRestart} disabled={isRestarting || isStarting || isStopping}>
             <ZapIcon size={14} />
             {isRestarting ? t('gateway.restarting') : t('gateway.restart')}
           </Button>

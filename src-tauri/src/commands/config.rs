@@ -191,9 +191,41 @@ fn is_masked_api_key(value: &str) -> bool {
         || value.chars().all(|c| c == '\u{2022}')
 }
 
+/// Strip masked API keys from a config section payload before persisting to YAML.
+pub(crate) fn strip_masked_api_keys_for_section(section: &str, data: &mut serde_json::Value) {
+    if section == "model" {
+        if let Some(obj) = data.as_object_mut() {
+            if let Some(api_key) = obj.get("api_key").and_then(|v| v.as_str()) {
+                if is_masked_api_key(api_key) {
+                    obj.remove("api_key");
+                }
+            }
+        }
+    }
+    if section == "providers" {
+        if let Some(obj) = data.as_object_mut() {
+            if let Some(custom_providers) = obj.get_mut("custom_providers").and_then(|v| v.as_array_mut())
+            {
+                for provider in custom_providers.iter_mut() {
+                    if let Some(p) = provider.as_object_mut() {
+                        if let Some(api_key) = p.get("api_key").and_then(|v| v.as_str()) {
+                            if is_masked_api_key(api_key) {
+                                p.remove("api_key");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod mask_tests {
-    use super::{is_masked_api_key, mask_api_key};
+    use super::{
+        is_masked_api_key, mask_api_key, strip_masked_api_keys_for_section,
+    };
+    use serde_json::json;
 
     #[test]
     fn masks_long_keys_with_suffix() {
@@ -211,29 +243,64 @@ mod mask_tests {
         assert!(is_masked_api_key("••••••••"));
         assert!(!is_masked_api_key("sk-live-real-key"));
     }
+
+    #[test]
+    fn strips_masked_model_api_key_before_save() {
+        let mut data = json!({ "api_key": "__MASKED__abcd", "provider": "openai" });
+        strip_masked_api_keys_for_section("model", &mut data);
+        let obj = data.as_object().unwrap();
+        assert!(!obj.contains_key("api_key"));
+        assert_eq!(obj.get("provider").unwrap(), "openai");
+    }
+
+    #[test]
+    fn preserves_real_model_api_key_on_save() {
+        let mut data = json!({ "api_key": "sk-real-key-value", "provider": "openai" });
+        strip_masked_api_keys_for_section("model", &mut data);
+        assert_eq!(
+            data.get("api_key").and_then(|v| v.as_str()).unwrap(),
+            "sk-real-key-value"
+        );
+    }
 }
 
 // ============================================================================
 // File Helpers
 // ============================================================================
 
-/// Get config file path in WSL
+/// Resolve Windows-native path to WSL `~/.hermes/config.yaml` via `$HOME` (any distro).
 fn get_wsl_config_path() -> PathBuf {
-    // For WSL, we use the Windows path that maps to ~/.hermes/config.yaml
-    // This allows us to use Rust's file operations with ConfigLock
-    let home = std::env::var("USERPROFILE").unwrap_or_else(|_| String::from("C:\\Users\\Default"));
-    PathBuf::from(home)
-        .join("AppData")
-        .join("Local")
-        .join("Packages")
-        .join("CanonicalGroupLimited.Ubuntu_79rhkp1fndgsc")
-        .join("LocalState")
-        .join("rootfs")
-        .join("home")
-        // Get WSL username - fallback to "user"
-        .join(std::env::var("USER").unwrap_or_else(|_| String::from("user")))
-        .join(".hermes")
-        .join("config.yaml")
+    if let Ok(output) = create_command("wsl").args([
+        "bash",
+        "-lc",
+        "wslpath -w \"$HOME/.hermes/config.yaml\" 2>/dev/null || echo",
+    ]).output()
+    {
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path.is_empty() {
+                return PathBuf::from(path);
+            }
+        }
+    }
+
+    // Fallback: Windows user profile .hermes (non-WSL or wslpath unavailable)
+    dirs::home_dir()
+        .map(|h| h.join(".hermes").join("config.yaml"))
+        .unwrap_or_else(|| PathBuf::from(".hermes/config.yaml"))
+}
+
+#[cfg(test)]
+mod wsl_path_tests {
+    use super::get_wsl_config_path;
+
+    #[test]
+    fn wsl_config_path_is_not_hardcoded_ubuntu_package() {
+        let path = get_wsl_config_path();
+        let path_str = path.to_string_lossy();
+        assert!(!path_str.contains("CanonicalGroupLimited"));
+        assert!(path_str.ends_with("config.yaml"));
+    }
 }
 
 /// Read file content, trying WSL first then Windows
@@ -463,32 +530,8 @@ async fn yaml_merge_section_with_lock(section: &str, data: &serde_json::Value) -
         return Err(format!("Invalid section name: {}", section));
     }
 
-    // Strip masked API keys before writing - they are display-only markers
     let mut clean_data = data.clone();
-    if section == "model" {
-        if let Some(obj) = clean_data.as_object_mut() {
-            if let Some(api_key) = obj.get("api_key").and_then(|v| v.as_str()) {
-                if is_masked_api_key(api_key) {
-                    obj.remove("api_key");
-                }
-            }
-        }
-    }
-    if section == "providers" {
-        if let Some(obj) = clean_data.as_object_mut() {
-            if let Some(custom_providers) = obj.get_mut("custom_providers").and_then(|v| v.as_array_mut()) {
-                for provider in custom_providers.iter_mut() {
-                    if let Some(p) = provider.as_object_mut() {
-                        if let Some(api_key) = p.get("api_key").and_then(|v| v.as_str()) {
-                            if is_masked_api_key(api_key) {
-                                p.remove("api_key");
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+    strip_masked_api_keys_for_section(section, &mut clean_data);
 
     // Get config path - try WSL path first
     let config_path = get_wsl_config_path();
@@ -563,33 +606,8 @@ fn yaml_merge_section(section: &str, data: &serde_json::Value) -> Result<(), Str
         return Err(format!("Invalid section name: {}", section));
     }
 
-    // Strip masked API keys before writing -?they are display-only markers
     let mut clean_data = data.clone();
-    if section == "model" {
-        if let Some(obj) = clean_data.as_object_mut() {
-            if let Some(api_key) = obj.get("api_key").and_then(|v| v.as_str()) {
-                if is_masked_api_key(api_key) {
-                    obj.remove("api_key");
-                }
-            }
-            // Also strip custom_providers api_keys if masked
-        }
-    }
-    if section == "providers" {
-        if let Some(obj) = clean_data.as_object_mut() {
-            if let Some(custom_providers) = obj.get_mut("custom_providers").and_then(|v| v.as_array_mut()) {
-                for provider in custom_providers.iter_mut() {
-                    if let Some(p) = provider.as_object_mut() {
-                        if let Some(api_key) = p.get("api_key").and_then(|v| v.as_str()) {
-                            if is_masked_api_key(api_key) {
-                                p.remove("api_key");
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+    strip_masked_api_keys_for_section(section, &mut clean_data);
 
     let payload = serde_json::json!({
         "section": section,
@@ -936,10 +954,69 @@ pub fn get_config_section(section: String) -> Result<serde_json::Value, String> 
     }))
 }
 
+/// Validate section payload (field ranges and section name)
+fn validate_section_payload(section: &str, data: &serde_json::Value) -> Result<(), String> {
+    if section.chars().any(|c| !c.is_alphanumeric() && c != '_' && c != '-') {
+        return Err(format!("Invalid section name: {}", section));
+    }
+
+    let check_u64 = |key: &str, min: u64, max: u64| -> Result<(), String> {
+        if let Some(v) = data.get(key).and_then(|v| v.as_u64()) {
+            if v < min || v > max {
+                return Err(format!(
+                    "{} must be between {} and {}, got {}",
+                    key, min, max, v
+                ));
+            }
+        }
+        Ok(())
+    };
+
+    match section {
+        "agent" => {
+            check_u64("max_turns", 1, 1000)?;
+            check_u64("timeout", 10, 3600)?;
+        }
+        "terminal" => {
+            check_u64("timeout", 10, 7200)?;
+        }
+        "memory" => {
+            check_u64("max_chars", 1000, 100_000)?;
+            check_u64("cleanup_threshold", 50, 100)?;
+            check_u64("retention_days", 1, 365)?;
+        }
+        "checkpoint" => {
+            check_u64("max_snapshots", 1, 100)?;
+            check_u64("retention_days", 1, 365)?;
+            check_u64("retention_size_mb", 1, 10_000)?;
+        }
+        "compression" => {
+            check_u64("threshold", 1, 1_000_000)?;
+            if let Some(v) = data.get("target_ratio").and_then(|v| v.as_f64()) {
+                if v <= 0.0 || v > 1.0 {
+                    return Err(format!("target_ratio must be between 0 and 1, got {}", v));
+                }
+            }
+        }
+        _ => {}
+    }
+
+    Ok(())
+}
+
+/// Validate a config section without persisting
+#[tauri::command(rename_all = "snake_case")]
+pub fn validate_config_section(section: String, data: serde_json::Value) -> Result<serde_json::Value, String> {
+    validate_section_payload(&section, &data)?;
+    Ok(serde_json::json!({ "valid": true, "section": section }))
+}
+
 /// Update a specific config section using ConfigLock
 #[tauri::command(rename_all = "snake_case")]
 pub async fn update_config_section(section: String, data: serde_json::Value) -> Result<serde_json::Value, String> {
     println!("[Config] Updating config section: {}", section);
+
+    validate_section_payload(&section, &data)?;
 
     // Use ConfigLock for safe concurrent access
     yaml_merge_section_with_lock(&section, &data).await?;

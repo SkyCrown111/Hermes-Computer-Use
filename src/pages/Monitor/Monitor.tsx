@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
+import { isTauri } from '../../lib/tauri';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Card, Button, RefreshIcon, EmptyIcon, GlobeIcon, ChartIcon, TrendingUpIcon, AlertIcon, FileTextIcon, DownloadIcon } from '../../components';
 import { useMonitorStore } from '../../stores';
@@ -121,6 +122,7 @@ export const Monitor: React.FC = () => {
   const availableComponents = useMonitorStore(s => s.availableComponents);
   const autoRefresh = useMonitorStore(s => s.autoRefresh);
   const refreshInterval = useMonitorStore(s => s.refreshInterval);
+  const liveStream = useMonitorStore(s => s.liveStream);
   const error = useMonitorStore(s => s.error);
   const fetchLogs = useMonitorStore(s => s.fetchLogs);
   const setFilterLevel = useMonitorStore(s => s.setFilterLevel);
@@ -130,6 +132,9 @@ export const Monitor: React.FC = () => {
   const fetchPerformanceMetrics = useMonitorStore(s => s.fetchPerformanceMetrics);
   const fetchComponents = useMonitorStore(s => s.fetchComponents);
   const setAutoRefresh = useMonitorStore(s => s.setAutoRefresh);
+  const startLiveStream = useMonitorStore(s => s.startLiveStream);
+  const stopLiveStream = useMonitorStore(s => s.stopLiveStream);
+  const appendLiveLogEntry = useMonitorStore(s => s.appendLiveLogEntry);
   const clearLogs = useMonitorStore(s => s.clearLogs);
 
   const logContentRef = useRef<HTMLDivElement>(null);
@@ -148,7 +153,40 @@ export const Monitor: React.FC = () => {
     fetchLogs(),
     fetchGatewayStatus(),
     fetchPerformanceMetrics(),
-  ]).then(() => undefined), refreshInterval, { enabled: autoRefresh && isPageVisible, immediate: false });
+  ]).then(() => undefined), refreshInterval, { enabled: autoRefresh && isPageVisible && !liveStream, immediate: false });
+
+  // 实时日志流：订阅后端 log:entry 事件
+  useEffect(() => {
+    if (!liveStream || !isPageVisible || !isTauri()) return;
+
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+
+    (async () => {
+      const { listen } = await import('@tauri-apps/api/event');
+      if (cancelled) return;
+      unlisten = await listen<{
+        type: string;
+        data: { timestamp: string; level: string; message: string };
+      }>('log:entry', (event) => {
+        const payload = event.payload;
+        if (payload?.type === 'LogEntry' && payload.data) {
+          appendLiveLogEntry(payload.data);
+        }
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [liveStream, isPageVisible, appendLiveLogEntry]);
+
+  useEffect(() => {
+    return () => {
+      void useMonitorStore.getState().stopLiveStream();
+    };
+  }, []);
 
   // Filter logs by time range
   const filteredLogs = useMemo(() => {
@@ -210,9 +248,30 @@ export const Monitor: React.FC = () => {
   }, [gatewayStatus, logStats.errorRate, performanceMetrics]);
 
   // Switch log file
-  const handleFileChange = useCallback((file: LogFile) => {
-    fetchLogs({ file });
-  }, [fetchLogs]);
+  const handleFileChange = useCallback(async (file: LogFile) => {
+    const wasLive = useMonitorStore.getState().liveStream;
+    if (wasLive) {
+      await stopLiveStream();
+    }
+    await fetchLogs({ file });
+    if (wasLive) {
+      await startLiveStream();
+    }
+  }, [fetchLogs, startLiveStream, stopLiveStream]);
+
+  const handleToggleLiveStream = useCallback(async () => {
+    try {
+      if (liveStream) {
+        await stopLiveStream();
+        setAutoRefresh(true);
+      } else {
+        await fetchLogs();
+        await startLiveStream();
+      }
+    } catch (err) {
+      logger.error('[Monitor] Live stream toggle failed:', err);
+    }
+  }, [liveStream, stopLiveStream, startLiveStream, fetchLogs, setAutoRefresh]);
 
   // Refresh logs
   const handleRefresh = useCallback(() => {
@@ -360,8 +419,18 @@ export const Monitor: React.FC = () => {
           <div className="monitor-controls">
             {/* Auto Refresh Toggle */}
             <button
-              className={`refresh-toggle ${autoRefresh ? 'refresh-toggle-active' : ''}`}
+              className={`refresh-toggle ${liveStream ? 'refresh-toggle-active' : ''}`}
+              onClick={() => void handleToggleLiveStream()}
+              title={t('monitor.liveStreamHint')}
+            >
+              <span className="refresh-icon"><FileTextIcon size={14} /></span>
+              <span>{liveStream ? t('monitor.liveStreamOn') : t('monitor.liveStream')}</span>
+            </button>
+
+            <button
+              className={`refresh-toggle ${autoRefresh && !liveStream ? 'refresh-toggle-active' : ''}`}
               onClick={() => setAutoRefresh(!autoRefresh)}
+              disabled={liveStream}
               title={autoRefresh && !isPageVisible ? 'Auto-refresh paused (page hidden)' : undefined}
             >
               <span className={`refresh-icon ${autoRefresh && isPageVisible ? 'refresh-icon-spinning' : ''}`}><RefreshIcon size={14} /></span>

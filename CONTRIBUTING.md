@@ -44,9 +44,16 @@ hermes-app/
 ### 代码风格
 
 - 使用 TypeScript 编写前端代码
-- 使用 ESLint 格式化代码（`npm run lint`）
-- 提交前运行 `npm test` 与 `npm run build`
-- Rust 代码遵循标准 Rust 风格
+- 使用 ESLint 检查代码（`npm run lint`）
+- 提交前运行 `npm test`、`npm run test:coverage` 与 `npm run build`
+- Rust 代码遵循标准 Rust 风格（`cd src-tauri && cargo test --lib`）
+- 本项目未配置 Prettier；请保持与现有文件一致的风格
+
+### 安全与审计
+
+- 勿将 `~/.hermes/config.yaml` 或任何 API 密钥提交到 Git
+- 参考根目录 [AUDIT_REPORT.md](AUDIT_REPORT.md) 了解已知风险与整改状态
+- CI 会运行 `npm audit` 与 `cargo audit`（高危漏洞需人工跟进）
 
 ### 提交信息
 

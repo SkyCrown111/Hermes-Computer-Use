@@ -21,8 +21,6 @@ import {
   ToolIcon,
   TrashIcon,
 } from '../../components';
-import { playNotificationSound, sendNotification } from '../../services/notifications';
-import { useThemeStore } from '../../stores/themeStore';
 import { toast } from '../../stores/toastStore';
 import { ChatInput, PermissionCard, ClarifyCard, SecretCard } from '../../components/chat';
 import type { ChatInputHandle, AttachedFile } from '../../components/chat';
@@ -273,19 +271,13 @@ export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
   const deleteMessage = useChatStore((s) => s.deleteMessage);
   const setStreaming = useChatStore((s) => s.setStreaming);
   const setStreamingText = useChatStore((s) => s.setStreamingText);
-  const setReasoningText = useChatStore((s) => s.setReasoningText);
   const clearReasoningText = useChatStore((s) => s.clearReasoningText);
   const clearStreamingTools = useChatStore((s) => s.clearStreamingTools);
-  const setPendingPermission = useChatStore((s) => s.setPendingPermission);
   const clearPendingPermission = useChatStore((s) => s.clearPendingPermission);
-  const setPendingClarify = useChatStore((s) => s.setPendingClarify);
   const clearPendingClarify = useChatStore((s) => s.clearPendingClarify);
-  const setPendingSecret = useChatStore((s) => s.setPendingSecret);
   const clearPendingSecret = useChatStore((s) => s.clearPendingSecret);
   const consumePendingPrompt = useChatStore((s) => s.consumePendingPrompt);
 
-  // Session store
-  const updateSessionActivity = useSessionStore((s) => s.updateSessionActivity);
   const { readiness, refreshReadiness } = useHermesReadiness();
 
   // Refs
@@ -334,6 +326,11 @@ export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
     logger.debug('[ChatPage] Syncing messages for session:', effectiveSessionId);
 
     useSessionStore.getState().fetchMessages(effectiveSessionId).then((serverMessages) => {
+      const chatState = useChatStore.getState().sessions[effectiveSessionId];
+      if (chatState?.isStreaming) {
+        logger.debug('[ChatPage] Skip server sync while stream is active');
+        return;
+      }
       if (serverMessages && isMountedRef.current) {
         const convertedMessages = adaptSessionMessagesToChat(effectiveSessionId, serverMessages);
         const existingMessages = useChatStore.getState().sessions[effectiveSessionId]?.messages ?? [];
@@ -384,137 +381,15 @@ export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
     isStopped,
   } = useStreamChat({
     sessionId: effectiveSessionId || null,
-    onContentChunk: (_chunk, accumulated) => {
-      if (!isMountedRef.current || !effectiveSessionId) return;
-      setStreamingText(resolveSessionId(effectiveSessionId), accumulated);
-    },
-    onReasoningChunk: (_text, accumulated) => {
-      if (!isMountedRef.current || !effectiveSessionId) return;
-      setReasoningText(resolveSessionId(effectiveSessionId), accumulated);
-    },
-    onToolCall: (tool) => {
-      if (!isMountedRef.current || !effectiveSessionId) return;
-      useChatStore.getState().addStreamingTool(resolveSessionId(effectiveSessionId), {
-        name: tool.name,
-        event_type: tool.event_type,
-        preview: tool.preview,
-        args: tool.args as Record<string, unknown> | undefined,
+    // Store updates are handled globally by chatStreamBridge (works when navigating away).
+    onComplete: () => {
+      if (!isMountedRef.current) return;
+      requestAnimationFrame(() => {
+        const container = scrollContainerRef.current;
+        if (container) {
+          container.scrollTop = container.scrollHeight;
+        }
       });
-    },
-    onApproval: (approval) => {
-      if (!effectiveSessionId) return;
-      setPendingPermission(resolveSessionId(effectiveSessionId), approval);
-    },
-    onClarify: (clarify) => {
-      if (!effectiveSessionId) return;
-      setPendingClarify(resolveSessionId(effectiveSessionId), clarify);
-    },
-    onSecret: (secret) => {
-      if (!effectiveSessionId) return;
-      setPendingSecret(resolveSessionId(effectiveSessionId), secret);
-    },
-    onSessionCreated: (newSessionId) => {
-      if (!effectiveSessionId || !effectiveSessionId.startsWith('new_')) return;
-      logger.debug('[ChatPage] onSessionCreated - newSessionId:', newSessionId, 'requestSessionId:', effectiveSessionId);
-      useChatStore.getState().migrateSession(effectiveSessionId, newSessionId);
-      useNavigationStore.getState().replaceTabId(effectiveSessionId, newSessionId);
-      useSessionStore.getState().addSessionOptimistic(newSessionId);
-      useSessionStore.getState().clearCache(effectiveSessionId);
-    },
-    onComplete: (result) => {
-      if (!isMountedRef.current || !effectiveSessionId) return;
-      const sessionId = resolveSessionId(result.newSessionId || effectiveSessionId);
-      const currentSession = useChatStore.getState().sessions[sessionId];
-      const sTools = result.tools.length > 0
-        ? result.tools.map((tool) => ({
-            name: tool.name,
-            event_type: tool.event_type,
-            preview: tool.preview,
-            args: tool.args as Record<string, unknown> | undefined,
-            duration: tool.duration,
-            is_error: tool.is_error,
-          }))
-        : (currentSession?.streamingTools || []);
-
-      setStreaming(sessionId, false);
-      clearStreamingTools(sessionId);
-      setStreamingText(sessionId, '');
-      clearReasoningText(sessionId);
-
-      const lastMessage = currentSession?.messages?.[currentSession.messages.length - 1];
-      if (lastMessage && lastMessage.role === 'assistant') {
-        updateMessage(sessionId, lastMessage.id, {
-          content: result.content,
-          reasoning: result.reasoning || currentSession?.reasoningText || undefined,
-          tools: sTools.length > 0 ? sTools : undefined,
-        });
-      } else {
-        addMessage(sessionId, {
-          role: 'assistant',
-          content: result.content,
-          reasoning: result.reasoning || undefined,
-          tools: sTools.length > 0 ? sTools : undefined,
-        });
-      }
-      if (sessionId && !sessionId.startsWith('new_')) {
-        updateSessionActivity(sessionId, 2);
-      }
-      if (result.newSessionId) {
-        useSessionStore.getState().refreshSessions();
-      }
-
-      const notificationPrefs = useThemeStore.getState().displayPreferences.notifications;
-      if (notificationPrefs.enabled) {
-        if (notificationPrefs.sound) {
-          void playNotificationSound();
-        }
-        if (notificationPrefs.desktop) {
-          void sendNotification(t('nav.chat') || 'Hermes', {
-            body: lang === 'zh' ? '任务已完成' : 'Task completed',
-            tag: `hermes-task-complete-${sessionId}`,
-          });
-        }
-      }
-    },
-    onError: (result) => {
-      if (!isMountedRef.current || !effectiveSessionId) return;
-      const targetSessionId = resolveSessionId(effectiveSessionId);
-      const currentSession = useChatStore.getState().sessions[targetSessionId];
-      const accumulatedText = result.content || currentSession?.streamingText || '';
-      const reasoning = result.reasoning || currentSession?.reasoningText || '';
-      const sTools = result.tools.length > 0
-        ? result.tools.map((tool) => ({
-            name: tool.name,
-            event_type: tool.event_type,
-            preview: tool.preview,
-            args: tool.args as Record<string, unknown> | undefined,
-            duration: tool.duration,
-            is_error: tool.is_error,
-          }))
-        : (currentSession?.streamingTools || []);
-
-      setStreaming(targetSessionId, false);
-      clearStreamingTools(targetSessionId);
-      setStreamingText(targetSessionId, '');
-      clearReasoningText(targetSessionId);
-
-      if (accumulatedText.trim()) {
-        const lastMessage = currentSession?.messages?.slice(-1)[0];
-        if (lastMessage && lastMessage.role === 'assistant') {
-          updateMessage(targetSessionId, lastMessage.id, {
-            content: accumulatedText,
-            reasoning: reasoning || undefined,
-            tools: sTools.length > 0 ? sTools : undefined,
-          });
-        } else {
-          addMessage(targetSessionId, {
-            role: 'assistant',
-            content: accumulatedText,
-            reasoning: reasoning || undefined,
-            tools: sTools.length > 0 ? sTools : undefined,
-          });
-        }
-      }
     },
   });
 
@@ -592,7 +467,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
         }
       }
     }
-  }, [effectiveSessionId, addMessage, updateMessage, setStreaming, clearStreamingTools, updateSessionActivity, clearPendingPermission, clearPendingClarify, clearPendingSecret, abort, send, isStopped, readiness, t]);
+  }, [effectiveSessionId, addMessage, updateMessage, setStreaming, clearStreamingTools, clearPendingPermission, clearPendingClarify, clearPendingSecret, abort, send, isStopped, readiness, t]);
 
   useEffect(() => {
     if (!effectiveSessionId) return;

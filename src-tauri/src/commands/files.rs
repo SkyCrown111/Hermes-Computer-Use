@@ -2,7 +2,9 @@
 //!
 //! Commands for file system operations via WSL.
 
+use super::path_policy::{allowed_file_roots, is_path_in_allowed_roots};
 use super::utils::create_command;
+use crate::core::errors::HermesError;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 
@@ -96,7 +98,7 @@ pub struct FileOperationResult {
 fn validate_path(path: &str) -> Result<String, String> {
     // Reject empty paths
     if path.trim().is_empty() {
-        return Err("Path is empty".to_string());
+        return Err(HermesError::validation("path", "Path is empty").into());
     }
 
     // Reject null bytes (can bypass string checks in C-backed commands)
@@ -113,29 +115,7 @@ fn validate_path(path: &str) -> Result<String, String> {
         }
     }
 
-    // All paths must start with allowed prefixes
     let normalized = path.replace("//", "/");
-    if !normalized.starts_with('~')
-        && !normalized.starts_with("/home/")
-        && !normalized.starts_with("/mnt/")
-    {
-        return Err("Path must start with ~, /home/, or /mnt/".to_string());
-    }
-
-    // Under /mnt/ (WSL Windows drives), require a path beyond the drive root
-    // e.g. allow /mnt/c/Users/name but block /mnt/c or /mnt/c/
-    if normalized.starts_with("/mnt/") {
-        let segments: Vec<&str> = normalized
-            .trim_end_matches('/')
-            .split('/')
-            .filter(|s| !s.is_empty())
-            .collect();
-        if segments.len() < 3 {
-            return Err(
-                "Path under /mnt/ must include a directory beyond the drive letter".to_string(),
-            );
-        }
-    }
 
     // Reject any path traversal sequences
     if normalized.contains("/../") || normalized.ends_with("/..") || normalized.contains("../") {
@@ -151,6 +131,17 @@ fn validate_path(path: &str) -> Result<String, String> {
         }
     }
 
+    let roots = allowed_file_roots();
+    if !is_path_in_allowed_roots(&normalized, &roots) {
+        return Err(
+            HermesError::validation(
+                "path",
+                format!("Path is outside allowed workspace roots ({})", roots.join(", ")),
+            )
+            .into(),
+        );
+    }
+
     Ok(path.to_string())
 }
 
@@ -162,18 +153,13 @@ mod path_tests {
     fn allows_home_and_hermes_paths() {
         assert!(validate_path("~").is_ok());
         assert!(validate_path("~/.hermes").is_ok());
-        assert!(validate_path("/home/user/project").is_ok());
+        assert!(validate_path("~/project").is_ok());
     }
 
     #[test]
-    fn blocks_mnt_drive_root() {
+    fn blocks_mnt_without_workspace_root() {
         assert!(validate_path("/mnt/c").is_err());
-        assert!(validate_path("/mnt/c/").is_err());
-    }
-
-    #[test]
-    fn allows_mnt_nested_paths() {
-        assert!(validate_path("/mnt/c/Users/dev").is_ok());
+        assert!(validate_path("/mnt/c/Users/dev").is_err());
     }
 
     #[test]

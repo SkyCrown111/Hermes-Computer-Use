@@ -1,11 +1,15 @@
 import { invoke } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
-import { HermesApiError, isTauri } from '../lib/tauri';
+import { isTauri } from '../lib/tauri';
+import {
+  abortChatStreamWait,
+  beginChatStream,
+  endChatStream,
+  ensureChatStreamBridge,
+  waitForChatStreamEnd,
+} from '../lib/chatStreamBridge';
 import { apiClient, getErrorDetail } from './apiClient';
 import { logger } from '../lib/logger';
-
-/** Default timeout (ms) for waiting on a stream completion event. */
-const STREAM_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes - long tasks like compilation can take a while
 
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system' | 'tool';
@@ -219,126 +223,40 @@ export async function streamChatRealtime(
     return;
   }
 
-  const unlisteners: Array<() => void> = [];
+  if (!sessionId) {
+    resolvedCallbacks.onError?.('Session ID is required for streaming');
+    return;
+  }
 
-  /** Safely tear down every Tauri event listener. */
-  const cleanupListeners = (): void => {
-    for (const unlisten of unlisteners) {
-      try { unlisten(); } catch { /* already unsubscribed */ }
-    }
-    unlisteners.length = 0;
-  };
-
-  // Idle timer lives outside try/finally so cleanup can always clear it.
-  let idleTimer: ReturnType<typeof setTimeout> | null = null;
+  await ensureChatStreamBridge();
+  beginChatStream(sessionId, resolvedCallbacks);
 
   try {
     resolvedCallbacks.onStatus?.('connecting');
 
-    const { listen } = await import('@tauri-apps/api/event');
-
-    // Create a promise that resolves when chat:complete or chat:error is received.
-    // Also add an idle timeout that resets on every chunk so active streams don't get killed.
-    let resolveCompletion: () => void;
-    let rejectCompletion: ((err: Error) => void) | null = null;
-    const completionPromise = new Promise<void>((resolve, reject) => {
-      resolveCompletion = resolve;
-      rejectCompletion = reject;
-    });
-    const resetIdleTimer = () => {
-      if (idleTimer) clearTimeout(idleTimer);
-      idleTimer = setTimeout(() => {
-        rejectCompletion?.(new HermesApiError('timeout', `Stream timed out after ${STREAM_TIMEOUT_MS}ms of inactivity`));
-      }, STREAM_TIMEOUT_MS);
-    };
-    resetIdleTimer();
-
-    // Register event listeners BEFORE invoking the backend.
-    // Reset idle timer on any data activity so long-running active streams don't time out.
-    unlisteners.push(await listen<{ content: string; accumulated: string }>('chat:chunk', (event) => {
-      resetIdleTimer();
-      resolvedCallbacks.onChunk?.(event.payload.content, event.payload.accumulated);
-    }));
-
-    unlisteners.push(await listen<{ text: string; accumulated: string }>('chat:reasoning', (event) => {
-      resetIdleTimer();
-      resolvedCallbacks.onReasoning?.(event.payload.text, event.payload.accumulated);
-    }));
-
-    unlisteners.push(await listen<StreamToolEvent>('chat:tool', (event) => {
-      resetIdleTimer();
-      resolvedCallbacks.onTool?.(event.payload);
-    }));
-
-    unlisteners.push(await listen<StreamApprovalEvent>('chat:approval', (event) => {
-      resetIdleTimer();
-      resolvedCallbacks.onApproval?.(event.payload);
-    }));
-
-    unlisteners.push(await listen<StreamClarifyEvent>('chat:clarify', (event) => {
-      resetIdleTimer();
-      resolvedCallbacks.onClarify?.(event.payload);
-    }));
-
-    unlisteners.push(await listen<StreamSecretEvent>('chat:secret', (event) => {
-      resetIdleTimer();
-      resolvedCallbacks.onSecret?.(event.payload);
-    }));
-
-    unlisteners.push(await listen<StreamUsageEvent>('chat:usage', (event) => {
-      resetIdleTimer();
-      resolvedCallbacks.onUsage?.(event.payload);
-    }));
-
-    // Listen for status events (heartbeat from long-running tool operations)
-    unlisteners.push(await listen<{ status: string; message: string }>('chat:status', (event) => {
-      resetIdleTimer();
-      resolvedCallbacks.onStatus?.(event.payload.status);
-    }));
-
-    unlisteners.push(await listen<{ session_id: string }>('chat:session', (event) => {
-      resetIdleTimer();
-      resolvedCallbacks.onSessionCreated?.(event.payload.session_id);
-    }));
-
-    unlisteners.push(await listen<{ id?: string; content: string; reasoning?: string }>('chat:complete', (event) => {
-      resolvedCallbacks.onComplete?.(
-        event.payload.content,
-        event.payload.id ?? null,
-        null,
-        event.payload.reasoning ?? null
-      );
-      resolveCompletion();
-    }));
-
-    unlisteners.push(await listen<{ error: string }>('chat:error', (event) => {
-      resolvedCallbacks.onError?.(event.payload.error);
-      resolveCompletion();
-    }));
-
-    // Build messages array: history + current user message
     const messages: ChatHistoryEntry[] = [...history, { role: 'user', content: message }];
 
-    // Fire the backend command (do not await -- it returns immediately and
-    // communicates results via Tauri events).
-    invoke('stream_chat_realtime', { messages, session_id: sessionId, model_override: modelOverride || null }).catch((error) => {
+    const completionPromise = waitForChatStreamEnd();
+
+    invoke('stream_chat_realtime', {
+      messages,
+      session_id: sessionId,
+      model_override: modelOverride || null,
+    }).catch((error) => {
       const detail = getErrorDetail(error);
       logger.error(`[HermesChat] stream_chat_realtime invoke failed: ${detail}`);
       resolvedCallbacks.onError?.(detail);
-      resolveCompletion();
+      abortChatStreamWait(detail);
     });
 
     resolvedCallbacks.onStatus?.('connected');
-
-    // Wait for completion (idle timer will reject if no activity for STREAM_TIMEOUT_MS).
     await completionPromise;
   } catch (error) {
     const detail = getErrorDetail(error);
     logger.error(`[HermesChat] streamChatRealtime failed: ${detail}`);
     resolvedCallbacks.onError?.(detail);
   } finally {
-    if (idleTimer) clearTimeout(idleTimer);
-    cleanupListeners();
+    endChatStream();
   }
 }
 

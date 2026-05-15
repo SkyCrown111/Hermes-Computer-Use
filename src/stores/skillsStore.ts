@@ -193,8 +193,17 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
 
   executeSkill: async (params: SkillExecutionParams) => {
     try {
-      logger.debug('[SkillsStore] executeSkill called with:', params);
-      return `skill-${params.skill_name}-${Date.now()}`;
+      const args: string[] = [];
+      if (params.input_text) {
+        args.push(params.input_text);
+      }
+      if (params.parameters) {
+        for (const [key, value] of Object.entries(params.parameters)) {
+          args.push(`${key}=${String(value)}`);
+        }
+      }
+      const result = await skillsApi.executeSkill(params.skill_name, args);
+      return result.id;
     } catch (err) {
       set({ error: getErrorMessage(err) });
       return '';

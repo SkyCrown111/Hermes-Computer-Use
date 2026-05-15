@@ -176,6 +176,21 @@ export const memoryApi = {
     }
   },
 
+  runCleanup: async (thresholdPercent?: number): Promise<{
+    ok: boolean;
+    trimmed_sections: number;
+    char_count: number;
+    char_limit: number;
+    message?: string;
+  }> => {
+    try {
+      return await apiClient.invoke('run_memory_cleanup', { threshold_percent: thresholdPercent });
+    } catch (error) {
+      logger.error('[Memory] Failed to run cleanup:', getErrorDetail(error));
+      return { ok: false, trimmed_sections: 0, char_count: 0, char_limit: 100000 };
+    }
+  },
+
   appendMemoryDirect: async (type: MemoryFileType, content: string, sectionTitle?: string): Promise<MemoryAppendResult> => {
     try {
       return await apiClient.invoke('append_memory', { file_type: type, content, section_title: sectionTitle });

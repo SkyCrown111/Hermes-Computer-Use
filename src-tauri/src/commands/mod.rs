@@ -9,6 +9,7 @@ pub mod cron_jobs;
 pub mod files;
 pub mod kanban;
 pub mod logs;
+pub mod path_policy;
 pub mod mcp;
 pub mod memories;
 pub mod monitor;

@@ -2,6 +2,7 @@ import './styles/globals.css';
 import { useEffect, Suspense, lazy, useState } from 'react';
 import { useNavigationStore, useThemeStore, useSessionStore, resolveTheme } from './stores';
 import { initializeChatStore } from './stores/chatStore';
+import { ensureChatStreamBridge, teardownChatStreamBridge } from './lib/chatStreamBridge';
 import { Layout, ToastContainer, ErrorBoundary } from './components';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useTranslation } from './hooks/useTranslation';
@@ -21,6 +22,7 @@ const ChatPageLazy = lazy(() => import('./pages/Chat').then(m => ({ default: m.C
 const Preferences = lazy(() => import('./pages/Preferences').then(m => ({ default: m.Preferences })));
 const Gateway = lazy(() => import('./pages/Gateway').then(m => ({ default: m.Gateway })));
 const MCP = lazy(() => import('./pages/MCP').then(m => ({ default: m.MCP })));
+const Tools = lazy(() => import('./pages/Tools').then(m => ({ default: m.Tools })));
 const KanbanPage = lazy(() => import('./pages/Kanban').then(m => ({ default: m.KanbanPage })));
 const HelpGuidePage = lazy(() => import('./pages/HelpGuide').then(m => ({ default: m.HelpGuidePage })));
 const CommandPalette = lazy(() => import('./components/ui/CommandPalette').then(m => ({ default: m.CommandPalette })));
@@ -115,14 +117,19 @@ function App() {
     };
   }, []);
 
+  // Global chat stream listeners (survive page navigation)
+  useEffect(() => {
+    void ensureChatStreamBridge();
+    return () => {
+      teardownChatStreamBridge();
+    };
+  }, []);
+
   // Restore tabs and fetch sessions on mount
   useEffect(() => {
-    // Initialize chat store with persisted messages first
     initializeChatStore();
 
-    // Restore tabs first (from localStorage)
     restoreTabs().then(() => {
-      // Then fetch sessions list (will also check for missing sessions from open tabs)
       fetchSessions();
     });
   }, [fetchSessions, restoreTabs]);
@@ -153,6 +160,8 @@ function App() {
           return <Gateway key="gateway" />;
         case 'mcp':
           return <MCP key="mcp" />;
+        case 'tools':
+          return <Tools key="tools" />;
         case 'kanban':
           return <KanbanPage key="kanban" />;
         case 'preferences':

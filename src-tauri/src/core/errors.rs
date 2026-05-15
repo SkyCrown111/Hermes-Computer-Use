@@ -362,3 +362,29 @@ impl HermesError {
 
 /// Result type alias using HermesError
 pub type Result<T> = std::result::Result<T, HermesError>;
+
+#[cfg(test)]
+mod tests {
+    use super::HermesError;
+
+    #[test]
+    fn error_codes_are_stable() {
+        let err = HermesError::validation("path", "outside roots");
+        assert_eq!(err.code(), "VALIDATION_ERROR");
+    }
+
+    #[test]
+    fn converts_to_string_for_tauri_commands() {
+        let err = HermesError::not_found("session", "abc");
+        let message: String = err.into();
+        assert!(message.contains("abc"));
+    }
+
+    #[test]
+    fn json_parse_error_maps_to_parse_error() {
+        let bad = "{ not json";
+        let err = serde_json::from_str::<serde_json::Value>(bad).unwrap_err();
+        let hermes_err: HermesError = err.into();
+        assert_eq!(hermes_err.code(), "PARSE_JSON_ERROR");
+    }
+}

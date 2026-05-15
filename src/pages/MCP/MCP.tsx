@@ -1,4 +1,5 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
+import { usePageVisibility, usePolling } from '../../hooks';
 import { ConfirmModal, AlertIcon, CheckIcon, WarningIcon } from '../../components';
 import { useMcpStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
@@ -96,10 +97,25 @@ export function MCP() {
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<McpServer | null>(null);
 
+  const isPageVisible = usePageVisibility();
+  const needsStatusPolling = useMemo(
+    () => servers.some((s) => s.status === 'starting'),
+    [servers],
+  );
+
   useEffect(() => {
     fetchServers();
     fetchStats();
   }, [fetchServers, fetchStats]);
+
+  usePolling(
+    async () => {
+      await fetchServers();
+      await fetchStats();
+    },
+    2000,
+    { enabled: isPageVisible && needsStatusPolling },
+  );
 
   // Reset form when opening add modal
   useEffect(() => {

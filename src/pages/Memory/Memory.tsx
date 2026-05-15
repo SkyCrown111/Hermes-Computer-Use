@@ -3,6 +3,7 @@ import { Card, Button, BrainIcon, UserIcon, BookIcon, SearchIcon, EmptyIcon, Ale
 import { useMemoryStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
 import { toast } from '../../stores/toastStore';
+import { memoryApi } from '../../services/memoryApi';
 import type { MemoryFileType, MemorySection, MemoryFile, MemorySearchResult } from '../../types/memory';
 import './Memory.css';
 
@@ -303,6 +304,28 @@ export const Memory: React.FC = () => {
   const clearError = useMemoryStore(s => s.clearError);
 
   const [activeTab, setActiveTab] = useState<MemoryFileType | 'both'>('both');
+  const [isCleaning, setIsCleaning] = useState(false);
+
+  const handleRunCleanup = useCallback(async () => {
+    setIsCleaning(true);
+    try {
+      const result = await memoryApi.runCleanup();
+      if (result.ok) {
+        await fetchMemory();
+        if (result.trimmed_sections > 0) {
+          toast.success(`${t('memory.cleanupSuccess')} (${result.trimmed_sections})`);
+        } else {
+          toast.success(t('memory.cleanupNoop'));
+        }
+      } else {
+        toast.error(t('memory.cleanupFailed'));
+      }
+    } catch {
+      toast.error(t('memory.cleanupFailed'));
+    } finally {
+      setIsCleaning(false);
+    }
+  }, [fetchMemory, t]);
 
   // Advanced search options
   const [searchCaseSensitive, setSearchCaseSensitive] = useState(false);
@@ -494,6 +517,10 @@ export const Memory: React.FC = () => {
               <button className="expand-btn" onClick={collapseAllSections}>
                 {t('memory.collapseAll')}
               </button>
+              <Button variant="secondary" size="sm" onClick={handleRunCleanup} disabled={isCleaning}>
+                <RefreshIcon size={14} className={isCleaning ? 'spinning' : ''} />
+                {isCleaning ? t('memory.cleaning') : t('memory.runCleanup')}
+              </Button>
             </div>
           </div>
         </div>
