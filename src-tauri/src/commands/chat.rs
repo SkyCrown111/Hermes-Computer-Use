@@ -1,7 +1,7 @@
 ﻿// Hermes Chat Proxy Commands
 // Direct Hermes Agent calling with real-time streaming via Python wrapper
 
-use super::utils::create_command;
+use super::utils::{create_command, run_shell_command};
 use crate::hermes_adapter::resolve_environment;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
@@ -660,9 +660,7 @@ pub fn respond_approval(approval_id: String, choice: String) -> Result<(), Strin
         encoded, approval_id
     );
 
-    let output = create_command("wsl")
-        .args(["-e", "bash", "-c", &response_cmd])
-        .output()
+    let output = run_shell_command(&response_cmd)
         .map_err(|e| format!("Failed to write approval response: {}", e))?;
 
     if !output.status.success() {
@@ -695,9 +693,7 @@ pub fn respond_clarify(clarify_id: String, answer: String) -> Result<(), String>
         encoded, clarify_id
     );
 
-    let output = create_command("wsl")
-        .args(["-e", "bash", "-c", &response_cmd])
-        .output()
+    let output = run_shell_command(&response_cmd)
         .map_err(|e| format!("Failed to write clarify response: {}", e))?;
 
     if !output.status.success() {
@@ -731,9 +727,7 @@ pub fn respond_secret(secret_id: String, value: String) -> Result<(), String> {
         encoded, secret_id
     );
 
-    let output = create_command("wsl")
-        .args(["-e", "bash", "-c", &response_cmd])
-        .output()
+    let output = run_shell_command(&response_cmd)
         .map_err(|e| format!("Failed to write secret response: {}", e))?;
 
     if !output.status.success() {

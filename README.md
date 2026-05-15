@@ -209,6 +209,17 @@ hermes-app/
 
 ## 配置说明
 
+### Hermes 配置
+
+首次使用请复制配置模板（**勿将含真实密钥的 `config.yaml` 提交到 Git**）：
+
+```bash
+# 在 WSL / Linux 环境中
+mkdir -p ~/.hermes
+cp config.yaml.example ~/.hermes/config.yaml
+# 编辑 ~/.hermes/config.yaml，填入你的 API Key
+```
+
 ### 环境变量
 
 创建 `.env` 文件配置以下变量：

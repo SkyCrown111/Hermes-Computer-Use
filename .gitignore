@@ -34,6 +34,11 @@ src-tauri/target
 .env.local
 .env.*.local
 
+# Hermes local data (never commit secrets)
+.hermes/
+**/.hermes/
+src-tauri/~/
+
 # OS
 Thumbs.db
 .DS_Store

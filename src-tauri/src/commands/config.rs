@@ -191,6 +191,28 @@ fn is_masked_api_key(value: &str) -> bool {
         || value.chars().all(|c| c == '\u{2022}')
 }
 
+#[cfg(test)]
+mod mask_tests {
+    use super::{is_masked_api_key, mask_api_key};
+
+    #[test]
+    fn masks_long_keys_with_suffix() {
+        assert_eq!(mask_api_key("sk-abcdefghijklmnop"), "__MASKED__mnop");
+    }
+
+    #[test]
+    fn masks_short_keys_without_suffix() {
+        assert_eq!(mask_api_key("abcd"), "__MASKED__");
+    }
+
+    #[test]
+    fn detects_masked_formats() {
+        assert!(is_masked_api_key("__MASKED__1234"));
+        assert!(is_masked_api_key("••••••••"));
+        assert!(!is_masked_api_key("sk-live-real-key"));
+    }
+}
+
 // ============================================================================
 // File Helpers
 // ============================================================================

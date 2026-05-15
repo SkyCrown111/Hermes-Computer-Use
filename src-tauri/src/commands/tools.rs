@@ -5,6 +5,39 @@ use super::utils::create_command;
 use crate::hermes_adapter::resolve_environment;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+/// Max serialized args payload for direct IPC tool invocation (1 MiB).
+const MAX_INVOKE_ARGS_BYTES: usize = 1_048_576;
+
+/// Tool names blocked from direct IPC invoke; use chat approval flow instead.
+const IPC_BLOCKED_TOOLS: &[&str] = &[
+    "run_terminal_cmd",
+    "run_terminal",
+    "terminal",
+    "execute_shell",
+    "shell",
+    "bash",
+    "computer_use",
+    "computer",
+];
+
+fn is_ipc_blocked_tool(tool_name: &str) -> bool {
+    let lower = tool_name.to_ascii_lowercase();
+    IPC_BLOCKED_TOOLS.iter().any(|blocked| lower == *blocked)
+}
+
+fn validate_invoke_args(args: &Value) -> Result<(), String> {
+    if !args.is_object() {
+        return Err("Tool args must be a JSON object".to_string());
+    }
+    let serialized = serde_json::to_string(args)
+        .map_err(|e| format!("Failed to serialize tool args: {}", e))?;
+    if serialized.len() > MAX_INVOKE_ARGS_BYTES {
+        return Err("Tool args payload is too large".to_string());
+    }
+    Ok(())
+}
 
 /// Tool information schema
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -184,6 +217,15 @@ pub async fn invoke_tool(
     if tool_name.chars().any(|c| !c.is_alphanumeric() && c != '_' && c != '-' && c != '.') {
         return Err(format!("Invalid tool name: {}", tool_name));
     }
+
+    if is_ipc_blocked_tool(&tool_name) {
+        return Err(format!(
+            "Tool '{}' cannot be invoked directly from the desktop UI; use chat with approval instead",
+            tool_name
+        ));
+    }
+
+    validate_invoke_args(&args)?;
 
     let env = resolve_environment().map_err(|e| e.to_string())?;
     let import_root = env

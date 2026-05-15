@@ -122,6 +122,21 @@ fn validate_path(path: &str) -> Result<String, String> {
         return Err("Path must start with ~, /home/, or /mnt/".to_string());
     }
 
+    // Under /mnt/ (WSL Windows drives), require a path beyond the drive root
+    // e.g. allow /mnt/c/Users/name but block /mnt/c or /mnt/c/
+    if normalized.starts_with("/mnt/") {
+        let segments: Vec<&str> = normalized
+            .trim_end_matches('/')
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .collect();
+        if segments.len() < 3 {
+            return Err(
+                "Path under /mnt/ must include a directory beyond the drive letter".to_string(),
+            );
+        }
+    }
+
     // Reject any path traversal sequences
     if normalized.contains("/../") || normalized.ends_with("/..") || normalized.contains("../") {
         return Err("Path traversal not allowed".to_string());
@@ -137,6 +152,35 @@ fn validate_path(path: &str) -> Result<String, String> {
     }
 
     Ok(path.to_string())
+}
+
+#[cfg(test)]
+mod path_tests {
+    use super::validate_path;
+
+    #[test]
+    fn allows_home_and_hermes_paths() {
+        assert!(validate_path("~").is_ok());
+        assert!(validate_path("~/.hermes").is_ok());
+        assert!(validate_path("/home/user/project").is_ok());
+    }
+
+    #[test]
+    fn blocks_mnt_drive_root() {
+        assert!(validate_path("/mnt/c").is_err());
+        assert!(validate_path("/mnt/c/").is_err());
+    }
+
+    #[test]
+    fn allows_mnt_nested_paths() {
+        assert!(validate_path("/mnt/c/Users/dev").is_ok());
+    }
+
+    #[test]
+    fn blocks_traversal_and_injection() {
+        assert!(validate_path("/home/user/../etc/passwd").is_err());
+        assert!(validate_path("~/foo;rm -rf /").is_err());
+    }
 }
 
 /// Protected paths that must never be deleted

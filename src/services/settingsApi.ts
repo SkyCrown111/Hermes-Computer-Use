@@ -18,7 +18,7 @@ export async function loadConfig(): Promise<HermesConfig> {
     return await apiClient.invoke<HermesConfig>('load_config');
   } catch (error) {
     logger.error(`[SettingsApi] loadConfig failed: ${getErrorDetail(error)}`);
-    return {};
+    throw error;
   }
 }
 
@@ -31,7 +31,7 @@ export async function getConfigRaw(): Promise<RawConfigResponse> {
     return await apiClient.invoke<RawConfigResponse>('get_config_raw');
   } catch (error) {
     logger.error(`[SettingsApi] getConfigRaw failed: ${getErrorDetail(error)}`);
-    return { yaml: '' };
+    throw error;
   }
 }
 

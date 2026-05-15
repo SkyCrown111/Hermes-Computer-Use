@@ -14,8 +14,8 @@
 
 ```bash
 # 克隆仓库
-git clone https://github.com/Crown-22/hermes-console.git
-cd hermes-console
+git clone https://github.com/Crown-22/Hermes-Computer-Use.git
+cd Hermes-Computer-Use/hermes-app
 
 # 安装前端依赖
 npm install
@@ -44,7 +44,8 @@ hermes-app/
 ### 代码风格
 
 - 使用 TypeScript 编写前端代码
-- 使用 ESLint 和 Prettier 格式化代码
+- 使用 ESLint 格式化代码（`npm run lint`）
+- 提交前运行 `npm test` 与 `npm run build`
 - Rust 代码遵循标准 Rust 风格
 
 ### 提交信息

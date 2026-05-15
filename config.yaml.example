@@ -1,0 +1,45 @@
+# Hermes Agent configuration template
+# Copy to ~/.hermes/config.yaml (WSL/Linux) and replace placeholder values.
+#
+#   mkdir -p ~/.hermes
+#   cp config.yaml.example ~/.hermes/config.yaml
+#
+# Never commit your real config.yaml or API keys to version control.
+
+model:
+  default: claude-sonnet-4-20250514
+  provider: anthropic
+  api_key: "YOUR_API_KEY_HERE"
+  base_url: ""
+
+agent:
+  max_turns: 100
+  timeout: 300
+  reasoning_effort: medium
+
+terminal:
+  backend: local
+  timeout: 180
+  cwd: "~"
+
+compression:
+  enabled: true
+  threshold: 0.8
+  target_ratio: 0.5
+
+checkpoint:
+  enabled: true
+  max_snapshots: 10
+
+memory:
+  enabled: true
+  max_chars: 10000
+
+approval:
+  mode: ask
+  show_command_preview: true
+  timeout_seconds: 300
+
+# Optional: API server key if you enable Hermes API server
+# api_server:
+#   key: "YOUR_API_SERVER_KEY_HERE"

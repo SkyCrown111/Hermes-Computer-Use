@@ -6,6 +6,7 @@ import type { Components } from 'react-markdown';
 import { Lightbox } from '../Lightbox';
 import { CheckIcon, CopyIcon } from '../Icons';
 import { useTranslation } from '../../../hooks/useTranslation';
+import { isSafeUrl } from '../../../lib/safeUrl';
 import './MarkdownRenderer.css';
 
 export interface MarkdownRendererProps {
@@ -142,31 +143,41 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, sea
       return <p className="md-paragraph">{highlighted}</p>;
     },
 
-    // Links open in new tab
-    a: ({ href, children, ...props }) => (
-      <a
-        className="md-link"
-        href={href}
-        target="_blank"
-        rel="noopener noreferrer"
-        {...props}
-      >
-        {children}
-      </a>
-    ),
+    // Links open in new tab (dangerous schemes blocked)
+    a: ({ href, children, ...props }) => {
+      if (!isSafeUrl(href)) {
+        return <span className="md-link md-link-unsafe">{children}</span>;
+      }
+      return (
+        <a
+          className="md-link"
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          {...props}
+        >
+          {children}
+        </a>
+      );
+    },
 
-    // Images - clickable for lightbox preview
-    img: ({ src, alt, ...props }) => (
-      <img
-        className="md-image md-image-clickable"
-        src={src}
-        alt={alt || ''}
-        loading="lazy"
-        onClick={() => handleImageClick(src || '', alt || '')}
-        style={{ cursor: 'pointer' }}
-        {...props}
-      />
-    ),
+    // Images - clickable for lightbox preview (remote http(s) or data: only)
+    img: ({ src, alt, ...props }) => {
+      if (!isSafeUrl(src)) {
+        return null;
+      }
+      return (
+        <img
+          className="md-image md-image-clickable"
+          src={src}
+          alt={alt || ''}
+          loading="lazy"
+          onClick={() => handleImageClick(src || '', alt || '')}
+          style={{ cursor: 'pointer' }}
+          {...props}
+        />
+      );
+    },
 
     // Headings
     h1: ({ children, ...props }) => <h1 className="md-h1" {...props}>{children}</h1>,
