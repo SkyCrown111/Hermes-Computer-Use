@@ -1,12 +1,14 @@
 // ChatPage - Claude Code desktop style: full-width messages, role labels, clean terminal aesthetic
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { streamChatRealtime, respondApproval, respondClarify, respondSecret, abortChat } from '../../services/hermesChat';
+import { respondApproval, respondClarify, respondSecret } from '../../services/hermesChat';
 import { useSessionStore, useNavigationStore, useChatStore, resolveSessionId } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
+import { useHermesReadiness } from '../../hooks/useHermesReadiness';
+import { useStreamChat } from '../../hooks/useStreamChat';
 import { logger } from '../../lib/logger';
 import { cleanErrorMessage } from '../../lib/errorUtils';
 import { normalizeContent } from '../../lib/contentUtils';
-import { parseToolJson } from '../../components/chat/parseToolJson';
+import { adaptSessionMessagesToChat } from '../../lib/sessionMessageAdapter';
 import type { ChatMessage, ToolCallInfo } from '../../stores/chatStore';
 import {
   ChevronDownIcon,
@@ -19,7 +21,8 @@ import {
   ToolIcon,
   TrashIcon,
 } from '../../components';
-import { requestNotificationPermission } from '../../services/notifications';
+import { playNotificationSound, sendNotification } from '../../services/notifications';
+import { useThemeStore } from '../../stores/themeStore';
 import { toast } from '../../stores/toastStore';
 import { ChatInput, PermissionCard, ClarifyCard, SecretCard } from '../../components/chat';
 import type { ChatInputHandle, AttachedFile } from '../../components/chat';
@@ -225,11 +228,32 @@ interface ChatPageProps {
   sessionId?: string;
 }
 
+const ReadinessBanner: React.FC<{
+  title: string;
+  description: string;
+  settingsLabel: string;
+  recheckLabel: string;
+  onOpenSettings: () => void;
+  onRefresh: () => void;
+  compact?: boolean;
+}> = ({ title, description, settingsLabel, recheckLabel, onOpenSettings, onRefresh, compact }) => (
+  <div className={`chat-readiness-banner${compact ? ' compact' : ''}`}>
+    <div className="chat-readiness-copy">
+      <strong>{title}</strong>
+      <span>{description}</span>
+    </div>
+    <div className="chat-readiness-actions">
+      <button className="chat-readiness-btn" onClick={onOpenSettings}>{settingsLabel}</button>
+      <button className="chat-readiness-btn secondary" onClick={onRefresh}>{recheckLabel}</button>
+    </div>
+  </div>
+);
+
 export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
   const { t, lang } = useTranslation();
 
   // Navigation
-  const { chatContext, activeTabId } = useNavigationStore();
+  const { chatContext, activeTabId, setActiveItem } = useNavigationStore();
   const rawSessionId = chatContext?.sessionId || sessionId || activeTabId;
   const effectiveSessionId = useMemo(() => resolveSessionId(rawSessionId || ''), [rawSessionId]);
 
@@ -262,12 +286,12 @@ export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
 
   // Session store
   const updateSessionActivity = useSessionStore((s) => s.updateSessionActivity);
+  const { readiness, refreshReadiness } = useHermesReadiness();
 
   // Refs
   const chatInputRef = useRef<ChatInputHandle>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isMountedRef = useRef<boolean>(true);
-  const isStoppedRef = useRef<boolean>(false);
   const isNearBottomRef = useRef<boolean>(true);
 
   // Derived state (useMemo to stabilize references for useEffect dependencies)
@@ -276,11 +300,6 @@ export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
   const streamingText = sessionStreamingText ?? '';
   const reasoningText = sessionReasoningText ?? '';
   const streamingTools = useMemo(() => sessionStreamingTools ?? [], [sessionStreamingTools]);
-
-  // Request notification permission
-  useEffect(() => {
-    requestNotificationPermission();
-  }, []);
 
   // Cleanup on unmount - only mark as not mounted, don't abort the session
   // The session should continue running in the background
@@ -312,51 +331,24 @@ export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
   // Load messages from server when entering a historical session
   useEffect(() => {
     if (!effectiveSessionId || effectiveSessionId.startsWith('new_')) return;
-
-    // Check if messages already exist in chatStore
-    const existingMessages = useChatStore.getState().sessions[effectiveSessionId]?.messages;
-    if (existingMessages && existingMessages.length > 0) {
-      logger.debug('[ChatPage] Messages already loaded in chatStore for:', effectiveSessionId);
-      return;
-    }
-
-    logger.debug('[ChatPage] Loading messages for session:', effectiveSessionId);
+    logger.debug('[ChatPage] Syncing messages for session:', effectiveSessionId);
 
     useSessionStore.getState().fetchMessages(effectiveSessionId).then((serverMessages) => {
-      if (serverMessages && serverMessages.length > 0 && isMountedRef.current) {
-        logger.debug('[ChatPage] Loaded', serverMessages.length, 'messages from server');
-        const convertedMessages: ChatMessage[] = serverMessages
-          .filter((msg) => msg.role === 'user' || msg.role === 'assistant')
-          .map((msg, idx) => {
-            const rawContent = normalizeContent(msg.content);
-            const { cleanContent } = parseToolJson(rawContent);
+      if (serverMessages && isMountedRef.current) {
+        const convertedMessages = adaptSessionMessagesToChat(effectiveSessionId, serverMessages);
+        const existingMessages = useChatStore.getState().sessions[effectiveSessionId]?.messages ?? [];
+        const shouldReplace =
+          convertedMessages.length !== existingMessages.length ||
+          convertedMessages.some((message, index) =>
+            existingMessages[index]?.role !== message.role ||
+            existingMessages[index]?.content !== message.content ||
+            existingMessages[index]?.reasoning !== message.reasoning,
+          );
 
-            // Skip empty messages after cleaning
-            if (!cleanContent && !rawContent && (!msg.tool_calls || msg.tool_calls.length === 0)) {
-              return null;
-            }
-
-            // Log tool calls for debugging
-            if (msg.tool_calls && msg.tool_calls.length > 0) {
-              logger.debug('[ChatPage] Message', idx, 'has', msg.tool_calls.length, 'tool calls:', msg.tool_calls.map(tc => tc.name));
-            }
-
-            return {
-              id: `msg-${Date.now()}-${Math.random()}-${idx}`,
-              role: msg.role as 'user' | 'assistant',
-              content: cleanContent || rawContent,
-              timestamp: msg.timestamp,
-              reasoning: msg.reasoning,
-              tools: msg.tool_calls?.map(tc => ({
-                name: tc.name,
-                event_type: 'tool.completed',
-                args: tc.args,
-                duration: 1,
-              })),
-            } as ChatMessage;
-          })
-          .filter((msg): msg is NonNullable<typeof msg> => msg !== null);
-        useChatStore.getState().loadMessages(effectiveSessionId, convertedMessages);
+        if (shouldReplace) {
+          logger.debug('[ChatPage] Applying', convertedMessages.length, 'messages from server');
+          useChatStore.getState().loadMessages(effectiveSessionId, convertedMessages);
+        }
       } else {
         logger.debug('[ChatPage] No messages found for session:', effectiveSessionId);
       }
@@ -384,6 +376,147 @@ export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
   }, [messages, streamingText, streamingTools, isStreaming]);
 
   // ---- Handlers ----
+
+  const {
+    send,
+    abort,
+    getSnapshot,
+    isStopped,
+  } = useStreamChat({
+    sessionId: effectiveSessionId || null,
+    onContentChunk: (_chunk, accumulated) => {
+      if (!isMountedRef.current || !effectiveSessionId) return;
+      setStreamingText(resolveSessionId(effectiveSessionId), accumulated);
+    },
+    onReasoningChunk: (_text, accumulated) => {
+      if (!isMountedRef.current || !effectiveSessionId) return;
+      setReasoningText(resolveSessionId(effectiveSessionId), accumulated);
+    },
+    onToolCall: (tool) => {
+      if (!isMountedRef.current || !effectiveSessionId) return;
+      useChatStore.getState().addStreamingTool(resolveSessionId(effectiveSessionId), {
+        name: tool.name,
+        event_type: tool.event_type,
+        preview: tool.preview,
+        args: tool.args as Record<string, unknown> | undefined,
+      });
+    },
+    onApproval: (approval) => {
+      if (!effectiveSessionId) return;
+      setPendingPermission(resolveSessionId(effectiveSessionId), approval);
+    },
+    onClarify: (clarify) => {
+      if (!effectiveSessionId) return;
+      setPendingClarify(resolveSessionId(effectiveSessionId), clarify);
+    },
+    onSecret: (secret) => {
+      if (!effectiveSessionId) return;
+      setPendingSecret(resolveSessionId(effectiveSessionId), secret);
+    },
+    onSessionCreated: (newSessionId) => {
+      if (!effectiveSessionId || !effectiveSessionId.startsWith('new_')) return;
+      logger.debug('[ChatPage] onSessionCreated - newSessionId:', newSessionId, 'requestSessionId:', effectiveSessionId);
+      useChatStore.getState().migrateSession(effectiveSessionId, newSessionId);
+      useNavigationStore.getState().replaceTabId(effectiveSessionId, newSessionId);
+      useSessionStore.getState().addSessionOptimistic(newSessionId);
+      useSessionStore.getState().clearCache(effectiveSessionId);
+    },
+    onComplete: (result) => {
+      if (!isMountedRef.current || !effectiveSessionId) return;
+      const sessionId = resolveSessionId(result.newSessionId || effectiveSessionId);
+      const currentSession = useChatStore.getState().sessions[sessionId];
+      const sTools = result.tools.length > 0
+        ? result.tools.map((tool) => ({
+            name: tool.name,
+            event_type: tool.event_type,
+            preview: tool.preview,
+            args: tool.args as Record<string, unknown> | undefined,
+            duration: tool.duration,
+            is_error: tool.is_error,
+          }))
+        : (currentSession?.streamingTools || []);
+
+      setStreaming(sessionId, false);
+      clearStreamingTools(sessionId);
+      setStreamingText(sessionId, '');
+      clearReasoningText(sessionId);
+
+      const lastMessage = currentSession?.messages?.[currentSession.messages.length - 1];
+      if (lastMessage && lastMessage.role === 'assistant') {
+        updateMessage(sessionId, lastMessage.id, {
+          content: result.content,
+          reasoning: result.reasoning || currentSession?.reasoningText || undefined,
+          tools: sTools.length > 0 ? sTools : undefined,
+        });
+      } else {
+        addMessage(sessionId, {
+          role: 'assistant',
+          content: result.content,
+          reasoning: result.reasoning || undefined,
+          tools: sTools.length > 0 ? sTools : undefined,
+        });
+      }
+      if (sessionId && !sessionId.startsWith('new_')) {
+        updateSessionActivity(sessionId, 2);
+      }
+      if (result.newSessionId) {
+        useSessionStore.getState().refreshSessions();
+      }
+
+      const notificationPrefs = useThemeStore.getState().displayPreferences.notifications;
+      if (notificationPrefs.enabled) {
+        if (notificationPrefs.sound) {
+          void playNotificationSound();
+        }
+        if (notificationPrefs.desktop) {
+          void sendNotification(t('nav.chat') || 'Hermes', {
+            body: lang === 'zh' ? '任务已完成' : 'Task completed',
+            tag: `hermes-task-complete-${sessionId}`,
+          });
+        }
+      }
+    },
+    onError: (result) => {
+      if (!isMountedRef.current || !effectiveSessionId) return;
+      const targetSessionId = resolveSessionId(effectiveSessionId);
+      const currentSession = useChatStore.getState().sessions[targetSessionId];
+      const accumulatedText = result.content || currentSession?.streamingText || '';
+      const reasoning = result.reasoning || currentSession?.reasoningText || '';
+      const sTools = result.tools.length > 0
+        ? result.tools.map((tool) => ({
+            name: tool.name,
+            event_type: tool.event_type,
+            preview: tool.preview,
+            args: tool.args as Record<string, unknown> | undefined,
+            duration: tool.duration,
+            is_error: tool.is_error,
+          }))
+        : (currentSession?.streamingTools || []);
+
+      setStreaming(targetSessionId, false);
+      clearStreamingTools(targetSessionId);
+      setStreamingText(targetSessionId, '');
+      clearReasoningText(targetSessionId);
+
+      if (accumulatedText.trim()) {
+        const lastMessage = currentSession?.messages?.slice(-1)[0];
+        if (lastMessage && lastMessage.role === 'assistant') {
+          updateMessage(targetSessionId, lastMessage.id, {
+            content: accumulatedText,
+            reasoning: reasoning || undefined,
+            tools: sTools.length > 0 ? sTools : undefined,
+          });
+        } else {
+          addMessage(targetSessionId, {
+            role: 'assistant',
+            content: accumulatedText,
+            reasoning: reasoning || undefined,
+            tools: sTools.length > 0 ? sTools : undefined,
+          });
+        }
+      }
+    },
+  });
 
   const handleSendMessage = useCallback(async (text: string, files: AttachedFile[]) => {
     const currentIsStreaming = useChatStore.getState().sessions[effectiveSessionId || '']?.isStreaming;
@@ -415,22 +548,24 @@ export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
       return;
     }
 
+    if (!readiness.ready) {
+      toast.error(readiness.title, readiness.description);
+      return;
+    }
+
     if (currentIsStreaming) {
       setStreaming(effectiveSessionId, false);
       clearStreamingTools(effectiveSessionId);
-      try { await abortChat(effectiveSessionId); } catch { /* abort may already be complete */ }
+      try { await abort(); } catch { /* abort may already be complete */ }
       await new Promise(resolve => setTimeout(resolve, 100));
     }
 
     const userMessage = text.trim();
     const requestSessionId = effectiveSessionId;
-    let streamSessionId = requestSessionId;
-    const getStreamSessionId = () => resolveSessionId(streamSessionId);
     const initialHistoryForApi = (useChatStore.getState().sessions[requestSessionId]?.messages || [])
       .filter((m) => m.content.trim().length > 0)
       .slice(-20);
 
-    isStoppedRef.current = false;
     clearStreamingTools(requestSessionId);
     addMessage(requestSessionId, { role: 'user', content: userMessage });
     setStreaming(requestSessionId, true);
@@ -444,134 +579,10 @@ export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
 
       const historyForApi = initialHistoryForApi.map(m => ({ role: m.role, content: m.content }));
 
-      await streamChatRealtime(enrichedMessage, requestSessionId, { history: historyForApi, callbacks: {
-        onChunk: (_chunk, accumulated) => {
-          if (isStoppedRef.current || !isMountedRef.current) return;
-          setStreamingText(getStreamSessionId(), accumulated);
-        },
-        onReasoning: (_text, accumulated) => {
-          if (isStoppedRef.current || !isMountedRef.current) return;
-          setReasoningText(getStreamSessionId(), accumulated);
-        },
-        onTool: (tool) => {
-          if (isStoppedRef.current || !isMountedRef.current) return;
-          useChatStore.getState().addStreamingTool(getStreamSessionId(), {
-            name: tool.name,
-            event_type: tool.event_type,
-            preview: tool.preview,
-            args: tool.args as Record<string, unknown> | undefined,
-          });
-        },
-        onComplete: (content, newSessionId, _usage, reasoning) => {
-          if (isStoppedRef.current || !isMountedRef.current) return;
-          const originalSessionId = getStreamSessionId();
-          logger.debug('[ChatPage] onComplete - originalSessionId:', originalSessionId, 'newSessionId:', newSessionId);
-
-          // Always operate on the original session (the one displayed in the UI)
-          const sessionId = originalSessionId;
-
-          // Handle migration if this was a new_xxx session
-          if (newSessionId && requestSessionId.startsWith('new_')) {
-            streamSessionId = newSessionId;
-          }
-
-          if (!sessionId) {
-            logger.error('[ChatPage] onComplete - no sessionId, skipping');
-            return;
-          }
-
-          const currentSession = useChatStore.getState().sessions[sessionId];
-          const sTools = currentSession?.streamingTools || [];
-
-          // Clear streaming on the original session
-          setStreaming(sessionId, false);
-          clearStreamingTools(sessionId);
-          setStreamingText(sessionId, '');
-          clearReasoningText(sessionId);
-
-          const lastMessage = currentSession?.messages?.[currentSession.messages.length - 1];
-          if (lastMessage && lastMessage.role === 'assistant') {
-            updateMessage(sessionId, lastMessage.id, {
-              content: content,
-              reasoning: reasoning || currentSession?.reasoningText || undefined,
-              tools: sTools.length > 0 ? sTools : undefined,
-            });
-          } else {
-            addMessage(sessionId, {
-              role: 'assistant',
-              content: content,
-              reasoning: reasoning || undefined,
-              tools: sTools.length > 0 ? sTools : undefined,
-            });
-          }
-          if (sessionId && !sessionId.startsWith('new_')) {
-            updateSessionActivity(sessionId);
-          }
-          if (newSessionId) useSessionStore.getState().refreshSessions();
-        },
-        onError: (_error) => {
-          if (isStoppedRef.current || !isMountedRef.current) return;
-          const targetSessionId = getStreamSessionId();
-          // Preserve accumulated content on error (e.g. timeout)
-          const currentSession = useChatStore.getState().sessions[targetSessionId];
-          const accumulatedText = currentSession?.streamingText || '';
-          const reasoningText = currentSession?.reasoningText || '';
-          const sTools = currentSession?.streamingTools || [];
-          setStreaming(targetSessionId, false);
-          clearStreamingTools(targetSessionId);
-          setStreamingText(targetSessionId, '');
-          clearReasoningText(targetSessionId);
-          // If we had accumulated content, save it as the final message
-          if (accumulatedText.trim()) {
-            const lastMessage = currentSession?.messages?.slice(-1)[0];
-            if (lastMessage && lastMessage.role === 'assistant') {
-              updateMessage(targetSessionId, lastMessage.id, {
-                content: accumulatedText,
-                reasoning: reasoningText || undefined,
-                tools: sTools.length > 0 ? sTools : undefined,
-              });
-            } else {
-              addMessage(targetSessionId, {
-                role: 'assistant',
-                content: accumulatedText,
-                reasoning: reasoningText || undefined,
-                tools: sTools.length > 0 ? sTools : undefined,
-              });
-            }
-          }
-        },
-        onApproval: (approval) => {
-          const targetSessionId = getStreamSessionId();
-          if (!targetSessionId) return;
-          setPendingPermission(targetSessionId, approval);
-        },
-        onClarify: (clarify) => {
-          const targetSessionId = getStreamSessionId();
-          if (!targetSessionId) return;
-          setPendingClarify(targetSessionId, clarify);
-        },
-        onSecret: (secret) => {
-          const targetSessionId = getStreamSessionId();
-          if (!targetSessionId) return;
-          setPendingSecret(targetSessionId, secret);
-        },
-        onSessionCreated: (newSessionId) => {
-          logger.debug('[ChatPage] onSessionCreated - newSessionId:', newSessionId, 'requestSessionId:', requestSessionId);
-          if (requestSessionId.startsWith('new_')) {
-            // Migrate messages from new_xxx to real session ID
-            useChatStore.getState().migrateSession(requestSessionId, newSessionId);
-            streamSessionId = newSessionId;
-            // Update the tab ID so fetchSessions doesn't close it as stale
-            useNavigationStore.getState().replaceTabId(requestSessionId, newSessionId);
-            // Add to optimistic sessions so it appears in the session list
-            useSessionStore.getState().addSessionOptimistic(newSessionId);
-            logger.debug('[ChatPage] onSessionCreated - migration complete, streamSessionId:', streamSessionId);
-          }
-        },
-      }});
+      await send(enrichedMessage, historyForApi);
     } catch (error) {
-      if (!isStoppedRef.current) {
-        const targetSessionId = getStreamSessionId();
+      if (!isStopped.current) {
+        const targetSessionId = resolveSessionId(requestSessionId);
         setStreaming(targetSessionId, false);
         const lastMessage = useChatStore.getState().sessions[targetSessionId]?.messages?.slice(-1)[0];
         if (lastMessage) {
@@ -581,7 +592,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
         }
       }
     }
-  }, [effectiveSessionId, addMessage, updateMessage, setStreaming, setStreamingText, setReasoningText, clearReasoningText, clearStreamingTools, updateSessionActivity, clearPendingPermission, clearPendingClarify, clearPendingSecret, setPendingPermission, setPendingClarify, setPendingSecret, t]);
+  }, [effectiveSessionId, addMessage, updateMessage, setStreaming, clearStreamingTools, updateSessionActivity, clearPendingPermission, clearPendingClarify, clearPendingSecret, abort, send, isStopped, readiness, t]);
 
   useEffect(() => {
     if (!effectiveSessionId) return;
@@ -623,23 +634,33 @@ export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
 
   const handleStop = useCallback(async () => {
     if (!effectiveSessionId) return;
-    isStoppedRef.current = true;
-    try { await abortChat(effectiveSessionId); } catch { /* abort may already be complete */ }
+    const snapshot = getSnapshot();
+    try { await abort(); } catch { /* abort may already be complete */ }
     const currentSession = useChatStore.getState().sessions[effectiveSessionId];
-    const sTools = currentSession?.streamingTools || [];
-    const currentStreamingText = currentSession?.streamingText || '';
+    const sTools = snapshot.tools.length > 0
+      ? snapshot.tools.map((tool) => ({
+          name: tool.name,
+          event_type: tool.event_type,
+          preview: tool.preview,
+          args: tool.args as Record<string, unknown> | undefined,
+          duration: tool.duration,
+          is_error: tool.is_error,
+        }))
+      : (currentSession?.streamingTools || []);
+    const currentStreamingText = snapshot.content || currentSession?.streamingText || '';
     setStreaming(effectiveSessionId, false);
     const lastMessage = currentSession?.messages?.[currentSession.messages.length - 1];
     if (lastMessage && lastMessage.role === 'assistant') {
       updateMessage(effectiveSessionId, lastMessage.id, {
         content: currentStreamingText || lastMessage.content || t('chat.stopped'),
+        reasoning: snapshot.reasoning || currentSession?.reasoningText || undefined,
         tools: sTools.length > 0 ? sTools : undefined,
       });
     }
     clearStreamingTools(effectiveSessionId);
     setStreamingText(effectiveSessionId, '');
     clearReasoningText(effectiveSessionId);
-  }, [effectiveSessionId, setStreaming, setStreamingText, clearReasoningText, clearStreamingTools, updateMessage, t]);
+  }, [effectiveSessionId, setStreaming, setStreamingText, clearReasoningText, clearStreamingTools, updateMessage, abort, getSnapshot, t]);
 
   const copyMessage = useCallback((content: string) => {
     navigator.clipboard.writeText(content).then(() => toast.success(t('message.copied')));
@@ -669,6 +690,17 @@ export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
     <div className="chat-page">
       {/* Messages area */}
       <div className="chat-messages" ref={scrollContainerRef} onScroll={handleScroll}>
+        {!readiness.loading && !readiness.ready && (
+          <ReadinessBanner
+            title={readiness.title}
+            description={readiness.description}
+            settingsLabel={t('chat.openSettings')}
+            recheckLabel={t('common.recheck')}
+            onOpenSettings={() => setActiveItem('settings')}
+            onRefresh={refreshReadiness}
+          />
+        )}
+
         {messages.length === 0 && !isStreaming ? (
           <EmptyState lang={lang} />
         ) : (
@@ -722,12 +754,24 @@ export const ChatPage: React.FC<ChatPageProps> = ({ sessionId }) => {
 
       {/* Input area */}
       <div className="chat-input-area">
+        {!readiness.loading && !readiness.ready && (
+          <ReadinessBanner
+            title={readiness.title}
+            description={readiness.description}
+            settingsLabel={t('chat.openSettings')}
+            recheckLabel={t('common.recheck')}
+            onOpenSettings={() => setActiveItem('settings')}
+            onRefresh={refreshReadiness}
+            compact
+          />
+        )}
         <ChatInput
           ref={chatInputRef}
           onSendMessage={handleSendMessage}
           onStop={handleStop}
           isStreaming={isStreaming}
           hasPendingInput={!!sessionPendingPermission || !!sessionPendingClarify || !!sessionPendingSecret}
+          disabled={!readiness.loading && !readiness.ready && !sessionPendingPermission && !sessionPendingClarify && !sessionPendingSecret}
         />
       </div>
     </div>

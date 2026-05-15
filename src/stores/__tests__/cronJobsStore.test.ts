@@ -53,6 +53,7 @@ describe('CronJobsStore', () => {
       isEditing: false,
       editingJob: null,
       error: null,
+      lastLoadedJobsAt: null,
     });
     vi.clearAllMocks();
   });
@@ -75,6 +76,15 @@ describe('CronJobsStore', () => {
       await useCronJobsStore.getState().fetchJobs();
 
       expect(useCronJobsStore.getState().error).toBe('Network error');
+    });
+
+    it('should reuse fresh cached jobs', async () => {
+      vi.mocked(cronJobsApi.listCronJobs).mockResolvedValue([]);
+
+      await useCronJobsStore.getState().fetchJobs();
+      await useCronJobsStore.getState().fetchJobs();
+
+      expect(cronJobsApi.listCronJobs).toHaveBeenCalledTimes(1);
     });
   });
 

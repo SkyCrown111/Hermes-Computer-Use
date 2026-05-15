@@ -1,8 +1,8 @@
 import './styles/globals.css';
-import { useEffect, Suspense, lazy } from 'react';
+import { useEffect, Suspense, lazy, useState } from 'react';
 import { useNavigationStore, useThemeStore, useSessionStore, resolveTheme } from './stores';
 import { initializeChatStore } from './stores/chatStore';
-import { Layout, ToastContainer, ErrorBoundary, CommandPalette, GlobalSearch } from './components';
+import { Layout, ToastContainer, ErrorBoundary } from './components';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useTranslation } from './hooks/useTranslation';
 
@@ -15,6 +15,7 @@ const Settings = lazy(() => import('./pages/Settings').then(m => ({ default: m.S
 const Monitor = lazy(() => import('./pages/Monitor').then(m => ({ default: m.Monitor })));
 const Memory = lazy(() => import('./pages/Memory').then(m => ({ default: m.Memory })));
 const Platforms = lazy(() => import('./pages/Platforms').then(m => ({ default: m.Platforms })));
+const Profiles = lazy(() => import('./pages/Profiles').then(m => ({ default: m.Profiles })));
 const Files = lazy(() => import('./pages/Files').then(m => ({ default: m.Files })));
 const ChatPageLazy = lazy(() => import('./pages/Chat').then(m => ({ default: m.ChatPage })));
 const Preferences = lazy(() => import('./pages/Preferences').then(m => ({ default: m.Preferences })));
@@ -22,6 +23,8 @@ const Gateway = lazy(() => import('./pages/Gateway').then(m => ({ default: m.Gat
 const MCP = lazy(() => import('./pages/MCP').then(m => ({ default: m.MCP })));
 const KanbanPage = lazy(() => import('./pages/Kanban').then(m => ({ default: m.KanbanPage })));
 const HelpGuidePage = lazy(() => import('./pages/HelpGuide').then(m => ({ default: m.HelpGuidePage })));
+const CommandPalette = lazy(() => import('./components/ui/CommandPalette').then(m => ({ default: m.CommandPalette })));
+const GlobalSearch = lazy(() => import('./components/ui/GlobalSearch').then(m => ({ default: m.GlobalSearch })));
 
 // Suspense fallback with i18n
 const PageFallback: React.FC = () => {
@@ -53,6 +56,7 @@ function App() {
   const mode = useThemeStore(s => s.mode);
   const displayPreferences = useThemeStore(s => s.displayPreferences);
   const fetchSessions = useSessionStore((s) => s.fetchSessions);
+  const [overlayUiReady, setOverlayUiReady] = useState(false);
 
   // Register global keyboard shortcuts
   useKeyboardShortcuts();
@@ -84,6 +88,33 @@ function App() {
     root.setAttribute('data-sidebar-position', displayPreferences.sidebarPosition);
   }, [displayPreferences.compactMode, displayPreferences.sidebarPosition]);
 
+  useEffect(() => {
+    let cancelled = false;
+    let timeoutId: number | undefined;
+    let idleId: number | undefined;
+    const supportsIdleCallback = typeof window.requestIdleCallback === 'function';
+
+    const markReady = () => {
+      if (!cancelled) setOverlayUiReady(true);
+    };
+
+    if (supportsIdleCallback) {
+      idleId = window.requestIdleCallback(() => markReady(), { timeout: 1500 });
+    } else {
+      timeoutId = globalThis.setTimeout(markReady, 300);
+    }
+
+    return () => {
+      cancelled = true;
+      if (idleId !== undefined && typeof window.cancelIdleCallback === 'function') {
+        window.cancelIdleCallback(idleId);
+      }
+      if (timeoutId !== undefined) {
+        globalThis.clearTimeout(timeoutId);
+      }
+    };
+  }, []);
+
   // Restore tabs and fetch sessions on mount
   useEffect(() => {
     // Initialize chat store with persisted messages first
@@ -114,6 +145,8 @@ function App() {
           return <Memory key="memory" />;
         case 'platforms':
           return <Platforms key="platforms" />;
+        case 'profiles':
+          return <Profiles key="profiles" />;
         case 'files':
           return <Files key="files" />;
         case 'gateway':
@@ -144,8 +177,12 @@ function App() {
     <>
       <Layout>{renderPage()}</Layout>
       <ToastContainer />
-      <CommandPalette />
-      <GlobalSearch />
+      {overlayUiReady ? (
+        <Suspense fallback={null}>
+          <CommandPalette />
+          <GlobalSearch />
+        </Suspense>
+      ) : null}
     </>
   );
 }

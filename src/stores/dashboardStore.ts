@@ -1,52 +1,48 @@
-// Dashboard Store - 仪表盘状态管理
-
 import { create } from 'zustand';
 import type { UsageAnalytics, SystemStatus, CronJob, Skill } from '../types';
-import { analyticsApi as _analyticsApi, statusApi as _statusApi, cronJobsApi, skillsApi } from '../services';
+import { analyticsApi as analyticsNamespace, statusApi as statusNamespace, cronJobsApi, skillsApi } from '../services';
 import { t } from '../lib/i18n';
 import { logger } from '../lib/logger';
 import { getErrorMessage } from '../lib/errorUtils';
+import { getTodayPendingCronJobs } from '../lib/cronJobs';
 import { useThemeStore } from './themeStore';
 
-// statusApi and analyticsApi are re-exported as namespace objects from services/index.ts
-// The actual API objects are nested: _statusApi.statusApi, _analyticsApi.analyticsApi
-const statusApi: typeof _statusApi.statusApi = _statusApi.statusApi;
-const analyticsApi: typeof _analyticsApi.analyticsApi = _analyticsApi.analyticsApi;
+const statusApi: typeof statusNamespace.statusApi = statusNamespace.statusApi;
+const analyticsApi: typeof analyticsNamespace.analyticsApi = analyticsNamespace.analyticsApi;
+
+const STATUS_FRESHNESS_MS = 30_000;
+const ANALYTICS_FRESHNESS_MS = 60_000;
+const SKILLS_FRESHNESS_MS = 5 * 60_000;
+const TASKS_FRESHNESS_MS = 60_000;
+
+function isFresh(lastLoadedAt: number | null, freshnessMs: number, force = false): boolean {
+  return !force && lastLoadedAt !== null && Date.now() - lastLoadedAt < freshnessMs;
+}
 
 interface DashboardState {
-  // 系统状态
   systemStatus: SystemStatus | null;
   isLoadingStatus: boolean;
-  
-  // 使用统计
   usageAnalytics: UsageAnalytics | null;
   isLoadingAnalytics: boolean;
-  
-  // 最近会话
   recentSessionsCount: number;
-  
-  // Skills
   skills: Skill[];
   isLoadingSkills: boolean;
-  
-  // 今日任务
   todayTasks: CronJob[];
   isLoadingTasks: boolean;
-  
-  // 错误
   error: string | null;
-  
-  // Actions
-  fetchSystemStatus: () => Promise<void>;
-  fetchUsageAnalytics: (days?: number) => Promise<void>;
-  fetchSkills: () => Promise<void>;
-  fetchTodayTasks: () => Promise<void>;
-  fetchAll: () => Promise<void>;
+  lastLoadedStatusAt: number | null;
+  lastLoadedAnalyticsAt: number | null;
+  lastLoadedSkillsAt: number | null;
+  lastLoadedTasksAt: number | null;
+  fetchSystemStatus: (force?: boolean) => Promise<void>;
+  fetchUsageAnalytics: (days?: number, force?: boolean) => Promise<void>;
+  fetchSkills: (force?: boolean) => Promise<void>;
+  fetchTodayTasks: (force?: boolean) => Promise<void>;
+  fetchAll: (includeSystemStatus?: boolean, force?: boolean) => Promise<void>;
   clearError: () => void;
 }
 
 export const useDashboardStore = create<DashboardState>((set) => ({
-  // 初始状态
   systemStatus: null,
   isLoadingStatus: false,
   usageAnalytics: null,
@@ -57,25 +53,35 @@ export const useDashboardStore = create<DashboardState>((set) => ({
   todayTasks: [],
   isLoadingTasks: false,
   error: null,
+  lastLoadedStatusAt: null,
+  lastLoadedAnalyticsAt: null,
+  lastLoadedSkillsAt: null,
+  lastLoadedTasksAt: null,
 
-  // 获取系统状态
-  fetchSystemStatus: async () => {
+  fetchSystemStatus: async (force = false) => {
+    if (isFresh(useDashboardStore.getState().lastLoadedStatusAt, STATUS_FRESHNESS_MS, force)) {
+      return;
+    }
+
     set({ isLoadingStatus: true, error: null });
     try {
       const status = await statusApi.getSystemStatus();
-      set({ systemStatus: status, isLoadingStatus: false });
+      set({ systemStatus: status, isLoadingStatus: false, lastLoadedStatusAt: Date.now() });
     } catch (err) {
       logger.error('[Dashboard] Failed to fetch system status:', err);
       const lang = useThemeStore.getState().language;
       set({
         error: `${t('error.fetchSystemStatus', lang)}: ${getErrorMessage(err)}`,
-        isLoadingStatus: false
+        isLoadingStatus: false,
       });
     }
   },
 
-  // 获取使用统计
-  fetchUsageAnalytics: async (days = 30) => {
+  fetchUsageAnalytics: async (days = 30, force = false) => {
+    if (isFresh(useDashboardStore.getState().lastLoadedAnalyticsAt, ANALYTICS_FRESHNESS_MS, force)) {
+      return;
+    }
+
     set({ isLoadingAnalytics: true, error: null });
     try {
       const analytics = await analyticsApi.getUsage({ days });
@@ -83,73 +89,73 @@ export const useDashboardStore = create<DashboardState>((set) => ({
         usageAnalytics: analytics,
         recentSessionsCount: analytics.totals.total_sessions,
         isLoadingAnalytics: false,
+        lastLoadedAnalyticsAt: Date.now(),
       });
     } catch (err) {
       logger.error('[Dashboard] Failed to fetch usage analytics:', err);
       const lang = useThemeStore.getState().language;
       set({
         error: `${t('error.fetchUsageAnalytics', lang)}: ${getErrorMessage(err)}`,
-        isLoadingAnalytics: false
+        isLoadingAnalytics: false,
       });
     }
   },
 
-  // 获取 Skills 列表
-  fetchSkills: async () => {
+  fetchSkills: async (force = false) => {
+    if (isFresh(useDashboardStore.getState().lastLoadedSkillsAt, SKILLS_FRESHNESS_MS, force)) {
+      return;
+    }
+
     set({ isLoadingSkills: true, error: null });
     try {
       const skills = await skillsApi.listSkills();
-      set({ skills, isLoadingSkills: false });
+      set({ skills, isLoadingSkills: false, lastLoadedSkillsAt: Date.now() });
     } catch (err) {
       logger.error('[Dashboard] Failed to fetch skills:', err);
       const lang = useThemeStore.getState().language;
       set({
         error: `${t('error.fetchSkills', lang)}: ${getErrorMessage(err)}`,
-        isLoadingSkills: false
+        isLoadingSkills: false,
       });
     }
   },
 
-  // 获取今日任务
-  fetchTodayTasks: async () => {
+  fetchTodayTasks: async (force = false) => {
+    if (isFresh(useDashboardStore.getState().lastLoadedTasksAt, TASKS_FRESHNESS_MS, force)) {
+      return;
+    }
+
     set({ isLoadingTasks: true, error: null });
     try {
       const jobs = await cronJobsApi.listCronJobs();
-      // 过滤出今日要执行的任务
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
+      const todayJobs = getTodayPendingCronJobs(jobs);
 
-      const todayJobs = jobs.filter((job) => {
-        if (!job.next_run_at) return false;
-        const nextRun = new Date(job.next_run_at);
-        return nextRun >= today && nextRun < tomorrow && job.enabled;
-      });
-
-      set({ todayTasks: todayJobs, isLoadingTasks: false });
+      set({ todayTasks: todayJobs, isLoadingTasks: false, lastLoadedTasksAt: Date.now() });
     } catch (err) {
       logger.error('[Dashboard] Failed to fetch today tasks:', err);
       const lang = useThemeStore.getState().language;
       set({
         error: `${t('error.fetchTodayTasks', lang)}: ${getErrorMessage(err)}`,
-        isLoadingTasks: false
+        isLoadingTasks: false,
       });
     }
   },
 
-  // 获取所有数据
-  fetchAll: async () => {
+  fetchAll: async (includeSystemStatus = true, force = false) => {
     set({ error: null });
-    await Promise.all([
-      useDashboardStore.getState().fetchSystemStatus(),
-      useDashboardStore.getState().fetchUsageAnalytics(),
-      useDashboardStore.getState().fetchSkills(),
-      useDashboardStore.getState().fetchTodayTasks(),
-    ]);
+    const tasks: Array<Promise<void>> = [
+      useDashboardStore.getState().fetchUsageAnalytics(30, force),
+      useDashboardStore.getState().fetchSkills(force),
+      useDashboardStore.getState().fetchTodayTasks(force),
+    ];
+
+    if (includeSystemStatus) {
+      tasks.unshift(useDashboardStore.getState().fetchSystemStatus(force));
+    }
+
+    await Promise.all(tasks);
   },
 
-  // 清除错误
   clearError: () => {
     set({ error: null });
   },

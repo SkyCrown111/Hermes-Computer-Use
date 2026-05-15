@@ -4,6 +4,7 @@ import { useCronJobsStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
 import { toast } from '../../stores/toastStore';
 import { validateSchedule } from '../../utils/validation';
+import { getTodayPendingCronJobs } from '../../lib/cronJobs';
 import type { CronJob } from '../../types/cron';
 import type { CreateCronJobParams } from '../../stores/cronJobsStore';
 import './CronJobs.css';
@@ -204,7 +205,7 @@ export const CronJobs: React.FC = () => {
     total: jobs.length,
     enabled: jobs.filter((j) => j.enabled).length,
     disabled: jobs.filter((j) => !j.enabled).length,
-    pending: jobs.filter((j) => j.enabled && j.next_run_at).length,
+    pending: getTodayPendingCronJobs(jobs).length,
   }), [jobs]);
 
   return (
@@ -254,7 +255,7 @@ export const CronJobs: React.FC = () => {
           <div className="error-message">
             <AlertIcon size={16} />
             <span>{error}</span>
-            <Button variant="ghost" size="sm" onClick={fetchJobs}>
+            <Button variant="ghost" size="sm" onClick={() => void fetchJobs(true)}>
               <RefreshIcon size={14} /> {t('common.refresh')}
             </Button>
           </div>

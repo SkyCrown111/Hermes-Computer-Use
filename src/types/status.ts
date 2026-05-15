@@ -27,3 +27,21 @@ export interface SystemStatus {
   active_sessions: number;
   pending_tasks: number;
 }
+
+export interface HealthCheckChecks {
+  wsl: boolean;
+  hermes_dir: boolean;
+  database: boolean;
+  cli: boolean;
+}
+
+export interface HealthCheckResult {
+  status: 'healthy' | 'degraded' | 'partial' | 'unhealthy' | 'error';
+  source: string;
+  checks?: HealthCheckChecks;
+}
+
+export interface ReadinessStatusSnapshot {
+  health: HealthCheckResult;
+  system_status: SystemStatus;
+}

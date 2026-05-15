@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useKanbanStore } from '../../stores/kanbanStore';
 import { useTranslation } from '../../hooks/useTranslation';
 import { toast } from '../../stores/toastStore';
@@ -14,9 +14,17 @@ import './KanbanPage.css';
 
 const COLUMNS: KanbanStatus[] = ['triage', 'todo', 'ready', 'running', 'blocked', 'done'];
 const PRIORITIES: KanbanPriority[] = ['low', 'medium', 'high', 'critical'];
-const BOARD_COLORS = ['#0a84ff', '#30d158', '#ff9f0a', '#ff453a', '#bf5af2', '#64d2ff', '#8e8e93', '#f5dd4b'];
 const DEFAULT_BOARD_COLOR = '#0a84ff';
 const DEFAULT_BOARD_ICON = 'KB';
+const COLUMN_DESCRIPTIONS: Record<KanbanStatus, string> = {
+  triage: 'kanban.columnHelp.triage',
+  todo: 'kanban.columnHelp.todo',
+  ready: 'kanban.columnHelp.ready',
+  running: 'kanban.columnHelp.running',
+  blocked: 'kanban.columnHelp.blocked',
+  done: 'kanban.columnHelp.done',
+  archived: 'kanban.columnHelp.archived',
+};
 
 type BoardFormState = {
   slug: string;
@@ -24,6 +32,7 @@ type BoardFormState = {
   description: string;
   icon: string;
   color: string;
+  switchAfterCreate: boolean;
 };
 
 const createEmptyBoardForm = (): BoardFormState => ({
@@ -32,6 +41,7 @@ const createEmptyBoardForm = (): BoardFormState => ({
   description: '',
   icon: DEFAULT_BOARD_ICON,
   color: DEFAULT_BOARD_COLOR,
+  switchAfterCreate: true,
 });
 
 export const KanbanPage: React.FC = () => {
@@ -39,7 +49,6 @@ export const KanbanPage: React.FC = () => {
   const board = useKanbanStore(s => s.board);
   const boards = useKanbanStore(s => s.boards);
   const currentBoard = useKanbanStore(s => s.currentBoard);
-  const stats = useKanbanStore(s => s.stats) ?? { total: 0, triage: 0, todo: 0, ready: 0, running: 0, blocked: 0, done: 0, archived: 0 };
   const tenants = useKanbanStore(s => s.tenants);
   const loading = useKanbanStore(s => s.loading);
   const error = useKanbanStore(s => s.error);
@@ -58,7 +67,7 @@ export const KanbanPage: React.FC = () => {
   const [showCreateTask, setShowCreateTask] = useState(false);
   const [showCreateBoard, setShowCreateBoard] = useState(false);
   const [showEditBoard, setShowEditBoard] = useState(false);
-  const [showBoardManager, setShowBoardManager] = useState(true);
+  const [showBoardManager, setShowBoardManager] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
@@ -66,9 +75,12 @@ export const KanbanPage: React.FC = () => {
 
   const [taskTitle, setTaskTitle] = useState('');
   const [taskDescription, setTaskDescription] = useState('');
+  const [taskStatus, setTaskStatus] = useState<KanbanStatus>('todo');
   const [taskPriority, setTaskPriority] = useState<KanbanPriority>('medium');
   const [taskAssignee, setTaskAssignee] = useState('');
   const [taskTenant, setTaskTenant] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [assigneeFilter, setAssigneeFilter] = useState('');
   const [createBoardForm, setCreateBoardForm] = useState<BoardFormState>(createEmptyBoardForm);
   const [editBoardForm, setEditBoardForm] = useState<BoardFormState>(createEmptyBoardForm);
 
@@ -116,6 +128,7 @@ export const KanbanPage: React.FC = () => {
     const params: CreateKanbanTaskParams = {
       title: taskTitle.trim(),
       description: taskDescription.trim() || undefined,
+      status: taskStatus,
       priority: taskPriority,
       assignee: taskAssignee.trim() || undefined,
       tenant: taskTenant.trim() || undefined,
@@ -131,10 +144,16 @@ export const KanbanPage: React.FC = () => {
     setShowCreateTask(false);
     setTaskTitle('');
     setTaskDescription('');
+    setTaskStatus('todo');
     setTaskPriority('medium');
     setTaskAssignee('');
     setTaskTenant('');
   };
+
+  const openCreateTaskModal = useCallback((status: KanbanStatus = 'todo') => {
+    setTaskStatus(status);
+    setShowCreateTask(true);
+  }, []);
 
   const openCreateBoard = useCallback(() => {
     setCreateBoardForm(createEmptyBoardForm());
@@ -151,6 +170,7 @@ export const KanbanPage: React.FC = () => {
       description: source.description || '',
       icon: source.icon || DEFAULT_BOARD_ICON,
       color: source.color || DEFAULT_BOARD_COLOR,
+      switchAfterCreate: true,
     });
     setShowEditBoard(true);
   }, [activeBoard, selectedBoard]);
@@ -164,7 +184,7 @@ export const KanbanPage: React.FC = () => {
       description: createBoardForm.description.trim() || undefined,
       icon: createBoardForm.icon.trim() || undefined,
       color: createBoardForm.color.trim() || undefined,
-    });
+    }, createBoardForm.switchAfterCreate);
     if (!ok) {
       toast.error(t('kanban.boardCreateFailed'));
       return;
@@ -221,96 +241,142 @@ export const KanbanPage: React.FC = () => {
   };
 
   const columns = showArchived ? [...COLUMNS, 'archived' as KanbanStatus] : COLUMNS;
+  const visibleBoard = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    const normalizedAssignee = assigneeFilter.trim().toLowerCase();
+
+    return columns.reduce<Record<string, KanbanTask[]>>((acc, status) => {
+      const tasks = (board?.[status] || []).filter((task) => {
+        const matchesQuery = !query || [
+          task.id,
+          task.title,
+          task.description,
+          task.assignee || '',
+          task.tenant || '',
+        ].some((value) => value.toLowerCase().includes(query));
+        const matchesAssignee = !normalizedAssignee || (task.assignee || '').toLowerCase() === normalizedAssignee;
+        return matchesQuery && matchesAssignee;
+      });
+      acc[status] = tasks;
+      return acc;
+    }, {});
+  }, [assigneeFilter, board, columns, searchQuery]);
+  const boardTaskCount = useMemo(
+    () => columns.reduce((sum, status) => sum + (visibleBoard[status]?.length || 0), 0),
+    [columns, visibleBoard],
+  );
+  const availableAssignees = useMemo(() => {
+    const values = new Set<string>();
+    columns.forEach((status) => {
+      (board?.[status] || []).forEach((task) => {
+        if (task.assignee) values.add(task.assignee);
+      });
+    });
+    return Array.from(values).sort((a, b) => a.localeCompare(b));
+  }, [board, columns]);
+  const handleRefresh = useCallback(() => {
+    void fetchBoards();
+    void fetchBoard();
+    void fetchStats();
+    void fetchTenants();
+  }, [fetchBoard, fetchBoards, fetchStats, fetchTenants]);
+  const handleClearFilters = useCallback(() => {
+    setSearchQuery('');
+    setAssigneeFilter('');
+    setShowArchived(false);
+    setFilters({ tenant: null, showArchived: false });
+  }, [setFilters]);
 
   return (
     <div className="kanban-page">
-      <div className="kanban-stats">
-        <div className="stat-card stat-card-info">
-          <div className="stat-content">
-            <span className="stat-value">{stats.total}</span>
-            <span className="stat-label">{t('kanban.total')}</span>
-          </div>
-        </div>
-        <div className="stat-card stat-card-running">
-          <div className="stat-content">
-            <span className="stat-value">{stats.running}</span>
-            <span className="stat-label">{t('kanban.status.running')}</span>
-          </div>
-        </div>
-        <div className="stat-card stat-card-blocked">
-          <div className="stat-content">
-            <span className="stat-value">{stats.blocked}</span>
-            <span className="stat-label">{t('kanban.status.blocked')}</span>
-          </div>
-        </div>
-        <div className="stat-card stat-card-done">
-          <div className="stat-content">
-            <span className="stat-value">{stats.done}</span>
-            <span className="stat-label">{t('kanban.status.done')}</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="kanban-header">
-        <div className="kanban-title-group">
-          <h1 className="section-title">{t('kanban.title')}</h1>
-          {activeBoard && (
-            <div className="kanban-board-caption">
-              <BoardAvatar board={activeBoard} />
-              <span className="kanban-board-label">{t('kanban.currentBoard')}</span>
-              <span className="kanban-board-name">{activeBoard.name}</span>
-              {activeBoard.archived && <span className="kanban-board-badge">{t('kanban.status.archived')}</span>}
+      <section className="kanban-workspace">
+        <div className="kanban-panel-header">
+          <div className="kanban-panel-title">{t('kanban.title')}</div>
+          <div className="kanban-toolbar">
+            <div className="kanban-board-select-group">
+              <select
+                className="kanban-filter-select kanban-board-select"
+                value={currentBoard || ''}
+                onChange={e => void handleBoardChange(e.target.value)}
+              >
+                {(boards ?? []).map(item => (
+                  <option key={item.slug} value={item.slug}>
+                    {item.archived ? `${item.name} (${t('kanban.status.archived')})` : item.name}
+                  </option>
+                ))}
+              </select>
+              <span className="kanban-task-total">{boardTaskCount} {t('kanban.tasksLabel')}</span>
             </div>
-          )}
-          {activeBoard?.description && (
-            <p className="kanban-board-description">{activeBoard.description}</p>
-          )}
+            <div className="kanban-toolbar-actions">
+              <button className="btn btn-secondary" onClick={() => setShowBoardManager(prev => !prev)}>
+                {showBoardManager ? t('kanban.hideBoards') : t('kanban.manageBoards')}
+              </button>
+              <button className="btn btn-primary" onClick={openCreateBoard}>
+                {t('kanban.createBoard')}
+              </button>
+            </div>
+          </div>
         </div>
-        <div className="kanban-controls">
-          <select
-            className="kanban-filter-select"
-            value={currentBoard || ''}
-            onChange={e => void handleBoardChange(e.target.value)}
-          >
-            {(boards ?? []).map(item => (
-              <option key={item.slug} value={item.slug}>
-                {item.archived ? `${item.name} (${t('kanban.status.archived')})` : item.name}
-              </option>
-            ))}
-          </select>
-          <select
-            className="kanban-filter-select"
-            value={filters.tenant || ''}
-            onChange={e => handleFilterTenant(e.target.value)}
-          >
-            <option value="">{t('kanban.allTenants')}</option>
-            {(tenants ?? []).map(tn => <option key={tn} value={tn}>{tn}</option>)}
-          </select>
-          <label className="kanban-archived-toggle">
-            <input type="checkbox" checked={showArchived} onChange={handleToggleArchived} />
-            <span>{t('kanban.showArchived')}</span>
-          </label>
-          <button className="btn btn-secondary" onClick={openCreateBoard}>
-            {t('kanban.createBoard')}
-          </button>
-          <button className="btn btn-secondary" onClick={() => setShowBoardManager(prev => !prev)}>
-            {showBoardManager ? t('kanban.hideBoards') : t('kanban.manageBoards')}
-          </button>
-          <button className="btn btn-secondary" onClick={() => openEditBoard()} disabled={!activeBoard}>
-            {t('kanban.editBoard')}
-          </button>
-          <button
-            className="btn btn-secondary"
-            onClick={() => void handleToggleBoardArchived()}
-            disabled={!activeBoard || activeBoard.slug === 'default'}
-          >
-            {activeBoard?.archived ? t('kanban.restoreBoard') : t('kanban.archiveBoard')}
-          </button>
-          <button className="btn btn-primary" onClick={() => setShowCreateTask(true)}>
-            {t('kanban.createTask')}
-          </button>
+
+        <div className="kanban-filters-row">
+          <div className="kanban-filter-field search">
+            <label className="field-label">{t('kanban.searchLabel')}</label>
+            <input
+              className="kanban-input"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder={t('kanban.searchPlaceholder')}
+            />
+          </div>
+          <div className="kanban-filter-field">
+            <label className="field-label">{t('kanban.tenant')}</label>
+            <select
+              className="kanban-filter-select"
+              value={filters.tenant || ''}
+              onChange={e => handleFilterTenant(e.target.value)}
+            >
+              <option value="">{t('kanban.allTenants')}</option>
+              {(tenants ?? []).map(tn => <option key={tn} value={tn}>{tn}</option>)}
+            </select>
+          </div>
+          <div className="kanban-filter-field">
+            <label className="field-label">{t('kanban.assignee')}</label>
+            <select
+              className="kanban-filter-select"
+              value={assigneeFilter}
+              onChange={e => setAssigneeFilter(e.target.value)}
+            >
+              <option value="">{t('kanban.allAssignees')}</option>
+              {availableAssignees.map((assignee) => (
+                <option key={assignee} value={assignee}>{assignee}</option>
+              ))}
+            </select>
+          </div>
+          <div className="kanban-inline-toggles">
+            <label className="kanban-archived-toggle">
+              <input type="checkbox" checked={showArchived} onChange={handleToggleArchived} />
+              <span>{t('kanban.showArchived')}</span>
+            </label>
+          </div>
+          <div className="kanban-inline-actions">
+            <button className="btn btn-secondary" onClick={handleRefresh}>{t('kanban.refresh')}</button>
+            <button className="btn btn-secondary" onClick={() => openEditBoard()} disabled={!activeBoard}>
+              {t('kanban.editBoard')}
+            </button>
+            <button
+              className="btn btn-secondary"
+              onClick={() => void handleToggleBoardArchived()}
+              disabled={!activeBoard || activeBoard.slug === 'default'}
+            >
+              {activeBoard?.archived ? t('kanban.restoreBoard') : t('kanban.archiveBoard')}
+            </button>
+            <button className="btn btn-secondary" onClick={handleClearFilters}>{t('kanban.clearFilters')}</button>
+            <button className="btn btn-primary" onClick={() => openCreateTaskModal()}>
+              {t('kanban.createTask')}
+            </button>
+          </div>
         </div>
-      </div>
+      </section>
 
       {showBoardManager && (
         <section className="board-manager">
@@ -369,13 +435,19 @@ export const KanbanPage: React.FC = () => {
       ) : (
         <div className="kanban-board">
           {columns.map(status => {
-            const tasks = board?.[status] || [];
+            const tasks = visibleBoard[status] || [];
             return (
               <div key={status} className={`kanban-column column-${status}`}>
                 <div className="column-header">
                   <span className={`column-status-dot status-dot-${status}`} />
-                  <span className="column-title">{t(`kanban.status.${status}`)}</span>
+                  <div className="column-header-copy">
+                    <span className="column-title">{t(`kanban.status.${status}`)}</span>
+                    <span className="column-description">{t(COLUMN_DESCRIPTIONS[status])}</span>
+                  </div>
                   <span className="column-count">{tasks.length}</span>
+                  {status !== 'archived' && (
+                    <button className="column-add-btn" onClick={() => openCreateTaskModal(status)} aria-label={t('kanban.createTask')}>+</button>
+                  )}
                 </div>
                 <div className="column-cards">
                   {tasks.length === 0 ? (
@@ -407,6 +479,12 @@ export const KanbanPage: React.FC = () => {
                 <textarea className="kanban-textarea" value={taskDescription} onChange={e => setTaskDescription(e.target.value)} rows={3} />
               </div>
               <div className="form-field">
+                <label className="field-label">{t('kanban.statusLabel')}</label>
+                <select className="kanban-select" value={taskStatus} onChange={e => setTaskStatus(e.target.value as KanbanStatus)}>
+                  {COLUMNS.map(status => <option key={status} value={status}>{t(`kanban.status.${status}`)}</option>)}
+                </select>
+              </div>
+              <div className="form-field">
                 <label className="field-label">{t('kanban.priority')}</label>
                 <select className="kanban-select" value={taskPriority} onChange={e => setTaskPriority(e.target.value as KanbanPriority)}>
                   {PRIORITIES.map(priority => <option key={priority} value={priority}>{t(`kanban.priority.${priority}`)}</option>)}
@@ -432,7 +510,6 @@ export const KanbanPage: React.FC = () => {
       {showCreateBoard && (
         <BoardFormModal
           title={t('kanban.createBoard')}
-          confirmLabel={t('common.create')}
           slugEditable
           form={createBoardForm}
           onClose={() => setShowCreateBoard(false)}
@@ -445,7 +522,6 @@ export const KanbanPage: React.FC = () => {
       {showEditBoard && (
         <BoardFormModal
           title={t('kanban.editBoard')}
-          confirmLabel={t('common.save')}
           slugEditable={false}
           form={editBoardForm}
           onClose={() => setShowEditBoard(false)}
@@ -462,14 +538,13 @@ export const KanbanPage: React.FC = () => {
 
 const BoardFormModal: React.FC<{
   title: string;
-  confirmLabel: string;
   slugEditable: boolean;
   form: BoardFormState;
   onClose: () => void;
   onSubmit: () => void;
   onChange: React.Dispatch<React.SetStateAction<BoardFormState>>;
   t: (key: string) => string;
-}> = ({ title, confirmLabel, slugEditable, form, onClose, onSubmit, onChange, t }) => (
+}> = ({ title, slugEditable, form, onClose, onSubmit, onChange, t }) => (
   <div className="form-overlay" onClick={onClose}>
     <div className="form-modal" onClick={e => e.stopPropagation()}>
       <div className="form-header">
@@ -477,48 +552,64 @@ const BoardFormModal: React.FC<{
         <button className="close-button" onClick={onClose} aria-label={t('common.close')}>x</button>
       </div>
       <div className="form-content">
+        {slugEditable && (
+          <p className="board-form-intro">{t('kanban.boardCreateIntro')}</p>
+        )}
         <div className="form-field">
-          <label className="field-label">{t('kanban.boardSlug')}{slugEditable ? ' *' : ''}</label>
+          <label className="field-label">
+            {t('kanban.boardSlugLabel')}{slugEditable ? ' *' : ''}
+          </label>
+          {slugEditable && <div className="field-hint">{t('kanban.boardSlugHint')}</div>}
           <input
             className="kanban-input"
             value={form.slug}
             disabled={!slugEditable}
             onChange={e => onChange(prev => ({ ...prev, slug: e.target.value }))}
-            placeholder="frontend-platform"
+            placeholder={t('kanban.boardSlugPlaceholder')}
           />
         </div>
         <div className="form-field">
-          <label className="field-label">{t('kanban.boardName')}</label>
-          <input className="kanban-input" value={form.name} onChange={e => onChange(prev => ({ ...prev, name: e.target.value }))} />
+          <label className="field-label">{t('kanban.boardNameOptional')}</label>
+          <input
+            className="kanban-input"
+            value={form.name}
+            onChange={e => onChange(prev => ({ ...prev, name: e.target.value }))}
+            placeholder={t('kanban.boardNamePlaceholder')}
+          />
         </div>
         <div className="form-field">
-          <label className="field-label">{t('kanban.boardDescription')}</label>
-          <textarea className="kanban-textarea" value={form.description} onChange={e => onChange(prev => ({ ...prev, description: e.target.value }))} rows={3} />
+          <label className="field-label">{t('kanban.boardDescriptionOptional')}</label>
+          <textarea
+            className="kanban-textarea"
+            value={form.description}
+            onChange={e => onChange(prev => ({ ...prev, description: e.target.value }))}
+            rows={3}
+            placeholder={t('kanban.boardDescriptionPlaceholder')}
+          />
         </div>
         <div className="form-field">
-          <label className="field-label">{t('kanban.boardIcon')}</label>
-          <input className="kanban-input" value={form.icon} onChange={e => onChange(prev => ({ ...prev, icon: e.target.value }))} maxLength={4} />
+          <label className="field-label">{t('kanban.boardIconHintLabel')}</label>
+          <input
+            className="kanban-input"
+            value={form.icon}
+            onChange={e => onChange(prev => ({ ...prev, icon: e.target.value }))}
+            maxLength={4}
+          />
         </div>
-        <div className="form-field">
-          <label className="field-label">{t('kanban.boardColor')}</label>
-          <div className="board-color-grid">
-            {BOARD_COLORS.map(color => (
-              <button
-                key={color}
-                type="button"
-                className={`board-color-swatch${form.color === color ? ' active' : ''}`}
-                style={{ backgroundColor: color }}
-                onClick={() => onChange(prev => ({ ...prev, color }))}
-                aria-label={color}
-              />
-            ))}
-          </div>
-          <input className="kanban-input" value={form.color} onChange={e => onChange(prev => ({ ...prev, color: e.target.value }))} />
-        </div>
+        {slugEditable && (
+          <label className="board-form-toggle">
+            <input
+              type="checkbox"
+              checked={form.switchAfterCreate}
+              onChange={e => onChange(prev => ({ ...prev, switchAfterCreate: e.target.checked }))}
+            />
+            <span>{t('kanban.switchAfterCreate')}</span>
+          </label>
+        )}
       </div>
       <div className="form-actions">
         <button className="btn btn-secondary" onClick={onClose}>{t('common.cancel')}</button>
-        <button className="btn btn-primary" onClick={onSubmit} disabled={slugEditable && !form.slug.trim()}>{confirmLabel}</button>
+        <button className="btn btn-primary" onClick={onSubmit} disabled={slugEditable && !form.slug.trim()}>{title}</button>
       </div>
     </div>
   </div>

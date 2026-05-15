@@ -7,6 +7,7 @@
 //! properly read and written.
 
 use super::utils::{create_command, get_hermes_data_dir};
+use crate::hermes_adapter::resolve_environment;
 use crate::core::config_lock::ConfigLock;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
@@ -811,17 +812,22 @@ pub async fn save_config(config: HermesConfig) -> Result<(), String> {
 /// Get the Hermes data directory path
 #[tauri::command(rename_all = "snake_case")]
 pub fn get_data_dir() -> String {
-    get_hermes_data_dir().to_string_lossy().to_string()
+    resolve_environment()
+        .map(|env| env.hermes_home)
+        .unwrap_or_else(|_| get_hermes_data_dir().to_string_lossy().to_string())
 }
 
 /// Check if Hermes data directory exists (async)
 #[tauri::command(rename_all = "snake_case")]
 pub async fn check_data_dir_exists() -> bool {
     println!("[Config] Checking if Hermes data directory exists...");
-    let result = tokio::task::spawn_blocking(|| {
+    let hermes_home = resolve_environment()
+        .map(|env| env.hermes_home)
+        .unwrap_or_else(|_| "~/.hermes".to_string());
+    let result = tokio::task::spawn_blocking(move || {
         // Check WSL first
         if let Ok(output) = create_command("wsl")
-            .args(["bash", "-c", "test -d ~/.hermes && echo yes"])
+            .args(["bash", "-c", &format!("test -d '{}' && echo yes", hermes_home)])
             .output()
         {
             if output.status.success() {

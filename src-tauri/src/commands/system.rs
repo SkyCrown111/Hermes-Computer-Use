@@ -3,8 +3,8 @@
 //! Commands for system status and configuration.
 //! Queries Hermes Agent state from WSL.
 
-use super::utils::create_command;
-use base64::{engine::general_purpose::STANDARD, Engine as _};
+use super::utils::{create_command, run_python_script};
+use crate::hermes_adapter::resolve_environment;
 use serde::{Deserialize, Serialize};
 
 /// Connected platform
@@ -43,41 +43,201 @@ pub struct SystemStatus {
     pub pending_tasks: usize,
 }
 
-/// Query SQLite database via WSL Python
-/// SQL is base64-encoded to avoid shell injection.
-fn query_db_single(sql: &str) -> Result<serde_json::Value, String> {
-    let sql_b64 = STANDARD.encode(sql);
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReadinessStatusSnapshot {
+    pub health: serde_json::Value,
+    pub system_status: SystemStatus,
+}
 
+#[derive(Debug, Clone, Deserialize)]
+struct SystemSnapshot {
+    active_sessions: usize,
+    pending_tasks: usize,
+    gateway_state: serde_json::Value,
+    cpu_percent: f32,
+    memory_percent: f32,
+    memory_used_mb: u64,
+    memory_total_mb: u64,
+    disk_percent: f32,
+    gateway_process_running: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct HealthSnapshot {
+    wsl: bool,
+    hermes_dir: bool,
+    database: bool,
+    cli: bool,
+}
+
+fn collect_system_snapshot(
+    state_db: &str,
+    cron_jobs_path: &str,
+    gateway_state_path: &str,
+    hermes_home: &str,
+) -> Result<SystemSnapshot, String> {
     let script = format!(
-        r#"python3 -c '
-import sqlite3, json, os, base64
-conn = sqlite3.connect(os.path.expanduser("~/.hermes/state.db"))
-cursor = conn.cursor()
-sql = base64.b64decode("{}").decode()
-cursor.execute(sql)
-row = cursor.fetchone()
-if row:
-    print(json.dumps(row))
-conn.close()
-'"#,
-        sql_b64
+        r#"
+import json
+import os
+import sqlite3
+import subprocess
+import time
+
+state_db = os.path.expanduser({state_db:?})
+cron_jobs_path = os.path.expanduser({cron_jobs_path:?})
+gateway_state_path = os.path.expanduser({gateway_state_path:?})
+hermes_home = os.path.expanduser({hermes_home:?})
+
+def read_json(path):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read().strip()
+            return json.loads(content) if content else {{}}
+    except Exception:
+        return {{}}
+
+def read_sessions_count():
+    try:
+        conn = sqlite3.connect(state_db)
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM sessions")
+        row = cursor.fetchone()
+        conn.close()
+        return int(row[0]) if row and row[0] is not None else 0
+    except Exception:
+        return 0
+
+def read_pending_tasks():
+    jobs = read_json(cron_jobs_path)
+    if isinstance(jobs, list):
+        return sum(1 for job in jobs if isinstance(job, dict) and job.get("id"))
+    return 0
+
+def gateway_running():
+    try:
+        result = subprocess.run(
+            ["bash", "-lc", "pgrep -f 'hermes.*gateway' || pgrep -f 'hermes_cli.*gateway'"],
+            capture_output=True,
+            text=True,
+        )
+        return bool(result.stdout.strip())
+    except Exception:
+        return False
+
+def read_memory():
+    try:
+        total_kb = 0
+        available_kb = 0
+        with open("/proc/meminfo", "r", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("MemTotal:"):
+                    total_kb = int(line.split()[1])
+                elif line.startswith("MemAvailable:"):
+                    available_kb = int(line.split()[1])
+        if total_kb <= 0:
+            return 0.0, 0, 0
+        used_kb = max(total_kb - available_kb, 0)
+        return (used_kb / total_kb * 100.0), used_kb // 1024, total_kb // 1024
+    except Exception:
+        return 0.0, 0, 0
+
+def read_disk_percent():
+    try:
+        result = subprocess.run(
+            ["df", "--output=pcent", hermes_home],
+            capture_output=True,
+            text=True,
+        )
+        lines = [line.strip().strip("%") for line in result.stdout.splitlines() if line.strip()]
+        return float(lines[-1]) if len(lines) >= 2 else 0.0
+    except Exception:
+        return 0.0
+
+def read_cpu_sample():
+    with open("/proc/stat", "r", encoding="utf-8") as f:
+        for line in f:
+            if line.startswith("cpu "):
+                parts = [int(value) for value in line.split()[1:]]
+                if len(parts) >= 4:
+                    idle = parts[3]
+                    total = sum(parts)
+                    return idle, total
+    return 0, 0
+
+def read_cpu_percent():
+    try:
+        idle1, total1 = read_cpu_sample()
+        time.sleep(0.2)
+        idle2, total2 = read_cpu_sample()
+        total_diff = max(total2 - total1, 0)
+        idle_diff = max(idle2 - idle1, 0)
+        if total_diff <= 0:
+            return 0.0
+        used = max(total_diff - idle_diff, 0)
+        return used / total_diff * 100.0
+    except Exception:
+        return 0.0
+
+memory_percent, memory_used_mb, memory_total_mb = read_memory()
+
+print(json.dumps({{
+    "active_sessions": read_sessions_count(),
+    "pending_tasks": read_pending_tasks(),
+    "gateway_state": read_json(gateway_state_path),
+    "cpu_percent": read_cpu_percent(),
+    "memory_percent": memory_percent,
+    "memory_used_mb": memory_used_mb,
+    "memory_total_mb": memory_total_mb,
+    "disk_percent": read_disk_percent(),
+    "gateway_process_running": gateway_running(),
+}}))
+"#,
+        state_db = state_db,
+        cron_jobs_path = cron_jobs_path,
+        gateway_state_path = gateway_state_path,
+        hermes_home = hermes_home,
     );
 
-    let output = create_command("wsl")
-        .args(["bash", "-c", &script])
-        .output()
-        .map_err(|e| format!("Failed to execute WSL command: {}", e))?;
-
+    let output = run_python_script(&script)?;
     if !output.status.success() {
-        return Ok(serde_json::json!([]));
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(format!("Failed to collect system snapshot: {}", stderr));
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if stdout.is_empty() {
-        return Ok(serde_json::json!([]));
+    serde_json::from_str(&stdout).map_err(|e| format!("Failed to parse system snapshot JSON: {}", e))
+}
+
+fn collect_health_snapshot(hermes_home: &str, state_db: &str, cli_available: bool) -> Result<HealthSnapshot, String> {
+    let script = format!(
+        r#"
+import json
+import os
+
+hermes_home = os.path.expanduser({hermes_home:?})
+state_db = os.path.expanduser({state_db:?})
+
+print(json.dumps({{
+    "wsl": True,
+    "hermes_dir": os.path.isdir(hermes_home),
+    "database": os.path.isfile(state_db),
+    "cli": {cli_available},
+}}))
+"#,
+        hermes_home = hermes_home,
+        state_db = state_db,
+        cli_available = if cli_available { "True" } else { "False" },
+    );
+
+    let output = run_python_script(&script)?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(format!("Failed to collect health snapshot: {}", stderr));
     }
 
-    serde_json::from_str(&stdout).map_err(|e| format!("Failed to parse JSON: {}", e))
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    serde_json::from_str(&stdout).map_err(|e| format!("Failed to parse health snapshot JSON: {}", e))
 }
 
 /// Get system status - reads real data from Hermes database and gateway state
@@ -86,8 +246,12 @@ pub async fn get_system_status(
     performance_cache: tauri::State<'_, std::sync::Arc<crate::core::PerformanceCache>>,
 ) -> Result<SystemStatus, String> {
     println!("[System] Getting system status...");
+    get_system_status_cached(performance_cache.inner().clone()).await
+}
 
-    // Try to get from cache first
+async fn get_system_status_cached(
+    performance_cache: std::sync::Arc<crate::core::PerformanceCache>,
+) -> Result<SystemStatus, String> {
     let cache_key = "system_status";
     if let Some(cached) = performance_cache.get(cache_key).await {
         if let Ok(status) = serde_json::from_value::<SystemStatus>(cached) {
@@ -96,124 +260,78 @@ pub async fn get_system_status(
         }
     }
 
-    // Cache miss - compute fresh data
     println!("[System] Computing fresh system status...");
-    
+
     let result = tokio::task::spawn_blocking(|| {
-        // Get session count from database
-        let active_sessions: usize = match query_db_single("SELECT COUNT(*) FROM sessions") {
-            Ok(val) => val.as_array().and_then(|arr| arr.first()).and_then(|v| v.as_u64()).unwrap_or(0) as usize,
-            Err(_) => 0,
-        };
-
-        // Get task count from jobs.json
-        let pending_tasks: usize = if let Ok(output) = create_command("wsl")
-            .args(["bash", "-c", "cat ~/.hermes/cron/jobs.json 2>/dev/null | grep -o '\"id\"' | wc -l"])
-            .output()
-        {
-            if output.status.success() {
-                String::from_utf8_lossy(&output.stdout).trim().parse().unwrap_or(0)
-            } else {
-                0
-            }
-        } else {
-            0
-        };
-
-        // Read gateway state from file
-        let gateway_state: serde_json::Value = if let Ok(output) = create_command("wsl")
-            .args(["bash", "-c", "cat ~/.hermes/gateway_state.json 2>/dev/null"])
-            .output()
-        {
-            if output.status.success() {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                if stdout.trim().is_empty() {
-                    serde_json::json!({})
-                } else {
-                    serde_json::from_str(&stdout).unwrap_or(serde_json::json!({}))
-                }
-            } else {
-                serde_json::json!({})
-            }
-        } else {
-            serde_json::json!({})
-        };
+        let env = resolve_environment().ok();
+        let state_db = env
+            .as_ref()
+            .map(|value| value.paths.state_db.clone())
+            .unwrap_or_else(|| "~/.hermes/state.db".to_string());
+        let cron_jobs_path = env
+            .as_ref()
+            .map(|value| format!("{}/jobs.json", value.paths.cron_dir))
+            .unwrap_or_else(|| "~/.hermes/cron/jobs.json".to_string());
+        let gateway_state_path = env
+            .as_ref()
+            .map(|value| format!("{}/gateway_state.json", value.hermes_home))
+            .unwrap_or_else(|| "~/.hermes/gateway_state.json".to_string());
+        let hermes_home = env
+            .as_ref()
+            .map(|value| value.hermes_home.clone())
+            .unwrap_or_else(|| "~/.hermes".to_string());
 
         // Check if Hermes CLI/venv actually exists (this is what chat functionality needs)
         // Use multiple detection methods to match chat.rs logic
-        let hermes_cli_available = {
-            // Method 1: Check venv (try both .venv and venv paths)
-            let venv_paths = [
-                "~/.hermes/hermes-agent/.venv/bin/python",  // uv default
-                "~/.hermes/hermes-agent/venv/bin/python",   // legacy
-            ];
-            let venv_available = venv_paths.iter().any(|venv_path| {
-                let check_cmd = format!("test -f {} && echo 'available' || echo 'not_found'", venv_path);
-                if let Ok(output) = create_command("wsl")
-                    .args(["bash", "-c", &check_cmd])
-                    .output()
-                {
-                    String::from_utf8_lossy(&output.stdout).trim() == "available"
-                } else {
-                    false
-                }
-            });
+        let hermes_cli_available = env
+            .as_ref()
+            .map(|value| value.runtime.python_path.is_some() || value.runtime.cli_command.is_some())
+            .unwrap_or(false);
+        let snapshot = collect_system_snapshot(
+            &state_db,
+            &cron_jobs_path,
+            &gateway_state_path,
+            &hermes_home,
+        )
+        .unwrap_or(SystemSnapshot {
+            active_sessions: 0,
+            pending_tasks: 0,
+            gateway_state: serde_json::json!({}),
+            cpu_percent: 0.0,
+            memory_percent: 0.0,
+            memory_used_mb: 0,
+            memory_total_mb: 0,
+            disk_percent: 0.0,
+            gateway_process_running: false,
+        });
 
-            if venv_available {
-                true
-            } else {
-                // Method 2: Check for hermes CLI in PATH
-                let cli_available = if let Ok(output) = create_command("wsl")
-                    .args(["bash", "-c", "command -v hermes && echo 'found' || echo 'not_found'"])
-                    .output()
-                {
-                    String::from_utf8_lossy(&output.stdout).trim() == "found"
-                } else {
-                    false
-                };
-
-                if cli_available {
-                    true
-                } else {
-                    // Method 3: Check for hermes_agent module
-                    if let Ok(output) = create_command("wsl")
-                        .args(["bash", "-c", "python3 -c 'import hermes_agent' 2>/dev/null && echo 'available' || echo 'not_found'"])
-                        .output()
-                    {
-                        String::from_utf8_lossy(&output.stdout).trim() == "available"
-                    } else {
-                        false
-                    }
-                }
-            }
-        };
-
-        // Check if gateway process is running
-        let gateway_process_running = if let Ok(output) = create_command("wsl")
-            .args(["bash", "-c", "pgrep -f 'hermes.*gateway' || pgrep -f 'hermes_cli.*gateway' || echo ''"])
-            .output()
-        {
-            !String::from_utf8_lossy(&output.stdout).trim().is_empty()
-        } else {
-            false
-        };
-
-        // Get system metrics via WSL
-        let (cpu_percent, memory_percent, memory_used_mb, memory_total_mb, disk_percent) = get_system_metrics();
-
-        (active_sessions, pending_tasks, gateway_state, cpu_percent, memory_percent, memory_used_mb, memory_total_mb, disk_percent, hermes_cli_available, gateway_process_running)
-    }).await.unwrap_or((0, 0, serde_json::json!({}), 0.0, 0.0, 0, 0, 0.0, false, false));
+        (snapshot, hermes_cli_available)
+    }).await.unwrap_or((
+        SystemSnapshot {
+            active_sessions: 0,
+            pending_tasks: 0,
+            gateway_state: serde_json::json!({}),
+            cpu_percent: 0.0,
+            memory_percent: 0.0,
+            memory_used_mb: 0,
+            memory_total_mb: 0,
+            disk_percent: 0.0,
+            gateway_process_running: false,
+        },
+        false,
+    ));
 
     // Determine gateway status - use multiple sources
     // Priority: 1. gateway_state.json, 2. process check, 3. CLI availability
     let file_status = result
-        .2
+        .0
+        .gateway_state
         .get("gateway_state")
         .and_then(|v| v.as_str())
         .unwrap_or("unknown");
 
     // Determine final status (mapped to frontend expected values: online|offline|degraded)
-    let gateway_status = if file_status == "running" || result.9 {
+    let gateway_status = if file_status == "running" || result.0.gateway_process_running {
         "online".to_string()
     } else {
         "offline".to_string()
@@ -221,18 +339,28 @@ pub async fn get_system_status(
 
     println!(
         "[System] Gateway status: file={}, process={}, cli={}, final={}",
-        file_status, result.9, result.8, gateway_status
+        file_status, result.0.gateway_process_running, result.1, gateway_status
     );
 
     let start_time = result
-        .2
+        .0
+        .gateway_state
         .get("start_time")
         .and_then(|v| v.as_u64())
         .unwrap_or(0);
+    let current_time = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let uptime_seconds = if start_time > 0 && start_time < current_time {
+        current_time - start_time
+    } else {
+        start_time
+    };
 
     // Parse connected platforms
     let mut connected_platforms = Vec::new();
-    if let Some(platforms) = result.2.get("platforms").and_then(|v| v.as_object()) {
+    if let Some(platforms) = result.0.gateway_state.get("platforms").and_then(|v| v.as_object()) {
         for (name, info) in platforms {
             let status = info
                 .get("state")
@@ -252,29 +380,33 @@ pub async fn get_system_status(
 
     println!(
         "[System] Sessions: {}, Tasks: {}, Gateway: {}",
-        result.0, result.1, gateway_status
+        result.0.active_sessions, result.0.pending_tasks, gateway_status
     );
     println!(
         "[System] CPU: {}%, Memory: {}% ({} / {} MB), Disk: {}%",
-        result.3, result.4, result.5, result.6, result.7
+        result.0.cpu_percent,
+        result.0.memory_percent,
+        result.0.memory_used_mb,
+        result.0.memory_total_mb,
+        result.0.disk_percent
     );
 
     let status = SystemStatus {
         gateway: GatewayStatus {
             status: gateway_status,
-            uptime_seconds: start_time,
+            uptime_seconds,
             version: env!("CARGO_PKG_VERSION").to_string(),
             connected_platforms,
         },
         metrics: SystemMetrics {
-            cpu_percent: result.3,
-            memory_percent: result.4,
-            memory_used_mb: result.5,
-            memory_total_mb: result.6,
-            disk_percent: result.7,
+            cpu_percent: result.0.cpu_percent,
+            memory_percent: result.0.memory_percent,
+            memory_used_mb: result.0.memory_used_mb,
+            memory_total_mb: result.0.memory_total_mb,
+            disk_percent: result.0.disk_percent,
         },
-        active_sessions: result.0,
-        pending_tasks: result.1,
+        active_sessions: result.0.active_sessions,
+        pending_tasks: result.0.pending_tasks,
     };
 
     // Cache the result (TTL: 10 seconds)
@@ -283,126 +415,6 @@ pub async fn get_system_status(
     }
 
     Ok(status)
-}
-
-/// Get system metrics (CPU, memory, disk) via WSL
-fn get_system_metrics() -> (f32, f32, u64, u64, f32) {
-    // Get memory info from /proc/meminfo - simpler and more reliable
-    let (memory_percent, memory_used_mb, memory_total_mb) = if let Ok(output) =
-        create_command("wsl")
-            .args(["cat", "/proc/meminfo"])
-            .output()
-    {
-        if output.status.success() {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let mut total_kb: u64 = 0;
-            let mut available_kb: u64 = 0;
-
-            for line in stdout.lines() {
-                if line.starts_with("MemTotal:") {
-                    total_kb = line
-                        .split_whitespace()
-                        .nth(1)
-                        .and_then(|v| v.parse().ok())
-                        .unwrap_or(0);
-                } else if line.starts_with("MemAvailable:") {
-                    available_kb = line
-                        .split_whitespace()
-                        .nth(1)
-                        .and_then(|v| v.parse().ok())
-                        .unwrap_or(0);
-                }
-            }
-
-            if total_kb > 0 {
-                let used_kb = total_kb.saturating_sub(available_kb);
-                let percent = (used_kb as f64 / total_kb as f64 * 100.0) as f32;
-                let used_mb = used_kb / 1024;
-                let total_mb = total_kb / 1024;
-                println!(
-                    "[System] Memory parsed: total={}KB, available={}KB, used={}KB",
-                    total_kb, available_kb, used_kb
-                );
-                (percent, used_mb, total_mb)
-            } else {
-                (0.0, 0, 0)
-            }
-        } else {
-            (0.0, 0, 0)
-        }
-    } else {
-        (0.0, 0, 0)
-    };
-
-    // Get disk usage for the ~/.hermes filesystem
-    let disk_percent = if let Ok(output) = create_command("wsl")
-        .args(["bash", "-c", "df --output=pcent ~/.hermes 2>/dev/null | tail -1 | tr -d ' %'"])
-        .output()
-    {
-        if output.status.success() {
-            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            stdout.parse::<f32>().unwrap_or(0.0)
-        } else {
-            0.0
-        }
-    } else {
-        0.0
-    };
-
-    // Get CPU usage - read from /proc/stat twice with delay
-    let cpu_percent = if let (Ok(stat1), Ok(stat2)) = (
-        create_command("wsl").args(["cat", "/proc/stat"]).output(),
-        {
-            std::thread::sleep(std::time::Duration::from_millis(500));
-            create_command("wsl").args(["cat", "/proc/stat"]).output()
-        },
-    ) {
-        fn parse_cpu_line(output: &std::process::Output) -> Option<(u64, u64)> {
-            if !output.status.success() {
-                return None;
-            }
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            for line in stdout.lines() {
-                if line.starts_with("cpu ") {
-                    let parts: Vec<u64> = line
-                        .split_whitespace()
-                        .skip(1)
-                        .filter_map(|v| v.parse().ok())
-                        .collect();
-                    if parts.len() >= 4 {
-                        let idle = parts[3];
-                        let total: u64 = parts.iter().sum();
-                        return Some((idle, total));
-                    }
-                }
-            }
-            None
-        }
-
-        if let (Some((idle1, total1)), Some((idle2, total2))) =
-            (parse_cpu_line(&stat1), parse_cpu_line(&stat2))
-        {
-            let idle_diff = idle2.saturating_sub(idle1);
-            let total_diff = total2.saturating_sub(total1);
-            if total_diff > 0 {
-                let used = total_diff.saturating_sub(idle_diff);
-                let percent = (used as f64 / total_diff as f64 * 100.0) as f32;
-                println!(
-                    "[System] CPU parsed: idle_diff={}, total_diff={}, percent={}%",
-                    idle_diff, total_diff, percent
-                );
-                percent
-            } else {
-                0.0
-            }
-        } else {
-            0.0
-        }
-    } else {
-        0.0
-    };
-
-    (cpu_percent, memory_percent, memory_used_mb, memory_total_mb, disk_percent)
 }
 
 /// Usage totals
@@ -725,51 +737,47 @@ print(json.dumps({
 
 /// Health check - performs actual system health verification
 #[tauri::command(rename_all = "snake_case")]
-pub fn health_check() -> Result<serde_json::Value, String> {
+pub async fn health_check(
+    performance_cache: tauri::State<'_, std::sync::Arc<crate::core::PerformanceCache>>,
+) -> Result<serde_json::Value, String> {
     println!("[System] Performing health check...");
+    get_health_check_cached(performance_cache.inner().clone()).await
+}
 
-    // Check WSL availability
-    let wsl_available = create_command("wsl")
-        .args(["echo", "ok"])
-        .output()
-        .map(|o| o.status.success())
+async fn get_health_check_cached(
+    performance_cache: std::sync::Arc<crate::core::PerformanceCache>,
+) -> Result<serde_json::Value, String> {
+    let cache_key = "health_check";
+    if let Some(cached) = performance_cache.get(cache_key).await {
+        return Ok(cached);
+    }
+
+    let env = resolve_environment().ok();
+    let hermes_home = env
+        .as_ref()
+        .map(|value| value.hermes_home.clone())
+        .unwrap_or_else(|| "~/.hermes".to_string());
+    let state_db = env
+        .as_ref()
+        .map(|value| value.paths.state_db.clone())
+        .unwrap_or_else(|| "~/.hermes/state.db".to_string());
+    let cli_available = env
+        .as_ref()
+        .map(|value| value.runtime.python_path.is_some() || value.runtime.cli_command.is_some())
         .unwrap_or(false);
 
-    // Check if hermes directory exists
-    let hermes_dir_exists = create_command("wsl")
-        .args(["bash", "-c", "test -d ~/.hermes && echo 'exists' || echo 'not_found'"])
-        .output()
-        .map(|o| {
-            let stdout = String::from_utf8_lossy(&o.stdout);
-            stdout.trim() == "exists"
-        })
-        .unwrap_or(false);
-
-    // Check if state database exists and is accessible
-    let db_accessible = create_command("wsl")
-        .args(["bash", "-c", "test -f ~/.hermes/state.db && echo 'ok' || echo 'not_found'"])
-        .output()
-        .map(|o| {
-            let stdout = String::from_utf8_lossy(&o.stdout);
-            stdout.trim() == "ok"
-        })
-        .unwrap_or(false);
-
-    // Check if venv/hermes CLI exists
-    let cli_available = create_command("wsl")
-        .args(["bash", "-c", "test -f ~/.hermes/hermes-agent/venv/bin/python && echo 'ok' || test -f ~/.hermes/hermes-agent/.venv/bin/python && echo 'ok' || echo 'not_found'"])
-        .output()
-        .map(|o| {
-            let stdout = String::from_utf8_lossy(&o.stdout);
-            stdout.trim() == "ok"
-        })
-        .unwrap_or(false);
+    let health = collect_health_snapshot(&hermes_home, &state_db, cli_available).unwrap_or(HealthSnapshot {
+        wsl: false,
+        hermes_dir: false,
+        database: false,
+        cli: cli_available,
+    });
 
     // Determine overall status
-    let status = if wsl_available && hermes_dir_exists {
-        if cli_available {
+    let status = if health.wsl && health.hermes_dir {
+        if health.cli {
             "healthy"
-        } else if db_accessible {
+        } else if health.database {
             "degraded"
         } else {
             "partial"
@@ -780,17 +788,43 @@ pub fn health_check() -> Result<serde_json::Value, String> {
 
     println!(
         "[System] Health check: wsl={}, hermes_dir={}, db={}, cli={}, status={}",
-        wsl_available, hermes_dir_exists, db_accessible, cli_available, status
+        health.wsl, health.hermes_dir, health.database, health.cli, status
     );
 
-    Ok(serde_json::json!({
+    let result = serde_json::json!({
         "status": status,
         "source": "wsl",
         "checks": {
-            "wsl": wsl_available,
-            "hermes_dir": hermes_dir_exists,
-            "database": db_accessible,
-            "cli": cli_available
+            "wsl": health.wsl,
+            "hermes_dir": health.hermes_dir,
+            "database": health.database,
+            "cli": health.cli
         }
-    }))
+    });
+
+    performance_cache.set(cache_key, result.clone(), None).await;
+    Ok(result)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn get_readiness_status(
+    performance_cache: tauri::State<'_, std::sync::Arc<crate::core::PerformanceCache>>,
+) -> Result<ReadinessStatusSnapshot, String> {
+    let cache_key = "readiness_status";
+    if let Some(cached) = performance_cache.get(cache_key).await {
+        if let Ok(snapshot) = serde_json::from_value::<ReadinessStatusSnapshot>(cached) {
+            return Ok(snapshot);
+        }
+    }
+
+    let cache = performance_cache.inner().clone();
+    let health = get_health_check_cached(cache.clone()).await?;
+    let system_status = get_system_status_cached(cache.clone()).await?;
+    let snapshot = ReadinessStatusSnapshot { health, system_status };
+
+    if let Ok(snapshot_json) = serde_json::to_value(&snapshot) {
+        cache.set(cache_key, snapshot_json, None).await;
+    }
+
+    Ok(snapshot)
 }

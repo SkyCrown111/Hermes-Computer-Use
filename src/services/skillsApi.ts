@@ -16,7 +16,7 @@ import type { ApiOkResponse } from '../types/common';
 
 export async function listSkills(): Promise<Skill[]> {
   try {
-    return await apiClient.invoke<Skill[]>('list_skills');
+    return await apiClient.invokeShared<Skill[]>('list_skills');
   } catch (error) {
     logger.error(`[SkillsApi] listSkills failed: ${getErrorDetail(error)}`);
     return [];
@@ -44,7 +44,7 @@ export async function getSkill(name: string): Promise<Skill | null> {
 
 export async function getSkillCategories(): Promise<SkillCategoriesResponse> {
   try {
-    const categories = await apiClient.invoke<SkillCategoriesResponse['categories']>('get_skill_categories');
+    const categories = await apiClient.invokeShared<SkillCategoriesResponse['categories']>('get_skill_categories');
     return { categories };
   } catch (error) {
     logger.error(`[SkillsApi] getSkillCategories failed: ${getErrorDetail(error)}`);

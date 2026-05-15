@@ -169,6 +169,16 @@ function getMockData(cmd: string, args?: Record<string, unknown>): unknown {
         session_id: 'mock-session',
         messages: [],
       };
+    case 'send_chat_message':
+    case 'stream_chat_message':
+      return {
+        session_id: args?.session_id ?? `mock_${Date.now()}`,
+        response: '[Mock] Chat response',
+        tool_calls_count: 0,
+        input_tokens: 10,
+        output_tokens: 20,
+        estimated_cost_usd: 0,
+      };
     case 'list_skills':
       return [
         { name: 'plan', path: 'software-development/plan', description: 'Plan mode for Hermes', enabled: true, category: 'software-development', version: '1.0.0', author: 'Hermes Agent', tags: ['planning', 'plan-mode'] },
@@ -251,6 +261,157 @@ function getMockData(cmd: string, args?: Record<string, unknown>): unknown {
       return { section: args?.section || 'model', data: { default: 'astron-code-latest', provider: 'auto' } };
     case 'get_data_dir':
       return '~/.hermes';
+    case 'get_hermes_environment':
+      return {
+        hermes_home: '~/.hermes',
+        active_profile: null,
+        runtime: {
+          python_path: '~/.hermes/hermes-agent/.venv/bin/python',
+          cli_command: 'hermes',
+          agent_root: '~/.hermes/hermes-agent',
+          import_root: '~/.hermes/hermes-agent/src',
+        },
+        paths: {
+          hermes_home: '~/.hermes',
+          config_yaml: '~/.hermes/config.yaml',
+          state_db: '~/.hermes/state.db',
+          logs_dir: '~/.hermes/logs',
+          skills_dir: '~/.hermes/skills',
+          memories_dir: '~/.hermes/memories',
+          cron_dir: '~/.hermes/cron',
+          checkpoints_dir: '~/.hermes/checkpoints',
+          app_dir: '~/.hermes/hermes-app',
+          approvals_dir: '~/.hermes/approvals',
+          clarify_dir: '~/.hermes/clarify',
+          secrets_dir: '~/.hermes/secrets',
+        },
+        capabilities: {
+          has_chat: true,
+          has_sessions: true,
+          has_skills: true,
+          has_memories: true,
+          has_mcp: true,
+          has_cron: true,
+          has_platforms: true,
+          chat: {
+            available: true,
+            detection_method: 'cli-runtime',
+            reason: null,
+            checked_paths: ['~/.hermes/hermes-agent/.venv/bin/python', 'hermes'],
+          },
+          sessions: {
+            available: true,
+            detection_method: 'sqlite-probe',
+            reason: null,
+            checked_paths: ['~/.hermes/state.db'],
+          },
+          skills: {
+            available: true,
+            detection_method: 'directory-read-write',
+            reason: null,
+            checked_paths: ['~/.hermes/skills'],
+          },
+          memories: {
+            available: true,
+            detection_method: 'directory-read-write',
+            reason: null,
+            checked_paths: ['~/.hermes/memories'],
+          },
+          mcp: {
+            available: true,
+            detection_method: 'config-readability',
+            reason: null,
+            checked_paths: ['~/.hermes/config.yaml'],
+          },
+          cron: {
+            available: true,
+            detection_method: 'directory-read-write',
+            reason: null,
+            checked_paths: ['~/.hermes/cron'],
+          },
+          platforms: {
+            available: true,
+            detection_method: 'config-readability',
+            reason: null,
+            checked_paths: ['~/.hermes/config.yaml'],
+          },
+        },
+        uses_wsl: true,
+      };
+    case 'get_hermes_paths':
+      return {
+        hermes_home: '~/.hermes',
+        config_yaml: '~/.hermes/config.yaml',
+        state_db: '~/.hermes/state.db',
+        logs_dir: '~/.hermes/logs',
+        skills_dir: '~/.hermes/skills',
+        memories_dir: '~/.hermes/memories',
+        cron_dir: '~/.hermes/cron',
+        checkpoints_dir: '~/.hermes/checkpoints',
+        app_dir: '~/.hermes/hermes-app',
+        approvals_dir: '~/.hermes/approvals',
+        clarify_dir: '~/.hermes/clarify',
+        secrets_dir: '~/.hermes/secrets',
+      };
+    case 'get_hermes_runtime':
+      return {
+        python_path: '~/.hermes/hermes-agent/.venv/bin/python',
+        cli_command: 'hermes',
+        agent_root: '~/.hermes/hermes-agent',
+        import_root: '~/.hermes/hermes-agent/src',
+      };
+    case 'check_hermes_capabilities':
+      return {
+        has_chat: true,
+        has_sessions: true,
+        has_skills: true,
+        has_memories: true,
+        has_mcp: true,
+        has_cron: true,
+        has_platforms: true,
+        chat: {
+          available: true,
+          detection_method: 'cli-runtime',
+          reason: null,
+          checked_paths: ['~/.hermes/hermes-agent/.venv/bin/python', 'hermes'],
+        },
+        sessions: {
+          available: true,
+          detection_method: 'sqlite-probe',
+          reason: null,
+          checked_paths: ['~/.hermes/state.db'],
+        },
+        skills: {
+          available: true,
+          detection_method: 'directory-read-write',
+          reason: null,
+          checked_paths: ['~/.hermes/skills'],
+        },
+        memories: {
+          available: true,
+          detection_method: 'directory-read-write',
+          reason: null,
+          checked_paths: ['~/.hermes/memories'],
+        },
+        mcp: {
+          available: true,
+          detection_method: 'config-readability',
+          reason: null,
+          checked_paths: ['~/.hermes/config.yaml'],
+        },
+        cron: {
+          available: true,
+          detection_method: 'directory-read-write',
+          reason: null,
+          checked_paths: ['~/.hermes/cron'],
+        },
+        platforms: {
+          available: true,
+          detection_method: 'config-readability',
+          reason: null,
+          checked_paths: ['~/.hermes/config.yaml'],
+        },
+      };
     case 'check_data_dir_exists':
       return true;
     case 'get_system_status':
@@ -259,6 +420,25 @@ function getMockData(cmd: string, args?: Record<string, unknown>): unknown {
         metrics: { cpu_percent: 25.5, memory_percent: 45.2, memory_used_mb: 512, memory_total_mb: 1024, disk_percent: 30 },
         active_sessions: 0,
         pending_tasks: 0,
+      };
+    case 'get_readiness_status':
+      return {
+        health: {
+          status: 'healthy',
+          source: 'wsl',
+          checks: {
+            wsl: true,
+            hermes_dir: true,
+            database: true,
+            cli: true,
+          },
+        },
+        system_status: {
+          gateway: { status: 'offline', uptime_seconds: 0, version: '0.1.0', connected_platforms: [] },
+          metrics: { cpu_percent: 25.5, memory_percent: 45.2, memory_used_mb: 512, memory_total_mb: 1024, disk_percent: 30 },
+          active_sessions: 0,
+          pending_tasks: 0,
+        },
       };
     case 'get_usage_analytics':
       return {
@@ -275,7 +455,19 @@ function getMockData(cmd: string, args?: Record<string, unknown>): unknown {
         user_profile: { file: 'USER.md', content: '', char_count: 0, char_limit: 100000, sections: [] },
       };
     case 'health_check':
-      return { status: 'ok' };
+      return {
+        status: 'healthy',
+        source: 'wsl',
+        checks: {
+          wsl: true,
+          hermes_dir: true,
+          database: true,
+          cli: true,
+        },
+      };
+    case 'start_hermes_gateway':
+    case 'restart_hermes_gateway':
+      return { ok: true, status: 'healthy', message: 'Hermes CLI available (mock)' };
     case 'get_cron_job':
       return { id: 'cron_001', name: 'Daily Backup', schedule: { kind: 'cron', display: '0 2 * * *', expr: '0 2 * * *' }, enabled: true, created_at: new Date().toISOString(), run_count: 0 };
     case 'save_cron_job':
@@ -417,10 +609,16 @@ function getMockData(cmd: string, args?: Record<string, unknown>): unknown {
       return { results: [], total: 0 };
     case 'delete_session':
     case 'update_session_title':
-    case 'export_session':
       return { ok: true };
+    case 'export_session':
+      return JSON.stringify({
+        session: { id: args?.session_id ?? 'mock-session', title: 'Mock Session' },
+        messages: [],
+      }, null, 2);
     case 'get_sessions_path':
       return '~/.hermes/sessions';
+    case 'count_sessions':
+      return { count: 2 };
     case 'save_memory':
       return { ok: true, char_count: 0, char_limit: 100000 };
     case 'get_memories_path':
@@ -452,10 +650,35 @@ function getMockData(cmd: string, args?: Record<string, unknown>): unknown {
     case 'list_checkpoints':
       return { checkpoints: [], total: 0 };
     case 'create_checkpoint':
+      return {
+        id: 'checkpoint-1',
+        session_id: args?.session_id ?? 'mock-session',
+        name: 'Mock Checkpoint',
+        created_at: new Date().toISOString(),
+        message_count: 0,
+        size_bytes: 0,
+        description: null,
+      };
     case 'get_checkpoint_info':
+      return {
+        id: args?.checkpoint_id ?? 'checkpoint-1',
+        session_id: 'mock-session',
+        name: 'Mock Checkpoint',
+        created_at: new Date().toISOString(),
+        message_count: 0,
+        size_bytes: 0,
+        description: null,
+      };
     case 'restore_checkpoint':
+      return {
+        success: true,
+        session_id: args?.session_id ?? 'mock-session',
+        checkpoint_id: args?.checkpoint_id ?? 'checkpoint-1',
+        restored_at: new Date().toISOString(),
+        message_count: 0,
+      };
     case 'delete_checkpoint':
-      return { ok: true };
+      return undefined;
     default:
       logger.warn(`[Tauri] No mock data for command: ${cmd}`);
       return null;

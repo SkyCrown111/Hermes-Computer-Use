@@ -20,6 +20,7 @@ export { HermesApiError };
 
 export class ApiClient {
   private defaultOptions: Required<RequestOptions>;
+  private inflightRequests = new Map<string, Promise<unknown>>();
 
   constructor(options?: RequestOptions) {
     this.defaultOptions = { ...DEFAULT_OPTIONS, ...options };
@@ -55,6 +56,19 @@ export class ApiClient {
     throw lastError ?? new HermesApiError('unknown', 'Unknown error');
   }
 
+  async invokeShared<T>(command: string, args?: Record<string, unknown>, options?: RequestOptions): Promise<T> {
+    const key = `${command}:${this.stableStringify(args)}`;
+    const existing = this.inflightRequests.get(key) as Promise<T> | undefined;
+    if (existing) return existing;
+
+    const request = this.invoke<T>(command, args, options).finally(() => {
+      this.inflightRequests.delete(key);
+    });
+
+    this.inflightRequests.set(key, request);
+    return request;
+  }
+
   /**
    * Wraps safeInvoke with a timeout. If the timeout elapses before the
    * promise settles, a HermesApiError with code 'timeout' is thrown.
@@ -86,6 +100,18 @@ export class ApiClient {
 
   private delay(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  private stableStringify(value: unknown): string {
+    if (value === undefined) return 'undefined';
+    if (value === null || typeof value !== 'object') return JSON.stringify(value);
+    if (Array.isArray(value)) return `[${value.map((item) => this.stableStringify(item)).join(',')}]`;
+
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, entryValue]) => entryValue !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right));
+
+    return `{${entries.map(([entryKey, entryValue]) => `${JSON.stringify(entryKey)}:${this.stableStringify(entryValue)}`).join(',')}}`;
   }
 }
 

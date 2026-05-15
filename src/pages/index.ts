@@ -6,6 +6,7 @@ export { Settings } from './Settings';
 export { Monitor } from './Monitor';
 export { Memory } from './Memory';
 export { Platforms } from './Platforms';
+export { Profiles } from './Profiles';
 export { Files } from './Files';
 export { ChatPage } from './Chat';
 export { Preferences } from './Preferences';

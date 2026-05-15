@@ -3,7 +3,14 @@
 //! Commands for log viewing and system monitoring.
 
 use super::utils::create_command;
+use crate::hermes_adapter::resolve_environment;
 use serde::{Deserialize, Serialize};
+
+fn hermes_home_path() -> String {
+    resolve_environment()
+        .map(|env| env.hermes_home)
+        .unwrap_or_else(|_| "~/.hermes".to_string())
+}
 
 /// Escape a string for use in grep -E pattern (escape regex special chars)
 fn escape_grep_pattern(s: &str) -> String {
@@ -96,6 +103,13 @@ pub struct GatewayDetailedStatus {
     pub error_stats: ErrorStats,
     pub connection_history: Vec<ConnectionEvent>,
     pub throughput: ThroughputStats,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct GatewayProcessMetrics {
+    uptime_seconds: u64,
+    cpu_usage_percent: f64,
+    memory_usage_mb: f64,
 }
 
 /// Metric data point
@@ -247,10 +261,12 @@ fi
 #[tauri::command(rename_all = "snake_case")]
 pub async fn get_gateway_status() -> Result<GatewayDetailedStatus, String> {
     println!("[Monitor] Getting gateway status...");
+    let hermes_home = hermes_home_path();
 
     // Read gateway state
+    let gateway_state_command = format!("cat '{}/gateway_state.json' 2>/dev/null", hermes_home);
     let gateway_state: serde_json::Value = if let Ok(output) = create_command("wsl")
-        .args(["bash", "-c", "cat ~/.hermes/gateway_state.json 2>/dev/null"])
+        .args(["bash", "-c", &gateway_state_command])
         .output()
     {
         if output.status.success() {
@@ -273,6 +289,9 @@ pub async fn get_gateway_status() -> Result<GatewayDetailedStatus, String> {
         .get("start_time")
         .and_then(|v| v.as_u64())
         .unwrap_or(0);
+    let gateway_pid = gateway_state
+        .get("pid")
+        .and_then(|v| v.as_u64());
 
     // Parse platforms
     let mut connections = Vec::new();
@@ -290,12 +309,17 @@ pub async fn get_gateway_status() -> Result<GatewayDetailedStatus, String> {
         }
     }
 
-    // Calculate uptime from start_time (assuming start_time is Unix timestamp)
+    let process_metrics = get_gateway_process_metrics(gateway_pid);
+
+    // Calculate uptime. Newer gateway state stores start_time as a monotonic
+    // timestamp, not Unix epoch seconds, so prefer the real process elapsed time.
     let current_time = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_secs();
-    let uptime_seconds = if start_time > 0 && start_time < current_time {
+    let uptime_seconds = if process_metrics.uptime_seconds > 0 {
+        process_metrics.uptime_seconds
+    } else if start_time > 1_000_000_000 && start_time < current_time {
         current_time - start_time
     } else {
         start_time
@@ -327,11 +351,8 @@ pub async fn get_gateway_status() -> Result<GatewayDetailedStatus, String> {
         .and_then(|v| v.as_f64())
         .unwrap_or(0.0);
 
-    // Get memory and CPU usage
-    let (cpu_usage_percent, memory_usage_mb) = get_gateway_resource_usage();
-
     // Parse error statistics from gateway log
-    let error_stats = parse_gateway_error_stats();
+    let error_stats = parse_gateway_error_stats(&hermes_home);
 
     // Parse connection history from gateway state
     let connection_history = parse_connection_history(&gateway_state);
@@ -349,8 +370,8 @@ pub async fn get_gateway_status() -> Result<GatewayDetailedStatus, String> {
         active_requests,
         queue_depth,
         avg_response_time_ms,
-        memory_usage_mb,
-        cpu_usage_percent,
+        memory_usage_mb: process_metrics.memory_usage_mb,
+        cpu_usage_percent: process_metrics.cpu_usage_percent,
         error_stats,
         connection_history,
         throughput,
@@ -358,58 +379,64 @@ pub async fn get_gateway_status() -> Result<GatewayDetailedStatus, String> {
 }
 
 /// Get gateway process resource usage
-fn get_gateway_resource_usage() -> (f64, f64) {
-    // Try to find gateway process and get its resource usage
-    let script = r#"
-# Find gateway process PID
-GATEWAY_PID=$(pgrep -f "hermes.*gateway" | head -1)
+fn get_gateway_process_metrics(pid: Option<u64>) -> GatewayProcessMetrics {
+    let pid_arg = pid.map(|p| p.to_string()).unwrap_or_default();
+    let script = format!(r#"
+GATEWAY_PID="{pid_arg}"
+if [ -n "$GATEWAY_PID" ] && ! kill -0 "$GATEWAY_PID" 2>/dev/null; then
+    GATEWAY_PID=""
+fi
+if [ -z "$GATEWAY_PID" ]; then
+    GATEWAY_PID=$(pgrep -f "hermes_cli.main gateway|hermes.*gateway" | head -1)
+fi
 if [ -z "$GATEWAY_PID" ]; then
     echo "0 0"
     exit 0
 fi
 
-# Get memory usage in MB
 MEM_KB=$(ps -o rss= -p $GATEWAY_PID 2>/dev/null || echo 0)
-MEM_MB=$((MEM_KB / 1024))
-
-# Get CPU percentage (simplified - just get current CPU%)
 CPU_PERCENT=$(ps -o %cpu= -p $GATEWAY_PID 2>/dev/null || echo 0)
+UPTIME_SECONDS=$(ps -o etimes= -p $GATEWAY_PID 2>/dev/null || echo 0)
 
-echo "$CPU_PERCENT $MEM_MB"
-"#;
+awk -v cpu="$CPU_PERCENT" -v rss="$MEM_KB" -v uptime="$UPTIME_SECONDS" 'BEGIN {{
+    printf "%.2f %.2f %d\n", cpu + 0, (rss + 0) / 1024, uptime + 0
+}}'
+"#);
 
     if let Ok(output) = create_command("wsl")
-        .args(["bash", "-c", script])
+        .args(["bash", "-c", &script])
         .output()
     {
         if output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout);
             let parts: Vec<&str> = stdout.trim().split_whitespace().collect();
-            if parts.len() >= 2 {
-                let cpu: f64 = parts[0].parse().unwrap_or(0.0);
-                let mem: f64 = parts[1].parse().unwrap_or(0.0);
-                return (cpu, mem);
+            if parts.len() >= 3 {
+                return GatewayProcessMetrics {
+                    cpu_usage_percent: parts[0].parse().unwrap_or(0.0),
+                    memory_usage_mb: parts[1].parse().unwrap_or(0.0),
+                    uptime_seconds: parts[2].parse().unwrap_or(0),
+                };
             }
         }
     }
-    (0.0, 0.0)
+    GatewayProcessMetrics::default()
 }
 
 /// Parse error statistics from gateway log
-fn parse_gateway_error_stats() -> ErrorStats {
-    let script = r#"
-if [ -f ~/.hermes/logs/gateway.log ]; then
+fn parse_gateway_error_stats(hermes_home: &str) -> ErrorStats {
+    let script = format!(r#"
+if [ -f '{0}/logs/gateway.log' ]; then
     # Total errors
-    TOTAL=$(grep -c 'ERROR' ~/.hermes/logs/gateway.log 2>/dev/null || echo 0)
+    TOTAL=$(grep -c 'ERROR' '{0}/logs/gateway.log' 2>/dev/null || echo 0)
 
     # Errors by type (extract error patterns)
-    TIMEOUT=$(grep -c 'timeout\|Timeout\|TIMEOUT' ~/.hermes/logs/gateway.log 2>/dev/null || echo 0)
-    CONNECTION=$(grep -c 'connection.*failed\|Connection.*refused\|ECONNREFUSED' ~/.hermes/logs/gateway.log 2>/dev/null || echo 0)
-    RATE_LIMIT=$(grep -c 'rate.*limit\|429\|Too Many Requests' ~/.hermes/logs/gateway.log 2>/dev/null || echo 0)
-    AUTH=$(grep -c 'unauthorized\|Unauthorized\|401\|403' ~/.hermes/logs/gateway.log 2>/dev/null || echo 0)
+    TIMEOUT=$(grep -c 'timeout\|Timeout\|TIMEOUT' '{0}/logs/gateway.log' 2>/dev/null || echo 0)
+    CONNECTION=$(grep -c 'connection.*failed\|Connection.*refused\|ECONNREFUSED' '{0}/logs/gateway.log' 2>/dev/null || echo 0)
+    RATE_LIMIT=$(grep -c 'rate.*limit\|429\|Too Many Requests' '{0}/logs/gateway.log' 2>/dev/null || echo 0)
+    AUTH=$(grep -c 'unauthorized\|Unauthorized\|401\|403' '{0}/logs/gateway.log' 2>/dev/null || echo 0)
 
     # Last hour errors (assuming log has timestamps)
-    LAST_HOUR=$(tail -1000 ~/.hermes/logs/gateway.log 2>/dev/null | grep -c 'ERROR' || echo 0)
+    LAST_HOUR=$(tail -1000 '{0}/logs/gateway.log' 2>/dev/null | grep -c 'ERROR' || echo 0)
 
     # Last 24h (simplified - count from recent logs)
     LAST_24H=$TOTAL
@@ -418,12 +445,12 @@ if [ -f ~/.hermes/logs/gateway.log ]; then
 else
     echo "0 0 0 0 0 0 0"
 fi
-"#;
+"#, hermes_home);
 
     let mut by_type = std::collections::HashMap::new();
 
     if let Ok(output) = create_command("wsl")
-        .args(["bash", "-c", script])
+        .args(["bash", "-c", &script])
         .output()
     {
         if output.status.success() {
@@ -668,14 +695,15 @@ fn get_cpu_usage() -> f32 {
 /// Get log components
 #[tauri::command(rename_all = "snake_case")]
 pub async fn get_log_components() -> Result<Vec<String>, String> {
-    let script = r#"
-if [ -f ~/.hermes/logs/agent.log ]; then
-    grep -oE '\[[a-zA-Z_]+\]' ~/.hermes/logs/agent.log | sort | uniq | tr -d '[]'
+    let hermes_home = hermes_home_path();
+    let script = format!(r#"
+if [ -f '{0}/logs/agent.log' ]; then
+    grep -oE '\[[a-zA-Z_]+\]' '{0}/logs/agent.log' | sort | uniq | tr -d '[]'
 fi
-"#;
+"#, hermes_home);
 
     let output = create_command("wsl")
-        .args(["bash", "-c", script])
+        .args(["bash", "-c", &script])
         .output()
         .map_err(|e| format!("Failed to get components: {}", e))?;
 
@@ -717,21 +745,22 @@ pub async fn clear_logs(file: Option<String>) -> Result<(), String> {
 #[tauri::command(rename_all = "snake_case")]
 pub async fn reload_gateway_config() -> Result<(), String> {
     println!("[Monitor] Reloading gateway config...");
+    let hermes_home = hermes_home_path();
 
     // Send SIGHUP to gateway process to trigger config reload
     // Or use a dedicated reload mechanism
-    let script = r#"
+    let script = format!(r#"
 # Try to reload via gateway control socket if available
-if [ -S ~/.hermes/gateway.sock ]; then
-    echo "RELOAD" | nc -U ~/.hermes/gateway.sock 2>/dev/null && echo "reloaded" || echo "failed"
+if [ -S '{0}/gateway.sock' ]; then
+    echo "RELOAD" | nc -U '{0}/gateway.sock' 2>/dev/null && echo "reloaded" || echo "failed"
 else
     # Fallback: touch config to trigger file watcher
-    touch ~/.hermes/config.yaml 2>/dev/null && echo "triggered" || echo "failed"
+    touch '{0}/config.yaml' 2>/dev/null && echo "triggered" || echo "failed"
 fi
-"#;
+"#, hermes_home);
 
     let output = create_command("wsl")
-        .args(["bash", "-c", script])
+        .args(["bash", "-c", &script])
         .output()
         .map_err(|e| format!("Failed to reload gateway config: {}", e))?;
 

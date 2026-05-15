@@ -2,6 +2,7 @@
 // Direct Hermes Agent calling with real-time streaming via Python wrapper
 
 use super::utils::create_command;
+use crate::hermes_adapter::resolve_environment;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -22,6 +23,23 @@ pub struct ChatMessage {
     pub content: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SendChatMessageResponse {
+    pub session_id: String,
+    pub response: String,
+    pub tool_calls_count: usize,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub estimated_cost_usd: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GatewayCommandResponse {
+    pub ok: bool,
+    pub status: String,
+    pub message: Option<String>,
+}
+
 /// The stream_agent.py script content (embedded in binary)
 const STREAM_AGENT_SCRIPT: &str = include_str!("../../scripts/stream_agent.py");
 
@@ -31,18 +49,20 @@ static SCRIPTS_INSTALL_CHECK: OnceLock<Result<(), String>> = OnceLock::new();
 /// Initialize hermes-app scripts in user directory
 fn ensure_scripts_installed() -> Result<(), String> {
     SCRIPTS_INSTALL_CHECK.get_or_init(|| {
+        let env = resolve_environment().map_err(|e| e.to_string())?;
+        let app_dir = &env.paths.app_dir;
+        let script_path = format!("{app_dir}/stream_agent.py");
         // Create directory
-        let mkdir_cmd = "mkdir -p ~/.hermes/hermes-app";
+        let mkdir_cmd = format!("mkdir -p '{}'", app_dir);
         create_command("wsl")
-            .args(["-e", "bash", "-c", mkdir_cmd])
+            .args(["-e", "bash", "-c", &mkdir_cmd])
             .output()
             .map_err(|e| format!("Failed to create directory: {}", e))?;
 
         // Check if file exists and skip if it does
-        let check_cmd =
-            "test -f ~/.hermes/hermes-app/stream_agent.py && echo 'exists' || echo 'not_found'";
+        let check_cmd = format!("test -f '{}' && echo 'exists' || echo 'not_found'", script_path);
         let output = create_command("wsl")
-            .args(["-e", "bash", "-c", check_cmd])
+            .args(["-e", "bash", "-c", &check_cmd])
             .output()
             .map_err(|e| format!("Failed to check script: {}", e))?;
 
@@ -55,8 +75,8 @@ fn ensure_scripts_installed() -> Result<(), String> {
         // Write script using base64 encoding (most reliable)
         let encoded = STANDARD.encode(STREAM_AGENT_SCRIPT);
         let write_cmd = format!(
-            "mkdir -p ~/.hermes/hermes-app && echo '{}' | base64 -d > ~/.hermes/hermes-app/stream_agent.py",
-            encoded
+            "mkdir -p '{}' && echo '{}' | base64 -d > '{}'",
+            app_dir, encoded, script_path
         );
 
         create_command("wsl")
@@ -64,7 +84,7 @@ fn ensure_scripts_installed() -> Result<(), String> {
             .output()
             .map_err(|e| format!("Failed to install script: {}", e))?;
 
-        println!("[ChatDirect] Script installed to ~/.hermes/hermes-app/stream_agent.py");
+        println!("[ChatDirect] Script installed to {}", script_path);
         Ok(())
     }).clone()
 }
@@ -72,122 +92,24 @@ fn ensure_scripts_installed() -> Result<(), String> {
 /// Find the Python executable path for running Hermes
 /// Returns the Python command to use (with path if needed)
 fn find_python_path() -> Result<String, String> {
-    // Method 1: Check for Python venv at standard location (try both .venv and venv)
-    let venv_paths = [
-        "~/.hermes/hermes-agent/.venv/bin/python", // uv default
-        "~/.hermes/hermes-agent/venv/bin/python",  // legacy
-    ];
-
-    for venv_path in &venv_paths {
-        let check_cmd = format!("test -f {} && echo 'venv' || echo 'not_found'", venv_path);
-        if let Ok(output) = create_command("wsl")
-            .args(["-e", "bash", "-c", &check_cmd])
-            .output()
-        {
-            let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if result == "venv" {
-                println!("[ChatDirect] Using Python from venv: {}", venv_path);
-                return Ok(venv_path.to_string());
-            }
-        }
-    }
-
-    // Method 2: Check if hermes CLI is available - try to find its Python
-    let hermes_python_check = create_command("wsl")
-        .args(["-e", "bash", "-c", "cat $(which hermes 2>/dev/null | head -1) 2>/dev/null | grep -oE 'python[3]?[^\"]*' | head -1"])
-        .output();
-
-    if let Ok(output) = hermes_python_check {
-        let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if !result.is_empty() && result.contains("python") {
-            println!("[ChatDirect] Using Python from hermes CLI: {}", result);
-            return Ok(result);
-        }
-    }
-
-    // Method 3: Check for hermes-agent module in system Python3
-    let module_check = create_command("wsl")
-        .args([
-            "-e",
-            "bash",
-            "-c",
-            "python3 -c 'import hermes_agent' 2>/dev/null && echo 'available' || echo 'not_found'",
-        ])
-        .output();
-
-    if let Ok(output) = module_check {
-        let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if result == "available" {
-            println!("[ChatDirect] Using system Python3 with hermes_agent module");
-            return Ok("python3".to_string());
-        }
-    }
-
-    // Method 4: Check for hermes-agent module in system Python
-    let module_check2 = create_command("wsl")
-        .args([
-            "-e",
-            "bash",
-            "-c",
-            "python -c 'import hermes_agent' 2>/dev/null && echo 'available' || echo 'not_found'",
-        ])
-        .output();
-
-    if let Ok(output) = module_check2 {
-        let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if result == "available" {
-            println!("[ChatDirect] Using system Python with hermes_agent module");
-            return Ok("python".to_string());
-        }
-    }
-
-    // Method 5: Check if python3 exists at all
-    let python3_check = create_command("wsl")
-        .args([
-            "-e",
-            "bash",
-            "-c",
-            "command -v python3 && echo 'found' || echo 'not_found'",
-        ])
-        .output();
-
-    if let Ok(output) = python3_check {
-        let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if result == "found" {
-            println!("[ChatDirect] Falling back to system python3");
-            return Ok("python3".to_string());
-        }
-    }
-
-    // Method 6: Check if python exists
-    let python_check = create_command("wsl")
-        .args([
-            "-e",
-            "bash",
-            "-c",
-            "command -v python && echo 'found' || echo 'not_found'",
-        ])
-        .output();
-
-    if let Ok(output) = python_check {
-        let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if result == "found" {
-            println!("[ChatDirect] Falling back to system python");
-            return Ok("python".to_string());
-        }
-    }
-
-    Err("No Python found in WSL. Please install Python or hermes-agent.".to_string())
+    let env = resolve_environment().map_err(|e| e.to_string())?;
+    env.runtime
+        .python_path
+        .ok_or_else(|| "No Python found in Hermes runtime. Please install Python or hermes-agent.".to_string())
 }
 
 /// Check if Hermes Agent runtime used by stream_agent.py is importable.
 fn check_hermes_runtime_imports(python_path: &str) -> Result<bool, String> {
+    let import_root = resolve_environment()
+        .ok()
+        .and_then(|env| env.runtime.import_root)
+        .unwrap_or_else(|| "~/.hermes/hermes-agent/src".to_string());
     let script = r#"
 import os
 import sys
 
 candidate_paths = [
-    os.path.expanduser('~/.hermes/hermes-agent/src'),
+    os.path.expanduser(__IMPORT_ROOT__),
     '/usr/local/lib/hermes-agent/src',
 ]
 for path in candidate_paths:
@@ -200,7 +122,8 @@ try:
     print('available')
 except Exception as exc:
     print(f'not_found:{type(exc).__name__}:{exc}')
-"#;
+"#
+    .replace("__IMPORT_ROOT__", &format!("{import_root:?}"));
     let encoded = STANDARD.encode(script);
     let check_cmd = format!("echo '{}' | base64 -d | {} -", encoded, python_path);
 
@@ -258,8 +181,12 @@ pub fn check_hermes_health() -> Result<serde_json::Value, String> {
         println!("[ChatDirect] Warning: Failed to install scripts: {}", e);
     }
 
-    match find_python_path() {
-        Ok(python_path) => {
+    match resolve_environment() {
+        Ok(env) => {
+            let python_path = match env.runtime.python_path {
+                Some(path) => path,
+                None => return Ok(serde_json::json!({ "status": "unhealthy" })),
+            };
             match check_hermes_runtime_imports(&python_path) {
                 Ok(true) => Ok(serde_json::json!({ "status": "healthy" })),
                 Ok(false) => Ok(serde_json::json!({ "status": "degraded" })),
@@ -282,7 +209,7 @@ pub fn check_hermes_health() -> Result<serde_json::Value, String> {
 pub fn send_chat_message(
     messages: Vec<ChatMessage>,
     session_id: Option<String>,
-) -> Result<String, String> {
+) -> Result<SendChatMessageResponse, String> {
     println!(
         "[ChatDirect] Sending chat message ({} messages, session: {:?})",
         messages.len(),
@@ -301,9 +228,11 @@ pub fn send_chat_message(
 
     // Encode query and session_id as base64 to avoid shell injection
     // Use the stdin-based approach with stream_agent.py --stdin flag
+    let env = resolve_environment().map_err(|e| e.to_string())?;
+    let script_path = format!("{}/stream_agent.py", env.paths.app_dir);
     let cmd = format!(
-        "{} ~/.hermes/hermes-app/stream_agent.py --stdin",
-        python_path
+        "{} '{}' --stdin",
+        python_path, script_path
     );
 
     let stdin_json = serde_json::json!({
@@ -345,7 +274,14 @@ pub fn send_chat_message(
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
             let content = data.get("content").and_then(|v| v.as_str()).unwrap_or("");
-            return Ok(format!("session_id: {}\n{}", sid, content));
+            return Ok(SendChatMessageResponse {
+                session_id: sid.to_string(),
+                response: content.to_string(),
+                tool_calls_count: 0,
+                input_tokens: 0,
+                output_tokens: 0,
+                estimated_cost_usd: 0.0,
+            });
         }
     }
 
@@ -354,19 +290,28 @@ pub fn send_chat_message(
 
 /// Start Hermes Gateway (now just checks CLI)
 #[tauri::command(rename_all = "snake_case")]
-pub fn start_hermes_gateway() -> Result<String, String> {
+pub fn start_hermes_gateway() -> Result<GatewayCommandResponse, String> {
     let health = check_hermes_health()?;
     let status = health.get("status").and_then(|v| v.as_str()).unwrap_or("unhealthy");
     if status == "healthy" || status == "degraded" {
-        return Ok(format!("Hermes CLI available (status: {}) - direct mode enabled", status));
+        return Ok(GatewayCommandResponse {
+            ok: true,
+            status: status.to_string(),
+            message: Some(format!("Hermes CLI available (status: {}) - direct mode enabled", status)),
+        });
     }
     Err("Hermes CLI not found".to_string())
 }
 
 /// Restart Hermes Gateway
 #[tauri::command(rename_all = "snake_case")]
-pub fn restart_hermes_gateway() -> Result<String, String> {
-    start_hermes_gateway()
+pub fn restart_hermes_gateway() -> Result<GatewayCommandResponse, String> {
+    let response = start_hermes_gateway()?;
+    Ok(GatewayCommandResponse {
+        ok: response.ok,
+        status: response.status,
+        message: Some(response.message.unwrap_or_else(|| "Hermes gateway checked".to_string())),
+    })
 }
 
 /// Stream a chat message (simple version)
@@ -374,7 +319,7 @@ pub fn restart_hermes_gateway() -> Result<String, String> {
 pub fn stream_chat_message(
     messages: Vec<ChatMessage>,
     session_id: Option<String>,
-) -> Result<String, String> {
+) -> Result<SendChatMessageResponse, String> {
     send_chat_message(messages, session_id)
 }
 
@@ -423,14 +368,15 @@ pub async fn stream_chat_realtime(
 
     let app_clone = app.clone();
     let session_clone = session_id.clone();
+    let env = resolve_environment().map_err(|e| e.to_string())?;
+    let script_path = format!("{}/stream_agent.py", env.paths.app_dir);
 
     let handle = tokio::task::spawn_blocking(move || {
         // Clean up stale process entries before spawning a new one
         cleanup_stale_processes();
 
         // Build command to run stream_agent.py with --stdin flag
-        let script_path = "~/.hermes/hermes-app/stream_agent.py";
-        let cmd_str = format!("{} {} --stdin", python_path, script_path);
+        let cmd_str = format!("{} '{}' --stdin", python_path, script_path);
 
         // Build JSON input for stdin
         let stdin_json = serde_json::json!({
@@ -948,4 +894,3 @@ pub fn cleanup_stale_processes() {
         println!("[ChatCleanup] Cleaned up {} stale process entr(ies)", stale_keys.len());
     }
 }
-

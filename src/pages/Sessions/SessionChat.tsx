@@ -1,8 +1,16 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { streamChatRealtime, checkHermesApiHealth, respondApproval, abortChat } from '../../services/hermesChat';
+import {
+  respondApproval,
+  respondClarify,
+  respondSecret,
+} from '../../services/hermesChat';
 import { useTranslation } from '../../hooks/useTranslation';
-import { ChatInput } from '../../components/chat';
+import { useHermesReadiness } from '../../hooks/useHermesReadiness';
+import { useStreamChat } from '../../hooks/useStreamChat';
+import { useNavigationStore } from '../../stores';
+import { ChatInput, PermissionCard, ClarifyCard, SecretCard } from '../../components/chat';
 import type { ChatInputHandle, AttachedFile } from '../../components/chat';
+import { ThinkingBlock } from '../../components/chat/ThinkingBlock';
 import type { ChatMessage, ToolCallInfo } from '../../stores/chatStore';
 import { BotIcon, ChevronDownIcon, ChevronUpIcon, CopyIcon, ToolIcon, UserIcon, XIcon } from '../../components';
 import { MarkdownRenderer } from '../../components/ui/MarkdownRenderer';
@@ -18,9 +26,9 @@ const ToolCallBlock: React.FC<{ tools: ToolCallInfo[]; isStreaming?: boolean; la
   const [expanded, setExpanded] = useState(false);
   if (!tools || tools.length === 0) return null;
 
-  const runningLabel = lang === 'zh' ? '进行中...' : 'running...';
-  const failedLabel = lang === 'zh' ? '失败' : 'FAILED';
-  const toolCallsLabel = lang === 'zh' ? '工具调用' : 'tool calls';
+  const runningLabel = lang === 'zh' ? '杩涜涓?..' : 'running...';
+  const failedLabel = lang === 'zh' ? '澶辫触' : 'FAILED';
+  const toolCallsLabel = lang === 'zh' ? '宸ュ叿璋冪敤' : 'tool calls';
 
   return (
     <div className="tc-tools">
@@ -51,7 +59,7 @@ const ToolCallBlock: React.FC<{ tools: ToolCallInfo[]; isStreaming?: boolean; la
 const MessageBubble: React.FC<{ message: ChatMessage; onCopy: (content: string) => void; lang: 'zh' | 'en'; t: (key: string) => string }> = React.memo(({ message, onCopy, lang, t }) => {
   const [showActions, setShowActions] = useState(false);
   const content = normalizeContent(message.content);
-  const roleLabel = message.role === 'user' ? (lang === 'zh' ? '你' : 'You') : (lang === 'zh' ? '助手' : 'Assistant');
+  const roleLabel = message.role === 'user' ? (lang === 'zh' ? '浣?' : 'You') : (lang === 'zh' ? '鍔╂墜' : 'Assistant');
 
   return (
     <div
@@ -71,6 +79,9 @@ const MessageBubble: React.FC<{ message: ChatMessage; onCopy: (content: string) 
         )}
       </div>
       <div className="tc-msg-body">
+        {message.reasoning && (
+          <ThinkingBlock content={message.reasoning} label={t('chat.thinking').replace('...', '')} />
+        )}
         {message.role === 'assistant' ? (
           <div className="tc-msg-text">
             <MarkdownRenderer content={content} />
@@ -94,16 +105,33 @@ interface SessionChatProps {
 
 export const SessionChat: React.FC<SessionChatProps> = ({ session, initialMessages, onClose }) => {
   const { t, lang } = useTranslation();
+  const setActiveItem = useNavigationStore((s) => s.setActiveItem);
+  const { readiness, refreshReadiness } = useHermesReadiness();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
+  const [reasoningText, setReasoningText] = useState('');
   const [streamingTools, setStreamingTools] = useState<ToolCallInfo[]>([]);
-  const [apiAvailable, setApiAvailable] = useState<boolean | null>(null);
+  const [pendingPermission, setPendingPermission] = useState<{
+    id: string;
+    command: string;
+    description: string;
+    allow_permanent: boolean;
+    choices?: Array<'once' | 'session' | 'always' | 'deny'>;
+  } | null>(null);
+  const [pendingClarify, setPendingClarify] = useState<{
+    id: string;
+    question: string;
+    choices: string[];
+    is_open_ended: boolean;
+  } | null>(null);
+  const [pendingSecret, setPendingSecret] = useState<{
+    id: string;
+    var_name: string;
+    prompt: string;
+    metadata: Record<string, unknown>;
+  } | null>(null);
 
-  const isStoppedRef = useRef(false);
-  const isStreamingRef = useRef(false);
-  const streamingContentRef = useRef('');
-  const streamingToolsRef = useRef<ToolCallInfo[]>([]);
   const chatInputRef = useRef<ChatInputHandle>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -115,6 +143,7 @@ export const SessionChat: React.FC<SessionChatProps> = ({ session, initialMessag
         role: m.role as 'user' | 'assistant',
         content: normalizeContent(m.content),
         timestamp: m.timestamp,
+        reasoning: m.reasoning ? normalizeContent(m.reasoning) : undefined,
         tools: m.tool_calls?.map((tc) => ({
           name: tc.name,
           event_type: 'tool.completed',
@@ -126,148 +155,193 @@ export const SessionChat: React.FC<SessionChatProps> = ({ session, initialMessag
   }, [initialMessages]);
 
   useEffect(() => {
-    checkHermesApiHealth().then((available) => setApiAvailable(available));
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (isStreamingRef.current) {
-        abortChat(session.id).catch(() => {});
-      }
-    };
-  }, [session.id]);
-
-  useEffect(() => {
     const container = scrollContainerRef.current;
     if (container) {
       requestAnimationFrame(() => {
         container.scrollTop = container.scrollHeight;
       });
     }
-  }, [messages, streamingContent, isStreaming]);
+  }, [messages, streamingContent, reasoningText, isStreaming, pendingPermission, pendingClarify, pendingSecret]);
+
+  const resetStreamingState = useCallback(() => {
+    setStreamingContent('');
+    setReasoningText('');
+    setStreamingTools([]);
+  }, []);
+
+  const appendAssistantMessage = useCallback((content: string, reasoning?: string, tools?: ToolCallInfo[]) => {
+    setMessages((prev) => [...prev, {
+      id: nextId(),
+      role: 'assistant',
+      content,
+      timestamp: new Date().toISOString(),
+      reasoning: reasoning || undefined,
+      tools: tools && tools.length > 0 ? [...tools] : undefined,
+    }]);
+  }, []);
+
+  const {
+    send,
+    abort,
+    getSnapshot,
+    isStopped,
+  } = useStreamChat({
+    sessionId: session.id,
+    onContentChunk: (_chunk, accumulated) => {
+      setStreamingContent(accumulated);
+    },
+    onReasoningChunk: (_text, accumulated) => {
+      setReasoningText(accumulated);
+    },
+    onToolCall: (tool) => {
+      setStreamingTools((prev) => [...prev, tool]);
+    },
+    onApproval: (approval) => {
+      setPendingPermission(approval);
+    },
+    onClarify: (clarify) => {
+      setPendingClarify(clarify);
+    },
+    onSecret: (secret) => {
+      setPendingSecret(secret);
+    },
+    onComplete: (result) => {
+      if (isStopped.current) return;
+      setIsStreaming(false);
+      appendAssistantMessage(
+        result.content,
+        result.reasoning || undefined,
+        result.tools,
+      );
+      resetStreamingState();
+    },
+    onError: (result) => {
+      if (isStopped.current) return;
+      setIsStreaming(false);
+      if (result.content.trim()) {
+        appendAssistantMessage(result.content, result.reasoning || undefined, result.tools);
+      } else {
+        appendAssistantMessage(
+          `${t('chat.error')}: ${cleanErrorMessage(result.error)}. ${t('chat.ensureGateway')}`,
+          result.reasoning || undefined,
+        );
+      }
+      resetStreamingState();
+    },
+    onStatusChange: (status) => {
+      setIsStreaming(status === 'streaming');
+    },
+  });
+
+  useEffect(() => {
+    return () => {
+      if (isStreaming) {
+        abort().catch(() => {});
+      }
+    };
+  }, [abort, isStreaming]);
 
   const handleSendMessage = useCallback(async (text: string, _files?: AttachedFile[]) => {
+    if (pendingPermission) {
+      const choice = text.trim().toLowerCase();
+      const normalizedChoice =
+        choice === 'y' || choice === 'yes' || choice === 'approve' || choice === 'approved' ? 'once' :
+        choice === 'once' || choice === 'session' || choice === 'always' || choice === 'deny' ? choice :
+        'deny';
+      await respondApproval(pendingPermission.id, normalizedChoice);
+      setPendingPermission(null);
+      return;
+    }
+
+    if (pendingClarify) {
+      await respondClarify(pendingClarify.id, text.trim());
+      setPendingClarify(null);
+      return;
+    }
+
+    if (pendingSecret) {
+      await respondSecret(pendingSecret.id, text.trim());
+      setPendingSecret(null);
+      return;
+    }
+
+    if (!readiness.ready) {
+      appendAssistantMessage(`${readiness.title}. ${readiness.description}`);
+      return;
+    }
+
     if (!text.trim() || isStreaming) return;
 
-    isStoppedRef.current = false;
-    const userMsg: ChatMessage = {
+    setMessages((prev) => [...prev, {
       id: nextId(),
       role: 'user',
       content: text.trim(),
       timestamp: new Date().toISOString(),
-    };
-    setMessages((prev) => [...prev, userMsg]);
+    }]);
 
-    setIsStreaming(true);
-    isStreamingRef.current = true;
-    setStreamingContent('');
-    setStreamingTools([]);
-    streamingContentRef.current = '';
-    streamingToolsRef.current = [];
+    resetStreamingState();
 
     const historyForApi = messages.slice(-20).map((m) => ({ role: m.role, content: m.content }));
 
     try {
-      await streamChatRealtime(text.trim(), session.id, { history: historyForApi, callbacks: {
-        onChunk: (_chunk, accumulated) => {
-          if (isStoppedRef.current) return;
-          streamingContentRef.current = accumulated;
-          setStreamingContent(accumulated);
-        },
-        onReasoning: () => {},
-        onTool: (tool) => {
-          if (isStoppedRef.current) return;
-          streamingToolsRef.current = [...streamingToolsRef.current, tool];
-          setStreamingTools([...streamingToolsRef.current]);
-        },
-        onComplete: (content) => {
-          if (isStoppedRef.current) return;
-          setIsStreaming(false);
-          isStreamingRef.current = false;
-          const assistantMsg: ChatMessage = {
-            id: nextId(),
-            role: 'assistant',
-            content: content || streamingContentRef.current,
-            timestamp: new Date().toISOString(),
-            tools: streamingToolsRef.current.length > 0 ? [...streamingToolsRef.current] : undefined,
-          };
-          setMessages((prev) => [...prev, assistantMsg]);
-          streamingContentRef.current = '';
-          streamingToolsRef.current = [];
-          setStreamingContent('');
-          setStreamingTools([]);
-        },
-        onError: (error) => {
-          if (isStoppedRef.current) return;
-          setIsStreaming(false);
-          isStreamingRef.current = false;
-          const accumulated = streamingContentRef.current;
-          const tools = streamingToolsRef.current;
-          if (accumulated.trim()) {
-            setMessages((prev) => [...prev, {
-              id: nextId(),
-              role: 'assistant',
-              content: accumulated,
-              timestamp: new Date().toISOString(),
-              tools: tools.length > 0 ? [...tools] : undefined,
-            }]);
-          } else {
-            setMessages((prev) => [...prev, {
-              id: nextId(),
-              role: 'assistant',
-              content: `${t('chat.error')}: ${cleanErrorMessage(error)}. ${t('chat.ensureGateway')}`,
-              timestamp: new Date().toISOString(),
-            }]);
-          }
-          streamingContentRef.current = '';
-          streamingToolsRef.current = [];
-          setStreamingContent('');
-          setStreamingTools([]);
-        },
-        onApproval: (approval) => {
-          respondApproval(approval.id, 'deny').catch(() => {});
-        },
-      } });
+      await send(text.trim(), historyForApi);
     } catch (error) {
-      setIsStreaming(false);
-      isStreamingRef.current = false;
-      setMessages((prev) => [...prev, {
-        id: nextId(),
-        role: 'assistant',
-        content: `${t('chat.error')}: ${cleanErrorMessage(error)}`,
-        timestamp: new Date().toISOString(),
-      }]);
-      streamingContentRef.current = '';
-      streamingToolsRef.current = [];
-      setStreamingContent('');
-      setStreamingTools([]);
+      appendAssistantMessage(`${t('chat.error')}: ${cleanErrorMessage(error)}`);
+      resetStreamingState();
     }
-  }, [isStreaming, messages, session.id, t]);
+  }, [appendAssistantMessage, isStreaming, messages, pendingClarify, pendingPermission, pendingSecret, readiness, resetStreamingState, send, t]);
 
   const handleStop = useCallback(async () => {
-    isStoppedRef.current = true;
+    const snapshot = getSnapshot();
     setIsStreaming(false);
-    isStreamingRef.current = false;
     try {
-      await abortChat(session.id);
+      await abort();
     } catch {
       // Ignore abort errors when the stream has already finished.
     }
-    streamingContentRef.current = '';
-    streamingToolsRef.current = [];
-    setStreamingContent('');
-    setStreamingTools([]);
-  }, [session.id]);
+    if (snapshot.content.trim()) {
+      appendAssistantMessage(
+        snapshot.content,
+        snapshot.reasoning || undefined,
+        snapshot.tools,
+      );
+    }
+    resetStreamingState();
+  }, [abort, appendAssistantMessage, getSnapshot, resetStreamingState]);
+
+  const handleApprovalResponse = useCallback(async (choice: 'once' | 'session' | 'always' | 'deny') => {
+    if (!pendingPermission) return;
+    await respondApproval(pendingPermission.id, choice);
+    setPendingPermission(null);
+  }, [pendingPermission]);
+
+  const handleClarifyResponse = useCallback(async (answer: string) => {
+    if (!pendingClarify) return;
+    await respondClarify(pendingClarify.id, answer);
+    setPendingClarify(null);
+  }, [pendingClarify]);
+
+  const handleSecretResponse = useCallback(async (value: string) => {
+    if (!pendingSecret) return;
+    await respondSecret(pendingSecret.id, value);
+    setPendingSecret(null);
+  }, [pendingSecret]);
+
+  const handleSecretSkip = useCallback(async () => {
+    if (!pendingSecret) return;
+    await respondSecret(pendingSecret.id, '');
+    setPendingSecret(null);
+  }, [pendingSecret]);
 
   const copyMessage = useCallback((content: string) => {
     navigator.clipboard.writeText(content).catch(() => {});
   }, []);
 
   const statusLabel = isStreaming
-    ? lang === 'zh' ? '流式输出中' : 'Streaming'
-    : apiAvailable
-      ? lang === 'zh' ? '就绪' : 'Ready'
-      : lang === 'zh' ? '离线' : 'Offline';
+    ? lang === 'zh' ? '娴佸紡杈撳嚭涓?' : 'Streaming'
+    : readiness.ready
+      ? lang === 'zh' ? '灏辩华' : 'Ready'
+      : lang === 'zh' ? '绂荤嚎' : 'Offline';
 
   return (
     <div className="session-chat-overlay" onClick={onClose}>
@@ -276,7 +350,7 @@ export const SessionChat: React.FC<SessionChatProps> = ({ session, initialMessag
           <span className="tc-header-title">{session.chat_name || session.id.slice(0, 12)}</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span className={`tc-header-status ${isStreaming ? 'streaming' : ''}`}>
-              <span className={`chat-status-dot ${isStreaming ? 'streaming' : apiAvailable ? 'ready' : 'offline'}`} />
+              <span className={`chat-status-dot ${isStreaming ? 'streaming' : readiness.ready ? 'ready' : 'offline'}`} />
               {statusLabel}
             </span>
             <button className="chat-close-btn" onClick={onClose} title={t('common.close')}>
@@ -286,6 +360,29 @@ export const SessionChat: React.FC<SessionChatProps> = ({ session, initialMessag
         </div>
 
         <div className="tc-messages" ref={scrollContainerRef}>
+          {!readiness.loading && !readiness.ready && (
+            <div className="session-chat-readiness">
+              <div className="session-chat-readiness-copy">
+                <strong>{readiness.title}</strong>
+                <span>{readiness.description}</span>
+              </div>
+              <div className="session-chat-readiness-actions">
+                <button
+                  className="session-chat-readiness-btn"
+                  onClick={() => {
+                    onClose();
+                    setActiveItem('settings');
+                  }}
+                >
+                  {t('chat.openSettings')}
+                </button>
+                <button className="session-chat-readiness-btn secondary" onClick={refreshReadiness}>
+                  {t('common.recheck')}
+                </button>
+              </div>
+            </div>
+          )}
+
           {messages.length === 0 && !isStreaming && (
             <div className="tc-empty">
               <p>{t('chat.startConversation')}</p>
@@ -301,13 +398,20 @@ export const SessionChat: React.FC<SessionChatProps> = ({ session, initialMessag
               <div className="tc-msg-header">
                 <span className="tc-msg-role">
                   <BotIcon size={14} />
-                  {lang === 'zh' ? '助手' : 'Assistant'}
+                  {lang === 'zh' ? '鍔╂墜' : 'Assistant'}
                 </span>
-                <span className="tc-streaming-indicator">{lang === 'zh' ? '正在输入...' : 'typing...'}</span>
+                <span className="tc-streaming-indicator">{lang === 'zh' ? '姝ｅ湪杈撳叆...' : 'typing...'}</span>
               </div>
               <div className="tc-msg-body">
                 {streamingTools.length > 0 && (
                   <ToolCallBlock tools={streamingTools} isStreaming lang={lang} />
+                )}
+                {reasoningText && (
+                  <ThinkingBlock
+                    content={reasoningText}
+                    isActive
+                    label={lang === 'zh' ? '鎬濊€?' : 'Thinking'}
+                  />
                 )}
                 <div className="tc-msg-text">
                   {streamingContent ? <MarkdownRenderer content={streamingContent} /> : ' '}
@@ -315,6 +419,22 @@ export const SessionChat: React.FC<SessionChatProps> = ({ session, initialMessag
                 </div>
               </div>
             </div>
+          )}
+
+          {pendingPermission && (
+            <PermissionCard approval={pendingPermission} onRespond={handleApprovalResponse} />
+          )}
+
+          {pendingClarify && (
+            <ClarifyCard clarify={pendingClarify} onRespond={handleClarifyResponse} />
+          )}
+
+          {pendingSecret && (
+            <SecretCard
+              secret={pendingSecret}
+              onRespond={handleSecretResponse}
+              onSkip={handleSecretSkip}
+            />
           )}
 
           <div />
@@ -326,7 +446,8 @@ export const SessionChat: React.FC<SessionChatProps> = ({ session, initialMessag
             onSendMessage={handleSendMessage}
             onStop={handleStop}
             isStreaming={isStreaming}
-            disabled={apiAvailable === false}
+            hasPendingInput={!!pendingPermission || !!pendingClarify || !!pendingSecret}
+            disabled={!readiness.loading && !readiness.ready && !pendingPermission && !pendingClarify && !pendingSecret}
           />
         </div>
       </div>

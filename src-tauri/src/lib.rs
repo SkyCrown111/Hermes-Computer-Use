@@ -7,6 +7,7 @@
 mod core;
 mod features;
 mod commands;
+mod hermes_adapter;
 
 use std::sync::Arc;
 
@@ -14,6 +15,7 @@ use std::sync::Arc;
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::Manager;
+use commands::utils::needs_wsl;
 
 // Re-export commands for handler registration
 use commands::{
@@ -26,17 +28,20 @@ use commands::{
     check_hermes_health,
     check_wechat_qrcode_status,
     cleanup_database_messages,
+    count_sessions,
     clear_logs,
     copy_file,
     create_checkpoint,
     create_directory,
     create_kanban_board,
+    create_hermes_profile,
     create_kanban_task,
     create_skill,
     delete_checkpoint,
     delete_cron_job,
     delete_file,
     delete_kanban_task,
+    delete_hermes_profile,
     delete_memory_section,
     delete_session,
     delete_skill,
@@ -47,6 +52,7 @@ use commands::{
     export_logs,
     export_session,
     file_exists,
+    search_files,
     get_checkpoint_info,
     get_config_raw,
     get_config_section,
@@ -77,11 +83,13 @@ use commands::{
     get_platform_chats,
     get_platform_messages,
     get_session,
+    get_hermes_profile_soul,
     get_sessions_path,
     get_skill,
     get_skill_categories,
     get_skill_detail,
     get_skills_path,
+    get_readiness_status,
     get_system_status,
     get_usage_analytics,
     get_wechat_qrcode,
@@ -91,6 +99,7 @@ use commands::{
     list_cron_jobs,
     list_directory,
     list_mcp_servers,
+    list_hermes_profiles,
     list_sessions,
     list_skills,
     load_config,
@@ -108,12 +117,14 @@ use commands::{
     respond_clarify,
     respond_secret,
     restart_hermes_gateway,
+    rename_hermes_profile,
     restore_checkpoint,
     resume_cron_job,
     save_config,
     save_cron_job,
     save_memory,
     save_skill,
+    show_hermes_profile,
     set_kanban_board_archived,
     start_log_stream,
     stop_log_stream,
@@ -126,6 +137,8 @@ use commands::{
     send_chat_message,
     send_platform_message,
     start_hermes_gateway,
+    open_hermes_profile_shell,
+    run_hermes_profile_setup,
     start_mcp_server,
     stop_mcp_server,
     stream_chat_message,
@@ -139,10 +152,12 @@ use commands::{
     trigger_cron_job,
     update_config_raw,
     update_config_section,
+    update_hermes_profile_soul,
     update_kanban_board,
     update_kanban_task,
     update_mcp_server,
     update_platform_config,
+    use_hermes_profile,
     update_session_title,
     write_file,
     write_file_binary,
@@ -160,6 +175,10 @@ use commands::{
     restore_checkpoint_v2,
     delete_checkpoint_v2,
 };
+use hermes_adapter::{
+    check_hermes_capabilities, get_hermes_environment, get_hermes_paths, get_hermes_runtime,
+    resolve_environment,
+};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -168,13 +187,29 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
+            let hermes_environment = resolve_environment().ok();
+            let config_lock_path = if needs_wsl() {
+                std::path::PathBuf::from(shellexpand::tilde("~/.hermes/config.yaml").to_string())
+            } else {
+                hermes_environment
+                    .as_ref()
+                    .map(|env| std::path::PathBuf::from(&env.paths.config_yaml))
+                    .unwrap_or_else(|| std::path::PathBuf::from(shellexpand::tilde("~/.hermes/config.yaml").to_string()))
+            };
+            let checkpoints_path = if needs_wsl() {
+                std::path::PathBuf::from(shellexpand::tilde("~/.hermes/checkpoints").to_string())
+            } else {
+                hermes_environment
+                    .as_ref()
+                    .map(|env| std::path::PathBuf::from(&env.paths.checkpoints_dir))
+                    .unwrap_or_else(|| std::path::PathBuf::from(shellexpand::tilde("~/.hermes/checkpoints").to_string()))
+            };
+
             // Initialize core modules
             let event_bus = Arc::new(core::EventBus::new(app.handle().clone()));
             let process_manager = Arc::new(core::ProcessManager::new(event_bus.clone()));
             let hermes_cli = Arc::new(core::HermesCli::new());
-            let config_lock = Arc::new(core::ConfigLock::new(
-                std::path::PathBuf::from(shellexpand::tilde("~/.hermes/config.yaml").to_string())
-            ));
+            let config_lock = Arc::new(core::ConfigLock::new(config_lock_path));
             
             // Initialize performance cache (default TTL: 10 seconds)
             let performance_cache = Arc::new(core::PerformanceCache::new(
@@ -196,7 +231,7 @@ pub fn run() {
 
             // Initialize checkpoint manager
             let checkpoint_manager = Arc::new(features::CheckpointManager::new(
-                std::path::PathBuf::from(shellexpand::tilde("~/.hermes/checkpoints").to_string()),
+                checkpoints_path,
                 event_bus.clone(),
             ));
 
@@ -303,6 +338,16 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             load_config,
             save_config,
+            list_hermes_profiles,
+            create_hermes_profile,
+            use_hermes_profile,
+            delete_hermes_profile,
+            rename_hermes_profile,
+            show_hermes_profile,
+            get_hermes_profile_soul,
+            update_hermes_profile_soul,
+            open_hermes_profile_shell,
+            run_hermes_profile_setup,
             get_data_dir,
             check_data_dir_exists,
             get_config_raw,
@@ -310,10 +355,15 @@ pub fn run() {
             get_config_section,
             update_config_section,
             export_config,
+            get_hermes_environment,
+            get_hermes_paths,
+            get_hermes_runtime,
+            check_hermes_capabilities,
             list_sessions,
             get_session,
             delete_session,
             get_sessions_path,
+            count_sessions,
             update_session_title,
             search_sessions,
             export_session,
@@ -347,6 +397,7 @@ pub fn run() {
             get_cron_path,
             trigger_cron_job,
             get_cron_outputs,
+            get_readiness_status,
             get_system_status,
             get_usage_analytics,
             health_check,
@@ -398,6 +449,7 @@ pub fn run() {
             move_file,
             copy_file,
             file_exists,
+            search_files,
             get_file_tree,
             read_file_binary,
             write_file_binary,

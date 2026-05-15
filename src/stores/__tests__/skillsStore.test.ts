@@ -45,6 +45,8 @@ describe('SkillsStore', () => {
       executionHistory: [],
       isLoadingHistory: false,
       error: null,
+      lastLoadedSkillsAt: null,
+      lastLoadedCategoriesAt: null,
     });
     vi.clearAllMocks();
   });
@@ -78,6 +80,15 @@ describe('SkillsStore', () => {
 
       expect(useSkillsStore.getState().error).toBe('Network error');
     });
+
+    it('should reuse fresh cached skills', async () => {
+      vi.mocked(skillsApi.listSkills).mockResolvedValue([]);
+
+      await useSkillsStore.getState().fetchSkills();
+      await useSkillsStore.getState().fetchSkills();
+
+      expect(skillsApi.listSkills).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('fetchCategories', () => {
@@ -91,6 +102,15 @@ describe('SkillsStore', () => {
       await useSkillsStore.getState().fetchCategories();
 
       expect(useSkillsStore.getState().categories).toEqual(mockCategories);
+    });
+
+    it('should reuse fresh cached categories', async () => {
+      vi.mocked(skillsApi.getSkillCategories).mockResolvedValue({ categories: [] });
+
+      await useSkillsStore.getState().fetchCategories();
+      await useSkillsStore.getState().fetchCategories();
+
+      expect(skillsApi.getSkillCategories).toHaveBeenCalledTimes(1);
     });
   });
 

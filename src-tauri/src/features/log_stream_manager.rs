@@ -3,6 +3,7 @@
 //! Provides real-time log streaming functionality for monitoring Hermes Agent logs.
 
 use crate::core::event_bus::EventBus;
+use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -34,11 +35,13 @@ pub struct LogFilter {
 
 /// Stream handle for tracking active streams
 struct StreamHandle {
-    stream_id: String,
-    log_path: String,
-    filter: Option<LogFilter>,
     cancel_token: CancellationToken,
 }
+
+static LOG_ENTRY_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^\[([^\]]+)\]\s*\[([^\]]+)\]\s*(?:\[([^\]]+)\]\s*)?(.*)$")
+        .expect("log entry regex must be valid")
+});
 
 /// Log Stream Manager
 pub struct LogStreamManager {
@@ -69,9 +72,6 @@ impl LogStreamManager {
 
         // Create stream handle
         let handle = StreamHandle {
-            stream_id: stream_id.clone(),
-            log_path: log_path.to_string(),
-            filter: filter.clone(),
             cancel_token: cancel_token.clone(),
         };
 
@@ -177,7 +177,7 @@ impl LogStreamManager {
     async fn stream_logs_task(
         log_path: String,
         filter: Option<LogFilter>,
-        event_bus: Arc<EventBus>,
+        _event_bus: Arc<EventBus>,
         cancel_token: CancellationToken,
         stream_id: String,
     ) -> Result<(), String> {
@@ -245,9 +245,7 @@ impl LogStreamManager {
         // Try to parse format: [TIMESTAMP] [LEVEL] [MODULE] message
         // Example: [2024-01-15 10:30:45] [INFO] [hermes.core] Starting application
 
-        let re = Regex::new(r"^\[([^\]]+)\]\s*\[([^\]]+)\]\s*(?:\[([^\]]+)\]\s*)?(.*)$").unwrap();
-
-        if let Some(caps) = re.captures(line) {
+        if let Some(caps) = LOG_ENTRY_REGEX.captures(line) {
             LogEntry {
                 timestamp: caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default(),
                 level: caps.get(2).map(|m| m.as_str().to_string()).unwrap_or_else(|| "INFO".to_string()),

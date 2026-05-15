@@ -2,6 +2,7 @@
 //! Direct tool calling without chat conversation
 
 use super::utils::create_command;
+use crate::hermes_adapter::resolve_environment;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
 
@@ -26,21 +27,26 @@ pub struct ToolResult {
 
 /// Check if hermes-agent Python modules are available
 fn hermes_agent_available() -> bool {
-    let output = create_command("wsl")
-        .args(["bash", "-c", "test -d ~/.hermes/hermes-agent && echo 'available' || echo 'not_found'"])
-        .output();
-
-    match output {
-        Ok(o) if o.status.success() => {
-            String::from_utf8_lossy(&o.stdout).trim() == "available"
-        }
-        _ => false,
-    }
+    resolve_environment()
+        .map(|env| env.runtime.import_root.is_some() && env.runtime.python_path.is_some())
+        .unwrap_or(false)
 }
 
 /// List all available tools from Hermes Agent
 #[tauri::command(rename_all = "snake_case")]
 pub fn list_available_tools() -> Result<Vec<ToolInfo>, String> {
+    let env = resolve_environment().map_err(|e| e.to_string())?;
+    let import_root = env
+        .runtime
+        .import_root
+        .clone()
+        .ok_or_else(|| "Hermes import root is not available".to_string())?;
+    let python_path = env
+        .runtime
+        .python_path
+        .clone()
+        .ok_or_else(|| "Hermes Python runtime is not available".to_string())?;
+
     if !hermes_agent_available() {
         return Ok(vec![]);
     }
@@ -48,7 +54,7 @@ pub fn list_available_tools() -> Result<Vec<ToolInfo>, String> {
     let script = r#"
 import sys, json
 try:
-    sys.path.insert(0, str(__import__('pathlib').Path.home() / '.hermes' / 'hermes-agent'))
+    sys.path.insert(0, __IMPORT_ROOT__)
     from tools.registry import registry
     from tools import discover_builtin_tools
     discover_builtin_tools()
@@ -65,10 +71,11 @@ try:
     print(json.dumps(result))
 except Exception as e:
     print(json.dumps([]))
-"#;
+"#
+    .replace("__IMPORT_ROOT__", &format!("{import_root:?}"));
 
     let output = create_command("wsl")
-        .args(["python3", "-c", script])
+        .args([&python_path, "-c", &script])
         .output()
         .map_err(|e| format!("Failed to list tools: {}", e))?;
 
@@ -92,6 +99,18 @@ pub fn get_tool_schema(tool_name: String) -> Result<serde_json::Value, String> {
         return Err(format!("Invalid tool name: {}", tool_name));
     }
 
+    let env = resolve_environment().map_err(|e| e.to_string())?;
+    let import_root = env
+        .runtime
+        .import_root
+        .clone()
+        .ok_or_else(|| "Hermes import root is not available".to_string())?;
+    let python_path = env
+        .runtime
+        .python_path
+        .clone()
+        .ok_or_else(|| "Hermes Python runtime is not available".to_string())?;
+
     if !hermes_agent_available() {
         return Err("Hermes Agent is not installed".to_string());
     }
@@ -99,7 +118,7 @@ pub fn get_tool_schema(tool_name: String) -> Result<serde_json::Value, String> {
     let script = r#"
 import sys, json, base64
 try:
-    sys.path.insert(0, str(__import__('pathlib').Path.home() / '.hermes' / 'hermes-agent'))
+    sys.path.insert(0, __IMPORT_ROOT__)
     from tools.registry import registry
     from tools import discover_builtin_tools
     discover_builtin_tools()
@@ -112,13 +131,14 @@ try:
         print(json.dumps({'error': 'Tool not found'}))
 except Exception as e:
     print(json.dumps({'error': str(e)}))
-"#;
+"#
+    .replace("__IMPORT_ROOT__", &format!("{import_root:?}"));
 
     let tool_name_b64 = STANDARD.encode(&tool_name);
 
     // Use stdin pipe instead of echo+pipe to avoid shell escaping issues
     let mut child = create_command("wsl")
-        .args(["python3", "-c", script])
+        .args([&python_path, "-c", &script])
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -165,6 +185,18 @@ pub async fn invoke_tool(
         return Err(format!("Invalid tool name: {}", tool_name));
     }
 
+    let env = resolve_environment().map_err(|e| e.to_string())?;
+    let import_root = env
+        .runtime
+        .import_root
+        .clone()
+        .ok_or_else(|| "Hermes import root is not available".to_string())?;
+    let python_path = env
+        .runtime
+        .python_path
+        .clone()
+        .ok_or_else(|| "Hermes Python runtime is not available".to_string())?;
+
     if !hermes_agent_available() {
         return Err("Hermes Agent is not installed".to_string());
     }
@@ -181,7 +213,7 @@ pub async fn invoke_tool(
     let script = r#"
 import sys, json, base64, time
 try:
-    sys.path.insert(0, str(__import__('pathlib').Path.home() / '.hermes' / 'hermes-agent'))
+    sys.path.insert(0, __IMPORT_ROOT__)
     from tools.registry import registry
     from tools import discover_builtin_tools
     discover_builtin_tools()
@@ -209,11 +241,12 @@ try:
         print(json.dumps({'success': False, 'output': None, 'error': str(e), 'duration_ms': duration}))
 except Exception as e:
     print(json.dumps({'success': False, 'output': None, 'error': str(e)}))
-"#;
+"#
+    .replace("__IMPORT_ROOT__", &format!("{import_root:?}"));
 
     // Use stdin pipe instead of echo+pipe to avoid shell escaping issues
     let mut child = create_command("wsl")
-        .args(["python3", "-c", script])
+        .args([&python_path, "-c", &script])
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -241,6 +274,18 @@ except Exception as e:
 /// Get list of toolsets
 #[tauri::command(rename_all = "snake_case")]
 pub fn list_toolsets() -> Result<Vec<serde_json::Value>, String> {
+    let env = resolve_environment().map_err(|e| e.to_string())?;
+    let import_root = env
+        .runtime
+        .import_root
+        .clone()
+        .ok_or_else(|| "Hermes import root is not available".to_string())?;
+    let python_path = env
+        .runtime
+        .python_path
+        .clone()
+        .ok_or_else(|| "Hermes Python runtime is not available".to_string())?;
+
     if !hermes_agent_available() {
         return Ok(vec![]);
     }
@@ -248,7 +293,7 @@ pub fn list_toolsets() -> Result<Vec<serde_json::Value>, String> {
     let script = r#"
 import sys, json
 try:
-    sys.path.insert(0, str(__import__('pathlib').Path.home() / '.hermes' / 'hermes-agent'))
+    sys.path.insert(0, __IMPORT_ROOT__)
     from toolsets import TOOLSETS
     result = []
     for name, info in TOOLSETS.items():
@@ -261,10 +306,11 @@ try:
     print(json.dumps(result))
 except Exception:
     print(json.dumps([]))
-"#;
+"#
+    .replace("__IMPORT_ROOT__", &format!("{import_root:?}"));
 
     let output = create_command("wsl")
-        .args(["python3", "-c", script])
+        .args([&python_path, "-c", &script])
         .output()
         .map_err(|e| format!("Failed to list toolsets: {}", e))?;
 

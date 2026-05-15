@@ -34,7 +34,7 @@ interface KanbanState {
   fetchStats: () => Promise<void>;
   fetchTenants: () => Promise<void>;
   switchBoard: (slug: string) => Promise<boolean>;
-  createBoard: (params: CreateKanbanBoardParams) => Promise<boolean>;
+  createBoard: (params: CreateKanbanBoardParams, switchAfterCreate?: boolean) => Promise<boolean>;
   updateBoard: (params: UpdateKanbanBoardParams) => Promise<boolean>;
   setBoardArchived: (params: SetKanbanBoardArchivedParams) => Promise<boolean>;
   createTask: (params: CreateKanbanTaskParams) => Promise<boolean>;
@@ -143,13 +143,13 @@ export const useKanbanStore = create<KanbanState>((set, get) => ({
     }
   },
 
-  createBoard: async (params: CreateKanbanBoardParams) => {
+  createBoard: async (params: CreateKanbanBoardParams, switchAfterCreate = true) => {
     set({ error: null });
     try {
       await kanbanApi.createKanbanBoard(params);
       await get().fetchBoards();
       const nextBoard = params.slug.trim();
-      if (nextBoard) {
+      if (switchAfterCreate && nextBoard) {
         set(state => ({
           currentBoard: nextBoard,
           filters: { ...state.filters, board: nextBoard, tenant: null },

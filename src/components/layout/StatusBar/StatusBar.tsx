@@ -1,11 +1,12 @@
 // Global Status Bar - shows gateway status, model, token usage, background tasks
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { statusApi } from '../../../services/statusApi';
 import { useNavigationStore, useChatStore, useSessionStore } from '../../../stores';
 import { logger } from '../../../lib/logger';
 import type { SystemStatus } from '../../../types/status';
 import { toast } from '../../../stores/toastStore';
 import { TokenIcon, CpuIcon } from '../../ui/Icons';
+import { usePageVisibility, usePolling } from '../../../hooks';
 import { useTranslation } from '../../../hooks/useTranslation';
 import './StatusBar.css';
 
@@ -17,30 +18,22 @@ function formatTokens(n: number): string {
 
 export const StatusBar: React.FC = () => {
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const { t } = useTranslation();
+  const isPageVisible = usePageVisibility();
 
   const activeTabId = useNavigationStore((s) => s.activeTabId);
   const tokenUsage = useChatStore((s) => (activeTabId ? s.sessions[activeTabId]?.tokenUsage : undefined));
   const sessions = useSessionStore((s) => s.sessions);
   const activeSessionModel = activeTabId ? sessions.find((s) => s.id === activeTabId)?.model : undefined;
 
-  useEffect(() => {
-    const poll = async () => {
-      try {
-        const status = await statusApi.getSystemStatus();
-        setSystemStatus(status);
-      } catch (error) {
-        logger.debug('[StatusBar] Status polling failed, using last known state:', error);
-      }
-    };
-
-    poll();
-    pollingRef.current = setInterval(poll, 30_000);
-    return () => {
-      if (pollingRef.current) clearInterval(pollingRef.current);
-    };
-  }, []);
+  usePolling(async () => {
+    try {
+      const status = await statusApi.getSystemStatus();
+      setSystemStatus(status);
+    } catch (error) {
+      logger.debug('[StatusBar] Status polling failed, using last known state:', error);
+    }
+  }, 30_000, { enabled: isPageVisible });
 
   const gateway = systemStatus?.gateway;
   const isOnline = gateway?.status === 'online';

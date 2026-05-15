@@ -8,7 +8,7 @@ import { CheckIcon, CopyIcon } from '../Icons';
 import { useTranslation } from '../../../hooks/useTranslation';
 import './MarkdownRenderer.css';
 
-interface MarkdownRendererProps {
+export interface MarkdownRendererProps {
   content: string;
   searchQuery?: string;
 }

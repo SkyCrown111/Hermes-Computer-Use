@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useMemo, memo } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { MessageContent } from './MessageContent';
 import { ThinkingBlock } from './ThinkingBlock';
-import { MarkdownRenderer } from '../ui/MarkdownRenderer/MarkdownRenderer';
+import { MarkdownRenderer } from '../ui/MarkdownRenderer';
 import { parseToolJson } from './parseToolJson';
 import type { SessionSearchResult } from './constants';
 import type { ChatMessage } from '../../stores/chatStore';

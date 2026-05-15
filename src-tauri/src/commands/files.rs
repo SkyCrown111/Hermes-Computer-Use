@@ -69,6 +69,21 @@ pub struct FileContent {
     pub language: Option<String>,
 }
 
+/// File search result
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileSearchResult {
+    pub path: String,
+    pub file_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub matched_line: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub matched_content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context: Option<String>,
+    #[serde(rename = "type")]
+    pub file_type: FileType,
+}
+
 /// File operation result
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileOperationResult {
@@ -404,6 +419,117 @@ fn format_timestamp(ts: i64) -> String {
     chrono::DateTime::from_timestamp(ts, 0)
         .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
         .unwrap_or_else(|| "Unknown".to_string())
+}
+
+/// Search files by name/path/content under a directory
+#[tauri::command(rename_all = "snake_case")]
+pub async fn search_files(
+    path: String,
+    query: String,
+    recursive: Option<bool>,
+    include_hidden: Option<bool>,
+    file_pattern: Option<String>,
+) -> Result<Vec<FileSearchResult>, String> {
+    println!("[Files] Searching files in {} for {}", path, query);
+    let _ = validate_path(&path)?;
+
+    let trimmed_query = query.trim();
+    if trimmed_query.is_empty() {
+      return Ok(Vec::new());
+    }
+    if trimmed_query.contains('\0') {
+      return Err("Query contains null byte".to_string());
+    }
+
+    let recursive = recursive.unwrap_or(true);
+    let include_hidden = include_hidden.unwrap_or(false);
+    let file_pattern = file_pattern.unwrap_or_default();
+
+    let script = r#"
+import os
+import sys
+import json
+import fnmatch
+
+root = sys.argv[1]
+query = sys.argv[2].lower()
+recursive = sys.argv[3] == '1'
+include_hidden = sys.argv[4] == '1'
+pattern = sys.argv[5]
+results = []
+
+def should_skip_name(name):
+    return (not include_hidden) and name.startswith('.')
+
+def add_result(path, file_type, matched_line=None, matched_content=None):
+    results.append({
+        "path": path,
+        "file_name": os.path.basename(path),
+        "matched_line": matched_line,
+        "matched_content": matched_content,
+        "context": matched_content,
+        "type": file_type,
+    })
+
+for current_root, dirs, files in os.walk(os.path.expanduser(root)):
+    if not include_hidden:
+        dirs[:] = [d for d in dirs if not should_skip_name(d)]
+    if not recursive:
+        dirs[:] = []
+
+    for dir_name in dirs:
+        full_path = os.path.join(current_root, dir_name)
+        rel_match = query in dir_name.lower() or query in full_path.lower()
+        if pattern and not fnmatch.fnmatch(dir_name, pattern):
+            continue
+        if rel_match:
+            add_result(full_path, "directory")
+
+    for file_name in files:
+        if should_skip_name(file_name):
+            continue
+        if pattern and not fnmatch.fnmatch(file_name, pattern):
+            continue
+
+        full_path = os.path.join(current_root, file_name)
+        haystack = f"{file_name} {full_path}".lower()
+        if query in haystack:
+            add_result(full_path, "file")
+            continue
+
+        try:
+            with open(full_path, "r", encoding="utf-8", errors="ignore") as handle:
+                for idx, line in enumerate(handle, start=1):
+                    if query in line.lower():
+                        add_result(full_path, "file", idx, line.strip()[:240])
+                        break
+        except Exception:
+            continue
+
+print(json.dumps(results[:200]))
+"#;
+
+    let output = create_command("wsl")
+        .args([
+            "python3",
+            "-c",
+            script,
+            &path,
+            trimmed_query,
+            if recursive { "1" } else { "0" },
+            if include_hidden { "1" } else { "0" },
+            &file_pattern,
+        ])
+        .output()
+        .map_err(|e| format!("Failed to search files: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to search files: {}", stderr.trim()));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    serde_json::from_str(stdout.trim()).map_err(|e| format!("Failed to parse search results: {}", e))
 }
 
 /// Read file content

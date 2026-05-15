@@ -45,6 +45,12 @@ export interface SendMessageResponse {
   estimated_cost_usd?: number;
 }
 
+export interface GatewayCommandResponse {
+  ok: boolean;
+  status: string;
+  message?: string;
+}
+
 export interface StreamToolEvent {
   name: string;
   event_type: string;
@@ -376,9 +382,9 @@ export async function abortChat(sessionId: string): Promise<void> {
   await apiClient.invoke('interrupt_session', { session_id: sessionId });
 }
 
-export async function startHermesGateway(): Promise<{ status: string; message?: string }> {
-  if (!isTauri()) return { status: 'mock' };
-  return apiClient.invoke<{ status: string; message?: string }>('start_hermes_gateway', {});
+export async function startHermesGateway(): Promise<GatewayCommandResponse> {
+  if (!isTauri()) return { ok: true, status: 'mock' };
+  return apiClient.invoke<GatewayCommandResponse>('start_hermes_gateway', {});
 }
 
 export async function streamChatWithProgress(

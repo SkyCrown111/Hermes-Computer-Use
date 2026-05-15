@@ -4,6 +4,7 @@
 import { create } from 'zustand';
 import { logger } from '../lib/logger';
 import { getSession } from '../services/sessionApi';
+import { adaptSessionMessagesToChat } from '../lib/sessionMessageAdapter';
 import { useNavigationStore } from './navigationStore';
 import {
   CHAT_MESSAGES_KEY,
@@ -786,14 +787,7 @@ export function initializeChatStore() {
         try {
           const response = await getSession(tab.id);
           if (response && response.messages && response.messages.length > 0) {
-            // Convert SessionMessage[] to ChatMessage[] for the chat store
-            const chatMessages: ChatMessage[] = response.messages.map((m, idx) => ({
-              id: `server-${tab.id}-${idx}-${Date.now()}`,
-              role: m.role as 'user' | 'assistant' | 'system',
-              content: m.content,
-              timestamp: m.timestamp,
-              reasoning: m.reasoning,
-            }));
+            const chatMessages = adaptSessionMessagesToChat(tab.id, response.messages);
             useChatStore.getState().loadMessages(tab.id, chatMessages);
             logger.debug('[ChatStore] Loaded', chatMessages.length, 'messages from server for session:', tab.id);
           }

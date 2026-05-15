@@ -1,38 +1,32 @@
-// Skills Store - Skills 状态管理
-
 import { create } from 'zustand';
 import type { Skill, SkillDetail, SkillCategory, SkillExecutionRecord, SkillExecutionParams } from '../types/skill';
 import * as skillsApi from '../services/skillsApi';
 import { logger } from '../lib/logger';
 import { getErrorMessage } from '../lib/errorUtils';
 
+const SKILLS_FRESHNESS_MS = 5 * 60_000;
+const CATEGORIES_FRESHNESS_MS = 10 * 60_000;
+
+function isFresh(lastLoadedAt: number | null, freshnessMs: number, force = false): boolean {
+  return !force && lastLoadedAt !== null && Date.now() - lastLoadedAt < freshnessMs;
+}
+
 interface SkillsState {
-  // Skills 列表
   skills: Skill[];
   isLoadingSkills: boolean;
-
-  // 类别
   categories: SkillCategory[];
   selectedCategory: string | null;
   isLoadingCategories: boolean;
-
-  // 搜索
   searchQuery: string;
-
-  // Skill 详情
   selectedSkill: SkillDetail | null;
   isLoadingDetail: boolean;
-
-  // 执行历史
   executionHistory: SkillExecutionRecord[];
   isLoadingHistory: boolean;
-
-  // 错误
   error: string | null;
-
-  // Actions
-  fetchSkills: (category?: string) => Promise<void>;
-  fetchCategories: () => Promise<void>;
+  lastLoadedSkillsAt: number | null;
+  lastLoadedCategoriesAt: number | null;
+  fetchSkills: (category?: string, force?: boolean) => Promise<void>;
+  fetchCategories: (force?: boolean) => Promise<void>;
   fetchSkillDetail: (category: string, name: string) => Promise<void>;
   fetchExecutionHistory: (skillName?: string, skillCategory?: string) => Promise<void>;
   toggleSkill: (category: string, name: string, enabled: boolean) => Promise<void>;
@@ -47,7 +41,6 @@ interface SkillsState {
 }
 
 export const useSkillsStore = create<SkillsState>((set, get) => ({
-  // 初始状态
   skills: [],
   isLoadingSkills: false,
   categories: [],
@@ -59,32 +52,39 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
   executionHistory: [],
   isLoadingHistory: false,
   error: null,
+  lastLoadedSkillsAt: null,
+  lastLoadedCategoriesAt: null,
 
-  // 获取 Skills 列表
-  fetchSkills: async (_category?: string) => {
+  fetchSkills: async (_category?: string, force = false) => {
+    if (isFresh(get().lastLoadedSkillsAt, SKILLS_FRESHNESS_MS, force)) {
+      return;
+    }
+
     set({ isLoadingSkills: true, error: null });
     try {
       const skills = await skillsApi.listSkills();
-      set({ skills, isLoadingSkills: false });
+      set({ skills, isLoadingSkills: false, lastLoadedSkillsAt: Date.now() });
     } catch (err) {
       set({ error: getErrorMessage(err), isLoadingSkills: false });
     }
   },
 
-  // 获取类别列表
-  fetchCategories: async () => {
-    set({ isLoadingCategories: true });
+  fetchCategories: async (force = false) => {
+    if (isFresh(get().lastLoadedCategoriesAt, CATEGORIES_FRESHNESS_MS, force)) {
+      return;
+    }
+
+    set({ isLoadingCategories: true, error: null });
     try {
       const response = await skillsApi.getSkillCategories();
       logger.debug('[SkillsStore] Fetched categories:', response.categories);
-      set({ categories: response.categories, isLoadingCategories: false });
+      set({ categories: response.categories, isLoadingCategories: false, lastLoadedCategoriesAt: Date.now() });
     } catch (err) {
       logger.error('[SkillsStore] Failed to fetch categories:', err);
       set({ error: getErrorMessage(err), isLoadingCategories: false });
     }
   },
 
-  // 获取 Skill 详情
   fetchSkillDetail: async (category: string, name: string) => {
     set({ isLoadingDetail: true, error: null });
     try {
@@ -95,7 +95,6 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
     }
   },
 
-  // 获取执行历史
   fetchExecutionHistory: async (skillName?: string, skillCategory?: string) => {
     set({ isLoadingHistory: true });
     try {
@@ -114,13 +113,11 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
     }
   },
 
-  // 切换 Skill 启用状态
   toggleSkill: async (category: string, name: string, enabled: boolean) => {
     try {
       await skillsApi.toggleSkill({ category, name, enabled });
-      // 更新本地状态
       const skills = get().skills.map((skill) =>
-        skill.name === name && skill.category === category ? { ...skill, enabled } : skill
+        skill.name === name && skill.category === category ? { ...skill, enabled } : skill,
       );
       set({ skills });
     } catch (err) {
@@ -128,11 +125,9 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
     }
   },
 
-  // 创建新 Skill
-  createSkill: async (skillData: { name: string; category: string; description: string; content: string }) => {
+  createSkill: async (skillData) => {
     set({ error: null });
     try {
-      // Call the API with full skill data including content
       await skillsApi.createSkill({
         name: skillData.name,
         category: skillData.category,
@@ -145,9 +140,7 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
         },
       });
 
-      // Refresh the skills list
-      await get().fetchSkills(get().selectedCategory || undefined);
-
+      await get().fetchSkills(get().selectedCategory || undefined, true);
       return true;
     } catch (err) {
       set({ error: getErrorMessage(err) });
@@ -155,44 +148,29 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
     }
   },
 
-  // 更新 Skill
-  updateSkill: async (category: string, originalName: string, skillData: { name: string; category: string; description: string; content: string }) => {
+  updateSkill: async (category, originalName, skillData) => {
     set({ error: null });
     try {
       const renamed = skillData.name !== originalName || skillData.category !== category;
 
-      if (renamed) {
-        await skillsApi.createSkill({
-          name: skillData.name,
-          category: skillData.category,
-          description: skillData.description,
-          content: skillData.content,
-          metadata: {
-            version: '1.0.0',
-            author: 'User',
-            tags: [],
-          },
-        });
+      await skillsApi.createSkill({
+        name: skillData.name,
+        category: skillData.category,
+        description: skillData.description,
+        content: skillData.content,
+        metadata: {
+          version: '1.0.0',
+          author: 'User',
+          tags: [],
+        },
+      });
 
+      if (renamed) {
         await skillsApi.deleteSkill(originalName, category);
-      } else {
-        await skillsApi.createSkill({
-          name: skillData.name,
-          category: skillData.category,
-          description: skillData.description,
-          content: skillData.content,
-          metadata: {
-            version: '1.0.0',
-            author: 'User',
-            tags: [],
-          },
-        });
       }
 
-      // Refresh the skills list
-      await get().fetchSkills(get().selectedCategory || undefined);
+      await get().fetchSkills(get().selectedCategory || undefined, true);
       set({ selectedSkill: null });
-
       return true;
     } catch (err) {
       set({ error: getErrorMessage(err) });
@@ -200,16 +178,12 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
     }
   },
 
-  // 删除 Skill
   deleteSkill: async (category: string, name: string) => {
     set({ error: null });
     try {
       await skillsApi.deleteSkill(name, category);
-
-      // Refresh the skills list
-      await get().fetchSkills(get().selectedCategory || undefined);
+      await get().fetchSkills(get().selectedCategory || undefined, true);
       set({ selectedSkill: null });
-
       return true;
     } catch (err) {
       set({ error: getErrorMessage(err) });
@@ -217,11 +191,8 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
     }
   },
 
-  // 执行 Skill
   executeSkill: async (params: SkillExecutionParams) => {
     try {
-      // Skill execution is handled through the chat/session API, not directly
-      // Return a placeholder session_id
       logger.debug('[SkillsStore] executeSkill called with:', params);
       return `skill-${params.skill_name}-${Date.now()}`;
     } catch (err) {
@@ -230,23 +201,19 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
     }
   },
 
-  // 设置搜索查询
   setSearchQuery: (query: string) => {
     set({ searchQuery: query });
   },
 
-  // 设置选中的类别
   setSelectedCategory: (category: string | null) => {
     set({ selectedCategory: category });
-    get().fetchSkills(category || undefined);
+    void get().fetchSkills(category || undefined);
   },
 
-  // 清除选中的 Skill
   clearSelectedSkill: () => {
     set({ selectedSkill: null, executionHistory: [] });
   },
 
-  // 清除错误
   clearError: () => {
     set({ error: null });
   },

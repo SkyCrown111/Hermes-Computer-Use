@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { Card, Button, SettingsIcon, ZapIcon, TerminalIcon, SaveIcon, RefreshIcon, AlertIcon, FileTextIcon, CheckIcon, XIcon } from '../../components';
-import { useSettingsStore } from '../../stores';
+import { useSettingsStore, useHermesReadinessStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
 import { toast } from '../../stores/toastStore';
+import { buildHermesReadinessChecks, evaluateHermesReadiness } from '../../lib/hermesReadiness';
 
 import {
   ModelConfigForm,
@@ -20,6 +21,18 @@ import './Settings.css';
 
 // 配置节类型
 type ConfigSection = 'model' | 'agent' | 'terminal' | 'compression' | 'checkpoint' | 'auxiliary' | 'providers' | 'memory' | 'approval' | 'update';
+
+interface SettingsSetupState {
+  ready: boolean;
+  title: string;
+  description: string;
+  missingHome: boolean;
+  missingRuntime: boolean;
+  missingModel: boolean;
+  missingCredentials: boolean;
+  gatewayOffline: boolean;
+  checks: Array<{ label: string; ok: boolean; detail: string }>;
+}
 
 // 配置节图标
 const SectionIcon: React.FC<{ section: ConfigSection; size?: number }> = ({ section, size = 16 }) => {
@@ -131,6 +144,9 @@ export const Settings: React.FC = () => {
   const approvalConfig = useSettingsStore(s => s.approvalConfig);
   const isLoadingApproval = useSettingsStore(s => s.isLoadingApproval);
   const updateApprovalConfig = useSettingsStore(s => s.updateApprovalConfig);
+  const readinessSnapshot = useHermesReadinessStore(s => s.snapshot);
+  const readinessError = useHermesReadinessStore(s => s.error);
+  const refreshReadinessSnapshot = useHermesReadinessStore(s => s.refreshSnapshot);
 
   const [activeSection, setActiveSection] = useState<ConfigSection>('model');
   const [showImportModal, setShowImportModal] = useState(false);
@@ -138,10 +154,78 @@ export const Settings: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const originalYamlRef = useRef<string>('');
+  const [setupState, setSetupState] = useState<SettingsSetupState | null>(null);
+  const setupLabels = useMemo(() => ({
+    notInitializedTitle: 'Hermes is not initialized',
+    notInitializedDescription: 'Install Hermes and create the ~/.hermes workspace before configuring the app.',
+    runtimeMissingTitle: 'Hermes runtime missing',
+    runtimeMissingDescription: 'The app found Hermes config paths, but the CLI or Python runtime is not available yet.',
+    needsConfigTitle: 'Settings need attention',
+    needsConfigDescription: 'Finish model and credential setup here so Hermes can actually serve chat requests.',
+    gatewayOfflineTitle: 'Gateway is offline',
+    gatewayOfflineDescription: 'Configuration looks usable, but the Hermes gateway is not currently running.',
+    readyTitle: 'Settings are ready',
+    readyDescription: 'Model, credentials, runtime, and gateway all look usable.',
+  }), []);
 
   useEffect(() => {
     fetchAllConfigs();
   }, [fetchAllConfigs]);
+
+  const refreshSetupState = useCallback(async () => {
+    const snapshot = await refreshReadinessSnapshot(true);
+    if (!snapshot) {
+      setSetupState({
+        ready: false,
+        title: 'Unable to verify Hermes setup',
+        description: readinessError ?? 'Unknown error',
+        missingHome: false,
+        missingRuntime: false,
+        missingModel: false,
+        missingCredentials: false,
+        gatewayOffline: false,
+        checks: [],
+      });
+      return;
+    }
+    const readiness = evaluateHermesReadiness(
+      snapshot.exists,
+      snapshot.health,
+      snapshot.config,
+      snapshot.environment,
+      snapshot.systemStatus.gateway.status,
+      setupLabels,
+    );
+    setSetupState({
+      ...readiness,
+      checks: buildHermesReadinessChecks(readiness, snapshot.config, snapshot.environment, snapshot.health),
+    });
+  }, [readinessError, refreshReadinessSnapshot, setupLabels]);
+
+  useEffect(() => {
+    void refreshSetupState();
+  }, [refreshSetupState]);
+
+  useEffect(() => {
+    if (!readinessSnapshot) return;
+    const readiness = evaluateHermesReadiness(
+      readinessSnapshot.exists,
+      readinessSnapshot.health,
+      readinessSnapshot.config,
+      readinessSnapshot.environment,
+      readinessSnapshot.systemStatus.gateway.status,
+      setupLabels,
+    );
+    setSetupState({
+      ...readiness,
+      checks: buildHermesReadinessChecks(
+        readiness,
+        readinessSnapshot.config,
+        readinessSnapshot.environment,
+        readinessSnapshot.health,
+      ),
+    });
+  }, [readinessSnapshot, setupLabels]);
 
   useEffect(() => {
     if (editMode === 'yaml') {
@@ -158,6 +242,12 @@ export const Settings: React.FC = () => {
       setHasUnsavedChanges(rawYaml !== originalYamlRef.current);
     }
   }, [rawYaml, editMode]);
+
+  useEffect(() => {
+    if (successMessage) {
+      refreshSetupState();
+    }
+  }, [successMessage, refreshSetupState]);
 
   // Warn before leaving with unsaved changes
   useEffect(() => {
@@ -212,7 +302,8 @@ export const Settings: React.FC = () => {
     originalYamlRef.current = yaml;
     setHasUnsavedChanges(false);
     toast.success(t('settings.saved.config'));
-  }, [updateRawYaml, t]);
+    await refreshSetupState();
+  }, [updateRawYaml, refreshSetupState, t]);
 
   // 渲染表单内容
   const renderFormContent = useMemo(() => () => {
@@ -327,6 +418,20 @@ export const Settings: React.FC = () => {
     isLoadingApproval ||
     isLoadingRaw;
 
+  const sectionSetupHint = useMemo(() => {
+    if (!setupState || setupState.ready) return null;
+    if (activeSection === 'model' && setupState.missingModel) {
+      return 'Pick a provider and default model here first.';
+    }
+    if ((activeSection === 'model' || activeSection === 'providers') && setupState.missingCredentials) {
+      return 'Add an API key or provider key env here so Hermes can authenticate requests.';
+    }
+    if (activeSection === 'update' && setupState.gatewayOffline) {
+      return 'Gateway is offline right now. Restart it after configuration is complete.';
+    }
+    return null;
+  }, [activeSection, setupState]);
+
   return (
     <div className="settings-page">
       {/* Header Actions */}
@@ -378,6 +483,34 @@ export const Settings: React.FC = () => {
           </div>
         )}
 
+        {setupState && (
+          <div className={`settings-setup-banner ${setupState.ready ? 'ready' : 'issue'}`}>
+            <div className="settings-setup-banner-copy">
+              <strong>{setupState.title}</strong>
+              <span>{setupState.description}</span>
+            </div>
+            <div className="settings-setup-banner-actions">
+              {!setupState.ready && (setupState.missingModel || setupState.missingCredentials) && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setActiveSection(setupState.missingModel ? 'model' : 'providers')}
+                >
+                  {setupState.missingModel ? t('settings.modelConfig') : t('settings.providersConfig')}
+                </Button>
+              )}
+              {!setupState.ready && setupState.gatewayOffline && (
+                <Button variant="secondary" size="sm" onClick={() => setActiveSection('update')}>
+                  {t('settings.update')}
+                </Button>
+              )}
+              <Button variant="secondary" size="sm" onClick={refreshSetupState}>
+                {t('dashboard.recheck')}
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Main Content */}
         <div className="settings-content">
           {editMode === 'form' ? (
@@ -415,6 +548,12 @@ export const Settings: React.FC = () => {
                         </div>
                       </div>
                     </div>
+                    {sectionSetupHint && (
+                      <div className="settings-section-hint">
+                        <span className="settings-section-hint-label">Setup</span>
+                        <span>{sectionSetupHint}</span>
+                      </div>
+                    )}
                     {renderFormContent()}
                   </>
                 )}

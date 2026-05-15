@@ -10,10 +10,13 @@ export * from './settingsStore';
 export * from './monitorStore';
 export * from './memoryStore';
 export * from './platformStore';
+export * from './profilesStore';
 export * from './filesStore';
 export * from './chatStore';
 export * from './mcpStore';
 export * from './kanbanStore';
+export * from './hermesEnvironmentStore';
+export * from './hermesReadinessStore';
 
 // Re-export helper functions from themeStore
 export { resolveTheme, getSystemTheme } from './themeStore';

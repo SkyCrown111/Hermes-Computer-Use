@@ -2,6 +2,7 @@
 // Works in Tauri webview without additional plugins
 
 let permission: NotificationPermission | null = null;
+let audioContext: AudioContext | null = null;
 
 /**
  * Request notification permission if not already granted.
@@ -55,6 +56,47 @@ export async function sendNotification(
     };
   } catch {
     // Silently fail — notification may not be available in some contexts
+  }
+}
+
+/**
+ * Play a short completion chime using Web Audio.
+ * This avoids shipping an audio asset and gracefully no-ops when audio is blocked.
+ */
+export async function playNotificationSound(): Promise<void> {
+  const AudioContextCtor =
+    window.AudioContext ||
+    (window as Window & typeof globalThis & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioContextCtor) return;
+
+  try {
+    audioContext ||= new AudioContextCtor();
+    if (audioContext.state === 'suspended') {
+      await audioContext.resume();
+    }
+
+    const now = audioContext.currentTime;
+    const gain = audioContext.createGain();
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.08, now + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.32);
+    gain.connect(audioContext.destination);
+
+    const firstTone = audioContext.createOscillator();
+    firstTone.type = 'sine';
+    firstTone.frequency.setValueAtTime(660, now);
+    firstTone.connect(gain);
+    firstTone.start(now);
+    firstTone.stop(now + 0.16);
+
+    const secondTone = audioContext.createOscillator();
+    secondTone.type = 'sine';
+    secondTone.frequency.setValueAtTime(880, now + 0.11);
+    secondTone.connect(gain);
+    secondTone.start(now + 0.11);
+    secondTone.stop(now + 0.32);
+  } catch {
+    // Audio can be blocked until user interaction; notifications should not fail the task.
   }
 }
 

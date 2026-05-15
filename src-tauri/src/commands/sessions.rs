@@ -9,12 +9,11 @@
 
 
 use super::utils::{create_command, run_python_script};
+use crate::hermes_adapter::resolve_environment;
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 
 use serde::{Deserialize, Serialize};
-use once_cell::sync::Lazy;
-use regex::Regex;
 
 
 
@@ -76,6 +75,11 @@ pub struct SearchResults {
 
     pub total: usize,
 
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionCountResponse {
+    pub count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -436,7 +440,7 @@ print("ok")
 
 #[tauri::command(rename_all = "snake_case")]
 
-pub fn count_sessions(platform: Option<String>) -> Result<usize, String> {
+pub fn count_sessions(platform: Option<String>) -> Result<SessionCountResponse, String> {
 
     let (sql, params): (_, Vec<serde_json::Value>) = if let Some(ref p) = platform {
 
@@ -464,11 +468,11 @@ pub fn count_sessions(platform: Option<String>) -> Result<usize, String> {
 
         let count = row.get("count").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
 
-        Ok(count)
+        Ok(SessionCountResponse { count })
 
     } else {
 
-        Ok(0)
+        Ok(SessionCountResponse { count: 0 })
 
     }
 
@@ -508,7 +512,7 @@ pub fn list_sessions(
 
     // Get total count first
 
-    let total = count_sessions(platform.clone())?;
+    let total = count_sessions(platform.clone())?.count;
 
 
 
@@ -1579,10 +1583,12 @@ pub fn delete_session(id: String) -> Result<(), String> {
 #[tauri::command(rename_all = "snake_case")]
 
 pub fn get_sessions_path() -> String {
-
-    "~/.hermes/sessions".to_string()
+    resolve_environment()
+        .map(|env| format!("{}/sessions", env.hermes_home))
+        .unwrap_or_else(|_| "~/.hermes/sessions".to_string())
 
 }
+
 
 
 
@@ -1854,7 +1860,7 @@ pub fn export_session(format: String, session_id: String) -> Result<String, Stri
 
     // Fetch messages
 
-    let msg_sql = "SELECT role, content, timestamp, tool_calls FROM messages WHERE session_id = ? ORDER BY timestamp ASC";
+    let msg_sql = "SELECT role, content, timestamp, tool_calls, reasoning FROM messages WHERE session_id = ? ORDER BY timestamp ASC";
 
     let messages = query_db(msg_sql, &[serde_json::json!(session_id)])?;
 

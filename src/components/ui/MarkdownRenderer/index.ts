@@ -1,1 +1,2 @@
-export { MarkdownRenderer } from './MarkdownRenderer';
+export { MarkdownRenderer } from './LazyMarkdownRenderer';
+export type { MarkdownRendererProps } from './MarkdownRenderer';

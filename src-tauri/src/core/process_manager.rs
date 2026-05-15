@@ -53,7 +53,6 @@ pub struct ProcessConfig {
 /// Process handle
 struct ProcessHandle {
     info: ProcessInfo,
-    config: ProcessConfig,
     child: Option<Child>,
     log_buffer: Arc<Mutex<Vec<String>>>,
 }
@@ -187,7 +186,6 @@ impl ProcessManager {
         // Create handle
         let handle = ProcessHandle {
             info: info.clone(),
-            config: config.clone(),
             child: Some(child),
             log_buffer: log_buffer.clone(),
         };
@@ -252,26 +250,6 @@ impl ProcessManager {
         });
 
         println!("[ProcessManager] Process stopped: {}", id);
-        Ok(())
-    }
-
-    /// Restart a process
-    pub async fn restart_process(&self, id: &str) -> Result<(), String> {
-        println!("[ProcessManager] Restarting process: {}", id);
-
-        // Get config
-        let config = {
-            let processes = self.processes.read().await;
-            let handle = processes.get(id)
-                .ok_or_else(|| format!("Process not found: {}", id))?;
-            handle.config.clone()
-        };
-
-        // Stop and start
-        self.stop_process(id).await?;
-        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
-        self.start_process(config).await?;
-
         Ok(())
     }
 
@@ -364,7 +342,7 @@ impl ProcessManager {
                 // Restart by creating new process manager instance
                 // Schedule restart (simplified approach)
                 // In production, you'd want a more sophisticated restart mechanism
-                let new_config = config.clone();
+                let _new_config = config.clone();
                 let processes_clone = processes.clone();
                 
                 // Remove old handle

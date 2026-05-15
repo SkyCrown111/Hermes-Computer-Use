@@ -8,7 +8,6 @@ import type { Checkpoint } from '../../types/checkpoint';
 import { sessionApi } from '../../services';
 import { formatNumber, formatCurrency, formatDateTime, formatRelativeTime, getPlatformIcon, getPlatformName } from '../../utils/format';
 import { logger } from '../../lib/logger';
-import JSZip from 'jszip';
 import './Sessions.css';
 
 // Session Card Component
@@ -307,6 +306,7 @@ export const Sessions: React.FC = () => {
     toast.info(t('sessions.exporting').replace('{count}', String(ids.length)));
 
     try {
+      const { default: JSZip } = await import('jszip');
       const zip = new JSZip();
       const sessionsFolder = zip.folder('sessions');
 
@@ -317,8 +317,7 @@ export const Sessions: React.FC = () => {
       // Fetch all sessions and add to ZIP
       const results = await Promise.allSettled(
         ids.map(async (id, index) => {
-          const blob = await sessionApi.exportSessions({ format: 'json', session_id: id });
-          const text = typeof blob === 'string' ? blob : JSON.stringify(blob);
+          const text = await sessionApi.exportSessions({ format: 'json', session_id: id });
           return { id, text, index };
         })
       );
@@ -473,7 +472,7 @@ export const Sessions: React.FC = () => {
           : format === 'jsonl'
             ? 'application/x-ndjson;charset=utf-8'
             : 'application/json;charset=utf-8';
-      const blob = new Blob([typeof exportData === 'string' ? exportData : JSON.stringify(exportData)], { type: mimeType });
+      const blob = new Blob([exportData], { type: mimeType });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;

@@ -13,6 +13,7 @@ pub mod mcp;
 pub mod memories;
 pub mod monitor;
 pub mod platforms;
+pub mod profiles;
 pub mod sessions;
 pub mod skills;
 pub mod system;
@@ -30,8 +31,8 @@ pub use mcp::*;
 pub use memories::*;
 pub use monitor::*;
 pub use platforms::*;
+pub use profiles::*;
 pub use sessions::*;
 pub use skills::*;
 pub use system::*;
 pub use tools::*;
-

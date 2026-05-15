@@ -45,6 +45,15 @@ interface BackendFileContent {
   language?: string;
 }
 
+interface BackendFileSearchResult {
+  path: string;
+  file_name: string;
+  matched_line?: number;
+  matched_content?: string;
+  context?: string;
+  type: 'file' | 'directory' | 'symlink';
+}
+
 function convertFileInfo(backend: BackendFileInfo): FileInfo {
   return {
     name: backend.name,
@@ -57,6 +66,17 @@ function convertFileInfo(backend: BackendFileInfo): FileInfo {
     isHidden: backend.is_hidden,
     extension: backend.extension,
     mimeType: backend.mime_type,
+  };
+}
+
+function convertSearchResult(backend: BackendFileSearchResult): FileSearchResult {
+  return {
+    path: backend.path,
+    fileName: backend.file_name,
+    matchedLine: backend.matched_line,
+    matchedContent: backend.matched_content,
+    context: backend.context,
+    type: backend.type,
   };
 }
 
@@ -163,11 +183,23 @@ export const filesApi = {
   },
 
   searchFiles: async (_request: FileSearchRequest): Promise<FileSearchResult[]> => {
-    return [];
+    try {
+      const response = await apiClient.invoke<BackendFileSearchResult[]>('search_files', {
+        path: _request.path,
+        query: _request.query,
+        recursive: _request.recursive,
+        include_hidden: _request.includeHidden,
+        file_pattern: _request.filePattern,
+      });
+      return response.map(convertSearchResult);
+    } catch (err) {
+      logger.error('[FilesApi] searchFiles failed:', getErrorDetail(err));
+      throw err;
+    }
   },
 
   searchInFiles: async (_request: FileSearchRequest): Promise<FileSearchResult[]> => {
-    return [];
+    return filesApi.searchFiles(_request);
   },
 
   getFileTree: async (path: string, depth?: number): Promise<FileTreeNode> => {

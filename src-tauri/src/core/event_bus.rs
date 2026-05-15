@@ -3,7 +3,7 @@
 //! Event system for module communication and frontend event pushing.
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter};
 use tokio::sync::broadcast;
 
 /// Event types

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Card, Button, RefreshIcon, EmptyIcon, GlobeIcon, ChartIcon, TrendingUpIcon, AlertIcon, FileTextIcon, DownloadIcon } from '../../components';
 import { useMonitorStore } from '../../stores';
+import { usePageVisibility, usePolling } from '../../hooks';
 import { useTranslation } from '../../hooks/useTranslation';
 import { logger } from '../../lib/logger';
 import type { LogFile, LogLevel, LogLine } from '../../types/monitor';
@@ -132,8 +133,7 @@ export const Monitor: React.FC = () => {
   const clearLogs = useMonitorStore(s => s.clearLogs);
 
   const logContentRef = useRef<HTMLDivElement>(null);
-  const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const [isPageVisible, setIsPageVisible] = useState(true);
+  const isPageVisible = usePageVisibility();
   const [timeRange, setTimeRange] = useState<TimeRange>('all');
 
   // 初始化数据
@@ -144,40 +144,11 @@ export const Monitor: React.FC = () => {
     fetchComponents();
   }, [fetchLogs, fetchGatewayStatus, fetchPerformanceMetrics, fetchComponents]);
 
-  // Page Visibility API - pause refresh when page is hidden
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      setIsPageVisible(!document.hidden);
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, []);
-
-  // Auto refresh - respects page visibility
-  useEffect(() => {
-    // Only run interval when autoRefresh is on AND page is visible
-    if (autoRefresh && isPageVisible) {
-      refreshIntervalRef.current = setInterval(() => {
-        fetchLogs();
-        fetchGatewayStatus();
-        fetchPerformanceMetrics();
-      }, refreshInterval);
-    } else {
-      if (refreshIntervalRef.current) {
-        clearInterval(refreshIntervalRef.current);
-        refreshIntervalRef.current = null;
-      }
-    }
-
-    return () => {
-      if (refreshIntervalRef.current) {
-        clearInterval(refreshIntervalRef.current);
-      }
-    };
-  }, [autoRefresh, isPageVisible, refreshInterval, fetchLogs, fetchGatewayStatus, fetchPerformanceMetrics]);
+  usePolling(() => Promise.all([
+    fetchLogs(),
+    fetchGatewayStatus(),
+    fetchPerformanceMetrics(),
+  ]).then(() => undefined), refreshInterval, { enabled: autoRefresh && isPageVisible, immediate: false });
 
   // Filter logs by time range
   const filteredLogs = useMemo(() => {

@@ -209,7 +209,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       }
     }, [filteredCommands, handleSend, insertCommand, selectedCommandIndex, showCommands]);
 
-    const canSend = inputValue.trim().length > 0;
+    const canSend = !disabled && inputValue.trim().length > 0;
     const showStop = isStreaming && !hasPendingInput;
     const activeCommand = inputValue.startsWith('/') ? filteredCommands[selectedCommandIndex] : null;
     const showFooter = inputValue.startsWith('/') || attachedFiles.length > 0 || isStreaming || !!hasPendingInput;

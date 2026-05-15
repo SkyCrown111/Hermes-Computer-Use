@@ -25,10 +25,13 @@ import {
   TargetIcon,
   ServerIcon,
   PlugIcon,
+  UserIcon,
 } from '../../components/ui/Icons';
 import { useNavigationStore, useThemeStore } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
 import { getCurrentVersion } from '../../services/updateApi';
+import { requestNotificationPermission } from '../../services/notifications';
+import { toast } from '../../stores/toastStore';
 import './Preferences.css';
 
 const aboutInfo = {
@@ -99,6 +102,7 @@ export const Preferences: React.FC = () => {
     { id: 'kanban', label: t('nav.kanban'), icon: GridIcon },
     { id: 'files', label: t('nav.files'), icon: FolderIcon },
     { id: 'skills', label: t('nav.skills'), icon: TargetIcon },
+    { id: 'profiles', label: t('nav.profiles'), icon: UserIcon },
     { id: 'gateway', label: 'Gateway', icon: ServerIcon },
     { id: 'mcp', label: t('nav.mcp'), icon: PlugIcon },
     { id: 'settings', label: t('nav.settings'), icon: SettingsIcon },
@@ -119,6 +123,24 @@ export const Preferences: React.FC = () => {
       setShowShortcuts(false);
     }
   }, [showShortcuts]);
+
+  const handleDesktopNotificationToggle = useCallback(async (enabled: boolean) => {
+    if (!enabled) {
+      setNotificationDesktop(false);
+      return;
+    }
+
+    const permitted = await requestNotificationPermission();
+    if (permitted) {
+      setNotificationDesktop(true);
+    } else {
+      setNotificationDesktop(false);
+      toast.error(
+        language === 'zh' ? '桌面通知未启用' : 'Desktop notifications are off',
+        language === 'zh' ? '请在系统或浏览器通知权限中允许 Hermes。' : 'Allow Hermes in system or browser notification permissions.'
+      );
+    }
+  }, [language, setNotificationDesktop]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
@@ -332,7 +354,7 @@ export const Preferences: React.FC = () => {
               <input
                 type="checkbox"
                 checked={displayPreferences.notifications.desktop}
-                onChange={(e) => setNotificationDesktop(e.target.checked)}
+                onChange={(e) => void handleDesktopNotificationToggle(e.target.checked)}
                 disabled={!displayPreferences.notifications.enabled}
               />
               <span className="toggle-slider"></span>

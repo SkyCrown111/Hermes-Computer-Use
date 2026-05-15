@@ -1,6 +1,14 @@
 import { useRef, useCallback } from 'react';
 import { streamChatRealtime, respondApproval, abortChat } from '../services/hermesChat';
-import type { StreamCallbacks, StreamToolEvent, StreamUsageEvent, StreamApprovalEvent, ChatHistoryEntry } from '../services/hermesChat';
+import type {
+  StreamCallbacks,
+  StreamToolEvent,
+  StreamUsageEvent,
+  StreamApprovalEvent,
+  StreamClarifyEvent,
+  StreamSecretEvent,
+  ChatHistoryEntry,
+} from '../services/hermesChat';
 import { getErrorMessage } from '../lib/errorUtils';
 import { logger } from '../lib/logger';
 
@@ -10,8 +18,11 @@ export interface StreamChatOptions {
   onReasoningChunk?: (text: string, accumulated: string) => void;
   onToolCall?: (tool: StreamToolEvent) => void;
   onComplete?: (result: StreamCompleteResult) => void;
-  onError?: (error: string) => void;
+  onError?: (result: StreamErrorResult) => void;
   onApproval?: (approval: StreamApprovalEvent) => void;
+  onClarify?: (clarify: StreamClarifyEvent) => void;
+  onSecret?: (secret: StreamSecretEvent) => void;
+  onSessionCreated?: (newSessionId: string) => void;
   onStatusChange?: (status: 'idle' | 'streaming' | 'done' | 'error') => void;
   autoDenyApprovals?: boolean;
 }
@@ -24,6 +35,19 @@ export interface StreamCompleteResult {
   newSessionId: string | null;
 }
 
+export interface StreamErrorResult {
+  error: string;
+  content: string;
+  reasoning: string | null;
+  tools: StreamToolEvent[];
+}
+
+export interface StreamSnapshot {
+  content: string;
+  reasoning: string | null;
+  tools: StreamToolEvent[];
+}
+
 export function useStreamChat(options: StreamChatOptions) {
   const {
     sessionId,
@@ -33,6 +57,9 @@ export function useStreamChat(options: StreamChatOptions) {
     onComplete,
     onError,
     onApproval,
+    onClarify,
+    onSecret,
+    onSessionCreated,
     onStatusChange,
     autoDenyApprovals = false,
   } = options;
@@ -47,6 +74,12 @@ export function useStreamChat(options: StreamChatOptions) {
     streamingReasoningRef.current = '';
     streamingToolsRef.current = [];
   }, []);
+
+  const getSnapshot = useCallback((): StreamSnapshot => ({
+    content: streamingContentRef.current,
+    reasoning: streamingReasoningRef.current || null,
+    tools: streamingToolsRef.current.length > 0 ? [...streamingToolsRef.current] : [],
+  }), []);
 
   const stop = useCallback(() => {
     isStoppedRef.current = true;
@@ -89,7 +122,12 @@ export function useStreamChat(options: StreamChatOptions) {
         if (isStoppedRef.current) return;
         onStatusChange?.('error');
         const errorMessage = error instanceof Error ? error.message : String(error);
-        onError?.(errorMessage);
+        onError?.({
+          error: errorMessage,
+          content: streamingContentRef.current,
+          reasoning: streamingReasoningRef.current || null,
+          tools: streamingToolsRef.current.length > 0 ? [...streamingToolsRef.current] : [],
+        });
         resetStreamingState();
       },
       onApproval: (approval) => {
@@ -100,6 +138,18 @@ export function useStreamChat(options: StreamChatOptions) {
           onApproval?.(approval);
         }
       },
+      onClarify: (clarify) => {
+        if (isStoppedRef.current) return;
+        onClarify?.(clarify);
+      },
+      onSecret: (secret) => {
+        if (isStoppedRef.current) return;
+        onSecret?.(secret);
+      },
+      onSessionCreated: (newSessionId) => {
+        if (isStoppedRef.current) return;
+        onSessionCreated?.(newSessionId);
+      },
     };
 
     try {
@@ -109,9 +159,14 @@ export function useStreamChat(options: StreamChatOptions) {
       onStatusChange?.('error');
       const errorMessage = getErrorMessage(error);
       logger.error('[useStreamChat] Stream failed:', errorMessage);
-      onError?.(errorMessage);
+      onError?.({
+        error: errorMessage,
+        content: streamingContentRef.current,
+        reasoning: streamingReasoningRef.current || null,
+        tools: streamingToolsRef.current.length > 0 ? [...streamingToolsRef.current] : [],
+      });
     }
-  }, [sessionId, onContentChunk, onReasoningChunk, onToolCall, onComplete, onError, onApproval, onStatusChange, autoDenyApprovals, resetStreamingState]);
+  }, [sessionId, onContentChunk, onReasoningChunk, onToolCall, onComplete, onError, onApproval, onClarify, onSecret, onSessionCreated, onStatusChange, autoDenyApprovals, resetStreamingState]);
 
   const abort = useCallback(async () => {
     isStoppedRef.current = true;
@@ -130,6 +185,8 @@ export function useStreamChat(options: StreamChatOptions) {
     send,
     stop,
     abort,
+    getSnapshot,
+    resetStreamingState,
     isStopped: isStoppedRef,
   };
 }

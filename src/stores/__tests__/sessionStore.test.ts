@@ -56,6 +56,7 @@ describe('SessionStore', () => {
       total: 0,
       isLoading: false,
       error: null,
+      lastLoadedAt: null,
       currentSession: null,
       messages: [],
       isLoadingMessages: false,

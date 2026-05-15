@@ -11,10 +11,11 @@ import type {
   SessionExportParams,
 } from '../types/session';
 import type { ApiOkResponse } from '../types/common';
+import type { Checkpoint, RestoreCheckpointResult } from '../types/checkpoint';
 
 export async function listSessions(params?: SessionListParams): Promise<SessionListResponse> {
   try {
-    const result = await apiClient.invoke<SessionListResponse>('list_sessions', {
+    const result = await apiClient.invokeShared<SessionListResponse>('list_sessions', {
       platform: params?.platform,
       limit: params?.limit ?? 100,
       offset: params?.offset ?? 0,
@@ -66,16 +67,8 @@ export async function searchSessions(params: SessionSearchParams): Promise<Sessi
   }
 }
 
-export interface SessionExportResult {
-  ok: boolean;
-  format: string;
-  content?: string;
-  path?: string;
-  message?: string;
-}
-
-export async function exportSessions(params: SessionExportParams): Promise<SessionExportResult> {
-  return apiClient.invoke<SessionExportResult>('export_session', {
+export async function exportSessions(params: SessionExportParams): Promise<string> {
+  return apiClient.invoke<string>('export_session', {
     format: params.format,
     session_id: params.session_id,
     platform: params.platform,
@@ -94,7 +87,7 @@ export async function getSessionsPath(): Promise<string> {
 // 统计会话数量
 export async function countSessions(): Promise<number> {
   try {
-    const result = await apiClient.invoke<{ count: number }>('count_sessions');
+    const result = await apiClient.invoke<{ count: number }>('count_sessions', { platform: null });
     return result.count;
   } catch (error) {
     logger.error(`[SessionApi] countSessions failed: ${getErrorDetail(error)}`);
@@ -103,21 +96,6 @@ export async function countSessions(): Promise<number> {
 }
 
 // Checkpoint 相关功能
-export interface Checkpoint {
-  id: string;
-  session_id: string;
-  name?: string | null;
-  created_at: string;
-  message_count: number;
-  size_bytes?: number;
-  description?: string | null;
-}
-
-export interface CheckpointInfo {
-  checkpoint: Checkpoint;
-  messages: Array<{ role: string; content: string }>;
-}
-
 export async function listCheckpoints(sessionId: string): Promise<Checkpoint[]> {
   try {
     const resp = await apiClient.invoke<{ checkpoints: Checkpoint[]; total: number }>('list_checkpoints', { session_id: sessionId });
@@ -141,21 +119,22 @@ export async function createCheckpoint(sessionId: string, name?: string, descrip
   }
 }
 
-export async function getCheckpointInfo(checkpointId: string): Promise<CheckpointInfo | null> {
+export async function getCheckpointInfo(checkpointId: string): Promise<Checkpoint | null> {
   try {
-    return await apiClient.invoke<CheckpointInfo>('get_checkpoint_info', { checkpoint_id: checkpointId });
+    return await apiClient.invoke<Checkpoint>('get_checkpoint_info', { checkpoint_id: checkpointId });
   } catch (error) {
     logger.error(`[SessionApi] getCheckpointInfo failed: ${getErrorDetail(error)}`);
     return null;
   }
 }
 
-export async function restoreCheckpoint(sessionId: string, checkpointId: string): Promise<ApiOkResponse> {
-  return apiClient.invoke<ApiOkResponse>('restore_checkpoint', { session_id: sessionId, checkpoint_id: checkpointId });
+export async function restoreCheckpoint(sessionId: string, checkpointId: string): Promise<RestoreCheckpointResult> {
+  return apiClient.invoke<RestoreCheckpointResult>('restore_checkpoint', { session_id: sessionId, checkpoint_id: checkpointId });
 }
 
 export async function deleteCheckpoint(checkpointId: string): Promise<ApiOkResponse> {
-  return apiClient.invoke<ApiOkResponse>('delete_checkpoint', { checkpoint_id: checkpointId });
+  await apiClient.invoke<void>('delete_checkpoint', { checkpoint_id: checkpointId });
+  return { ok: true };
 }
 
 export function formatSessionId(raw: string): string {

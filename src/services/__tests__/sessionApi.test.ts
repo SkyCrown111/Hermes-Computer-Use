@@ -16,7 +16,18 @@ vi.mock('../../lib/tauri', () => ({
 }));
 
 import { safeInvoke } from '../../lib/tauri';
-import { listSessions, getSession, deleteSession, searchSessions, updateSessionTitle } from '../sessionApi';
+import {
+  listSessions,
+  getSession,
+  deleteSession,
+  searchSessions,
+  updateSessionTitle,
+  exportSessions,
+  countSessions,
+  getCheckpointInfo,
+  restoreCheckpoint,
+  deleteCheckpoint,
+} from '../sessionApi';
 
 describe('SessionApi', () => {
   beforeEach(() => {
@@ -156,6 +167,80 @@ describe('SessionApi', () => {
 
       await updateSessionTitle('session-1', 'New Title');
       expect(safeInvoke).toHaveBeenCalledWith('update_session_title', { id: 'session-1', title: 'New Title' });
+    });
+  });
+
+  describe('exportSessions', () => {
+    it('should return raw export text', async () => {
+      vi.mocked(safeInvoke).mockResolvedValue('{"session":{"id":"session-1"}}');
+
+      const result = await exportSessions({ format: 'json', session_id: 'session-1' });
+
+      expect(result).toBe('{"session":{"id":"session-1"}}');
+      expect(safeInvoke).toHaveBeenCalledWith('export_session', {
+        format: 'json',
+        session_id: 'session-1',
+        platform: undefined,
+      });
+    });
+  });
+
+  describe('countSessions', () => {
+    it('should pass platform null and unwrap count', async () => {
+      vi.mocked(safeInvoke).mockResolvedValue({ count: 7 });
+
+      const result = await countSessions();
+
+      expect(result).toBe(7);
+      expect(safeInvoke).toHaveBeenCalledWith('count_sessions', { platform: null });
+    });
+  });
+
+  describe('checkpoint helpers', () => {
+    it('should return checkpoint info directly', async () => {
+      const checkpoint = {
+        id: 'cp-1',
+        session_id: 'session-1',
+        name: 'Checkpoint 1',
+        created_at: new Date().toISOString(),
+        message_count: 12,
+        size_bytes: 256,
+        description: 'snapshot',
+      };
+      vi.mocked(safeInvoke).mockResolvedValue(checkpoint);
+
+      const result = await getCheckpointInfo('cp-1');
+
+      expect(result).toEqual(checkpoint);
+      expect(safeInvoke).toHaveBeenCalledWith('get_checkpoint_info', { checkpoint_id: 'cp-1' });
+    });
+
+    it('should return restore checkpoint payload', async () => {
+      const restored = {
+        success: true,
+        session_id: 'session-1',
+        checkpoint_id: 'cp-1',
+        restored_at: new Date().toISOString(),
+        message_count: 12,
+      };
+      vi.mocked(safeInvoke).mockResolvedValue(restored);
+
+      const result = await restoreCheckpoint('session-1', 'cp-1');
+
+      expect(result).toEqual(restored);
+      expect(safeInvoke).toHaveBeenCalledWith('restore_checkpoint', {
+        session_id: 'session-1',
+        checkpoint_id: 'cp-1',
+      });
+    });
+
+    it('should normalize delete checkpoint to ok response', async () => {
+      vi.mocked(safeInvoke).mockResolvedValue(undefined);
+
+      const result = await deleteCheckpoint('cp-1');
+
+      expect(result).toEqual({ ok: true });
+      expect(safeInvoke).toHaveBeenCalledWith('delete_checkpoint', { checkpoint_id: 'cp-1' });
     });
   });
 });

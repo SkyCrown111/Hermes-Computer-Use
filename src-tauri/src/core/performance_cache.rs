@@ -23,44 +23,50 @@ pub struct PerformanceCache {
 impl PerformanceCache {
     /// Create a new performance cache
     pub fn new(default_ttl: Duration) -> Self {
-        let cache = Arc::new(RwLock::new(HashMap::new()));
-        
-        // Spawn background cleanup task
-        let cache_clone = cache.clone();
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(60));
-            loop {
-                interval.tick().await;
-                Self::cleanup_expired_internal(&cache_clone).await;
-            }
-        });
-        
         Self {
-            cache,
+            cache: Arc::new(RwLock::new(HashMap::new())),
             default_ttl,
         }
     }
 
     /// Get cached value if not expired
     pub async fn get(&self, key: &str) -> Option<Value> {
-        let cache = self.cache.read().await;
-        
-        if let Some(entry) = cache.get(key) {
-            if Instant::now() < entry.expires_at {
-                println!("[PerformanceCache] Cache HIT: {}", key);
-                return Some(entry.data.clone());
+        let now = Instant::now();
+        let mut expired = false;
+        let result = {
+            let cache = self.cache.read().await;
+            if let Some(entry) = cache.get(key) {
+                if now < entry.expires_at {
+                    println!("[PerformanceCache] Cache HIT: {}", key);
+                    Some(entry.data.clone())
+                } else {
+                    println!("[PerformanceCache] Cache EXPIRED: {}", key);
+                    expired = true;
+                    None
+                }
             } else {
-                println!("[PerformanceCache] Cache EXPIRED: {}", key);
+                println!("[PerformanceCache] Cache MISS: {}", key);
+                None
             }
-        } else {
-            println!("[PerformanceCache] Cache MISS: {}", key);
+        };
+
+        if expired {
+            let mut cache = self.cache.write().await;
+            if matches!(cache.get(key), Some(entry) if now >= entry.expires_at) {
+                cache.remove(key);
+            }
         }
-        
+
+        if let Some(value) = result {
+            return Some(value);
+        }
+
         None
     }
 
     /// Set cache with TTL
     pub async fn set(&self, key: &str, value: Value, ttl: Option<Duration>) {
+        Self::cleanup_expired_internal(&self.cache).await;
         let ttl = ttl.unwrap_or(self.default_ttl);
         let expires_at = Instant::now() + ttl;
         

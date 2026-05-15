@@ -38,6 +38,7 @@ export const CommandPalette: React.FC = () => {
     { id: 'sessions', labelKey: 'nav.sessions', description: 'Browse recent chats and open threads', section: 'chat', action: () => setActiveItem('sessions') },
     { id: 'dashboard', labelKey: 'nav.home', description: 'View activity, stats, and system overview', section: 'workspace', action: () => setActiveItem('dashboard') },
     { id: 'skills', labelKey: 'nav.skills', description: 'Manage installed skills and runbooks', section: 'workspace', action: () => setActiveItem('skills') },
+    { id: 'profiles', labelKey: 'nav.profiles', description: 'Manage Hermes Agent profiles and multi-agent configs', section: 'workspace', action: () => setActiveItem('profiles') },
     { id: 'tasks', labelKey: 'nav.tasks', description: 'Review scheduled tasks and automations', section: 'workspace', action: () => setActiveItem('tasks') },
     { id: 'kanban', labelKey: 'nav.kanban', description: 'Open the task board and track work by status', section: 'workspace', action: () => setActiveItem('kanban') },
     { id: 'gateway', labelKey: 'gateway.title', description: 'Inspect gateway health and routing', section: 'workspace', action: () => setActiveItem('gateway') },

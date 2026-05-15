@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useSessionStore, useNavigationStore, useChatStore, useThemeStore } from '../../../stores';
+import { usePageVisibility, usePolling, useWindowFocus } from '../../../hooks';
 import { useTranslation } from '../../../hooks/useTranslation';
 import {
   EditIcon,
@@ -77,6 +78,8 @@ export const SessionSidebar: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
   const wasStreamingRef = useRef(false);
+  const lastFocusRefreshRef = useRef(0);
+  const isPageVisible = usePageVisibility();
 
   useEffect(() => {
     const handler = () => {
@@ -87,16 +90,14 @@ export const SessionSidebar: React.FC = () => {
     return () => window.removeEventListener(FOCUS_SEARCH_EVENT, handler);
   }, []);
 
-  useEffect(() => {
-    fetchSessions();
-    const intervalId = setInterval(() => {
-      fetchSessions();
-    }, 30000);
+  usePolling(fetchSessions, 30_000, { enabled: isPageVisible });
 
-    return () => {
-      clearInterval(intervalId);
-    };
-  }, [fetchSessions]);
+  useWindowFocus(() => {
+    const now = Date.now();
+    if (now - lastFocusRefreshRef.current < 15_000) return;
+    lastFocusRefreshRef.current = now;
+    void fetchSessions(undefined, undefined, undefined, true);
+  }, isPageVisible);
 
   useEffect(() => {
     if (wasStreamingRef.current && !isStreamingActive) {

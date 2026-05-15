@@ -12,9 +12,106 @@ import type {
 } from '../types/cron';
 import type { ApiOkResponse } from '../types/common';
 
+interface BackendSchedule {
+  kind: 'once' | 'interval' | 'cron';
+  display: string;
+  runAt?: string;
+  minutes?: number;
+  expr?: string;
+}
+
+interface BackendRepeatConfig {
+  times: number | null;
+  completed: number;
+}
+
+interface BackendModelOverride {
+  provider?: string;
+  model?: string;
+}
+
+interface BackendCronJobOrigin {
+  platform: string;
+  chatId: string;
+  chatName?: string | null;
+  threadId?: string | null;
+}
+
+interface BackendCronJob {
+  id: string;
+  name: string;
+  prompt: string;
+  schedule: BackendSchedule;
+  enabled: boolean;
+  deliver?: string;
+  skills?: string[];
+  createdAt?: string;
+  created_at?: string;
+  lastRunAt?: string | null;
+  last_run_at?: string | null;
+  nextRunAt?: string | null;
+  next_run_at?: string | null;
+  runCount?: number;
+  run_count?: number;
+  repeat?: BackendRepeatConfig;
+  modelOverride?: BackendModelOverride;
+  model_override?: BackendModelOverride;
+  origin?: BackendCronJobOrigin | {
+    platform: string;
+    chat_id: string;
+    chat_name?: string | null;
+    thread_id?: string | null;
+  };
+}
+
+function mapCronJob(job: BackendCronJob): CronJob {
+  let origin: CronJob['origin'];
+  if (job.origin) {
+    if ('chat_id' in job.origin) {
+      origin = {
+        platform: job.origin.platform,
+        chat_id: job.origin.chat_id,
+        chat_name: job.origin.chat_name ?? undefined,
+        thread_id: job.origin.thread_id ?? undefined,
+      };
+    } else {
+      origin = {
+        platform: job.origin.platform,
+        chat_id: job.origin.chatId,
+        chat_name: job.origin.chatName ?? undefined,
+        thread_id: job.origin.threadId ?? undefined,
+      };
+    }
+  }
+
+  return {
+    id: job.id,
+    name: job.name,
+    prompt: job.prompt,
+    schedule: {
+      kind: job.schedule.kind,
+      display: job.schedule.display,
+      run_at: job.schedule.runAt,
+      minutes: job.schedule.minutes,
+      expr: job.schedule.expr,
+    },
+    enabled: job.enabled,
+    deliver: job.deliver,
+    skills: job.skills ?? [],
+    created_at: job.created_at ?? job.createdAt ?? '',
+    last_run_at: job.last_run_at ?? job.lastRunAt ?? undefined,
+    next_run_at: job.next_run_at ?? job.nextRunAt ?? undefined,
+    run_count: job.run_count ?? job.runCount ?? job.repeat?.completed ?? 0,
+    repeat: job.repeat,
+    model_override: job.model_override ?? job.modelOverride,
+    origin,
+  };
+}
+
 export async function listCronJobs(): Promise<CronJob[]> {
   try {
-    return await apiClient.invoke<CronJob[]>('list_cron_jobs');
+    const jobs = await apiClient.invokeShared<BackendCronJob[]>('list_cron_jobs');
+    return jobs.map(mapCronJob);
   } catch (error) {
     logger.error(`[CronApi] listCronJobs failed: ${getErrorDetail(error)}`);
     return [];
@@ -23,7 +120,8 @@ export async function listCronJobs(): Promise<CronJob[]> {
 
 export async function getCronJob(jobId: string): Promise<CronJob | null> {
   try {
-    return await apiClient.invoke<CronJob>('get_cron_job', { job_id: jobId });
+    const job = await apiClient.invoke<BackendCronJob>('get_cron_job', { job_id: jobId });
+    return mapCronJob(job);
   } catch (error) {
     logger.error(`[CronApi] getCronJob failed: ${getErrorDetail(error)}`);
     return null;

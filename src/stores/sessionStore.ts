@@ -16,6 +16,7 @@ interface SessionState {
   total: number;
   isLoading: boolean;
   error: string | null;
+  lastLoadedAt: number | null;
 
   // 乐观添加的会话ID集合（用于刷新时保留）
   optimisticSessionIds: Set<string>;
@@ -48,11 +49,11 @@ interface SessionState {
   _fetchReqId: number;
 
   // Actions - 会话列表
-  fetchSessions: (platform?: string, limit?: number, offset?: number) => Promise<void>;
+  fetchSessions: (platform?: string, limit?: number, offset?: number, force?: boolean) => Promise<void>;
   refreshSessions: () => void; // 强制刷新
   deleteSession: (id: string) => Promise<boolean>;
   updateSessionTitle: (id: string, title: string) => Promise<void>;
-  updateSessionActivity: (sessionId: string) => void; // 实时更新会话活动
+  updateSessionActivity: (sessionId: string, messageDelta?: number) => void; // 实时更新会话活动
   addSessionOptimistic: (sessionId: string) => void; // 乐观添加新会话（立即显示在列表中）
   removeOptimisticSession: (sessionId: string) => void; // 从乐观列表中移除（服务器已返回）
 
@@ -91,6 +92,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   total: 0,
   isLoading: false,
   error: null,
+  lastLoadedAt: null,
 
   // 初始状态 - 乐观会话ID
   optimisticSessionIds: new Set<string>(),
@@ -123,10 +125,15 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   _fetchReqId: 0,
 
   // 获取会话列表
-  fetchSessions: async (_platform?: string, _limit?: number, _offset?: number) => {
+  fetchSessions: async (_platform?: string, _limit?: number, _offset?: number, force = false) => {
     const platform = _platform ?? get().platform;
     const limit = _limit ?? get().limit;
     const offset = _offset ?? get().offset;
+    const lastLoadedAt = get().lastLoadedAt;
+
+    if (!force && lastLoadedAt !== null && Date.now() - lastLoadedAt < 30_000) {
+      return;
+    }
 
     // 请求计数器：防止并发请求的竞态条件
     const { _fetchReqId } = get();
@@ -268,6 +275,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         total: response.total + optimisticSessions.length,
         isLoading: false,
         optimisticSessionIds: newOptimisticIds,
+        lastLoadedAt: Date.now(),
       });
 
       logger.debug('[SessionStore] Final merged sessions:', mergedSessions.length);
@@ -282,17 +290,17 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     const { refreshKey, fetchSessions } = get();
     set({ refreshKey: refreshKey + 1 });
     // Immediately fetch sessions from server
-    fetchSessions();
+    fetchSessions(undefined, undefined, undefined, true);
   },
 
   // 更新会话活动状态（发送消息后调用）
-  updateSessionActivity: (sessionId: string) => {
+  updateSessionActivity: (sessionId: string, messageDelta = 1) => {
     const { sessions } = get();
     const now = new Date().toISOString();
 
     const updated = sessions.map(s =>
       s.id === sessionId
-        ? { ...s, last_activity_at: now, message_count: s.message_count + 1 }
+        ? { ...s, last_activity_at: now, message_count: s.message_count + messageDelta }
         : s
     );
 

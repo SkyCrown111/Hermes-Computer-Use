@@ -86,6 +86,72 @@
   opacity: 1;
 }
 
+.settings-setup-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+}
+
+.settings-setup-banner.ready {
+  background: rgba(22, 163, 74, 0.08);
+  border-color: rgba(22, 163, 74, 0.22);
+}
+
+.settings-setup-banner.issue {
+  background: rgba(255, 159, 10, 0.1);
+  border-color: rgba(255, 159, 10, 0.24);
+}
+
+.settings-setup-banner-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings-setup-banner-copy strong {
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+}
+
+.settings-setup-banner-copy span {
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.settings-setup-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.settings-section-hint {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--panel-padding-lg) var(--space-3);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.settings-section-hint-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 46px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(var(--color-primary-rgb), 0.14);
+  color: var(--color-text-primary);
+  font-size: 11px;
+  font-weight: var(--font-semibold);
+}
+
 @keyframes slideIn {
   from {
     opacity: 0;
@@ -718,6 +784,19 @@
 
   .config-header {
     padding: var(--space-4);
+  }
+
+  .settings-setup-banner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .settings-setup-banner-actions {
+    width: 100%;
+  }
+
+  .settings-setup-banner-actions button {
+    flex: 1;
   }
 
   .config-form {

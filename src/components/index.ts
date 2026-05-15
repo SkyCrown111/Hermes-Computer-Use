@@ -34,26 +34,11 @@ export { Sidebar } from './layout';
 // Toast
 export { ToastContainer } from './ui/Toast';
 
-// Command Palette
-export { CommandPalette } from './ui/CommandPalette';
-
-// Global Search
-export { GlobalSearch } from './ui/GlobalSearch';
-
 // Keyboard Shortcuts Help
 export { KeyboardShortcutsHelp } from './ui/KeyboardShortcutsHelp';
 
 // Error Boundary
 export { ErrorBoundary } from './ErrorBoundary';
 
-// Markdown Renderer
-export { MarkdownRenderer } from './ui/MarkdownRenderer';
-
-// Lightbox
-export { Lightbox } from './ui/Lightbox';
-
 // Chat Components
 export { ChatSessionHeader } from './ChatSessionHeader';
-
-// Chat feature components
-export * from './chat';

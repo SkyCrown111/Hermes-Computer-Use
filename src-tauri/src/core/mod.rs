@@ -15,5 +15,3 @@ pub use hermes_cli::HermesCli;
 pub use config_lock::ConfigLock;
 pub use event_bus::EventBus;
 pub use performance_cache::PerformanceCache;
-pub use errors::{HermesError, Result};
-pub use retry::{RetryPolicy, retry_async, retry_async_if, is_retryable_error};

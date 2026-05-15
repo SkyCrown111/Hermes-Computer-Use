@@ -1,5 +1,6 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Card, Button, AlertIcon, RefreshIcon, SettingsIcon, ZapIcon, ClockIcon } from '../../components';
+import { usePageVisibility, usePolling } from '../../hooks';
 import { useTranslation } from '../../hooks/useTranslation';
 import { monitorApi } from '../../services/monitorApi';
 import { restartGateway } from '../../services/settingsApi';
@@ -81,8 +82,7 @@ export const Gateway: React.FC = () => {
     timestamps: [],
   });
 
-  // Use ref for interval to handle dynamic timing
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isPageVisible = usePageVisibility();
 
   const fetchStatus = useCallback(async (isRetry = false) => {
     if (isRetry) setIsRetrying(true);
@@ -113,36 +113,11 @@ export const Gateway: React.FC = () => {
     }
   }, [t]);
 
-  // Setup polling with dynamic interval based on error state
-  useEffect(() => {
-    const setupInterval = () => {
-      // Clear existing interval
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
+  const pollInterval = consecutiveErrors >= MAX_CONSECUTIVE_ERRORS
+    ? POLL_INTERVAL_ERROR
+    : POLL_INTERVAL_NORMAL;
 
-      // Determine interval based on error state
-      const interval = consecutiveErrors >= MAX_CONSECUTIVE_ERRORS
-        ? POLL_INTERVAL_ERROR
-        : POLL_INTERVAL_NORMAL;
-
-      intervalRef.current = setInterval(() => {
-        fetchStatus();
-      }, interval);
-    };
-
-    // Initial fetch
-    fetchStatus();
-
-    // Setup interval
-    setupInterval();
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-    };
-  }, [fetchStatus, consecutiveErrors]);
+  usePolling(() => fetchStatus(), pollInterval, { enabled: isPageVisible });
 
   // Handle manual retry
   const handleRetry = useCallback(() => {

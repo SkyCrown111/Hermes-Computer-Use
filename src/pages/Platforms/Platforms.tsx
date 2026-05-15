@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { ConfirmModal, AlertIcon, WarningIcon, CheckIcon } from '../../components';
 import { usePlatformStore, getPlatformIcon } from '../../stores';
+import { usePageVisibility, usePolling } from '../../hooks';
 import { useTranslation } from '../../hooks/useTranslation';
 import { toast } from '../../stores/toastStore';
 import { platformApi } from '../../services/platformApi';
@@ -168,7 +169,7 @@ export function Platforms() {
   const [qrcodeUrl, setQrcodeUrl] = useState<string | null>(null);
   const [qrcodeStatus, setQrcodeStatus] = useState<'pending' | 'scanned' | 'expired'>('pending');
   const [qrcodeError, setQrcodeError] = useState<string | null>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isPageVisible = usePageVisibility();
 
   const loadQRCode = useCallback(async () => {
     setQrcodeUrl(null);
@@ -189,29 +190,19 @@ export function Platforms() {
     }
   }, [isConfigModalOpen, selectedPlatform, loadQRCode]);
 
-  // Poll QR code scan status
-  useEffect(() => {
-    if (isConfigModalOpen && selectedPlatform === 'weixin' && qrcodeStatus === 'pending') {
-      pollRef.current = setInterval(async () => {
-        try {
-          const result = await platformApi.checkWechatQRCodeStatus();
-          if (result.status === 'scanned') {
-            setQrcodeStatus('scanned');
-            clearInterval(pollRef.current ?? undefined);
-          }
-        } catch {
-          // QR code polling failed silently
-        }
-      }, 3000);
-    }
-
-    return () => {
-      if (pollRef.current) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
+  usePolling(async () => {
+    try {
+      const result = await platformApi.checkWechatQRCodeStatus();
+      if (result.status === 'scanned' || result.status === 'expired') {
+        setQrcodeStatus(result.status);
       }
-    };
-  }, [isConfigModalOpen, selectedPlatform, qrcodeStatus]);
+    } catch {
+      // QR code polling failed silently
+    }
+  }, 3000, {
+    enabled: isPageVisible && isConfigModalOpen && selectedPlatform === 'weixin' && qrcodeStatus === 'pending',
+    immediate: false,
+  });
 
   return (
     <div className="platforms-page">

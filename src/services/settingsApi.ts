@@ -11,6 +11,7 @@ import type {
   ExportConfigData,
 } from '../types/config';
 import type { ApiOkResponse } from '../types/common';
+import type { GatewayCommandResponse } from './hermesChat';
 
 export async function loadConfig(): Promise<HermesConfig> {
   try {
@@ -95,5 +96,6 @@ export async function reloadGatewayConfig(): Promise<ApiOkResponse> {
 }
 
 export async function restartGateway(): Promise<ApiOkResponse> {
-  return apiClient.invoke<ApiOkResponse>('restart_hermes_gateway');
+  const result = await apiClient.invoke<GatewayCommandResponse>('restart_hermes_gateway');
+  return { ok: result.ok };
 }

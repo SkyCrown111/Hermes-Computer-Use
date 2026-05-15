@@ -9,7 +9,7 @@ export interface UsageAnalyticsResult extends UsageAnalytics {
 export const analyticsApi = {
   getUsage: async (params?: UsageParams): Promise<UsageAnalyticsResult> => {
     try {
-      return await apiClient.invoke<UsageAnalytics>('get_usage_analytics', params ? { ...params } : undefined);
+      return await apiClient.invokeShared<UsageAnalytics>('get_usage_analytics', params ? { ...params } : undefined);
     } catch (error) {
       logger.error('[AnalyticsApi] getUsage failed:', getErrorDetail(error));
       return {

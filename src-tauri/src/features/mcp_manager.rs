@@ -6,7 +6,6 @@ use crate::commands::mcp::{McpServerConfig, McpServerStatus, McpTool, McpResourc
 use crate::core::{ProcessManager, HermesCli, ConfigLock, EventBus};
 use crate::core::process_manager::{ProcessConfig, ProcessStatus};
 use crate::core::event_bus::Event;
-use std::collections::HashMap;
 use std::sync::Arc;
 
 /// MCP Server Manager

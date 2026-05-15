@@ -91,6 +91,10 @@ describe('DashboardStore', () => {
       todayTasks: [],
       isLoadingTasks: false,
       error: null,
+      lastLoadedStatusAt: null,
+      lastLoadedAnalyticsAt: null,
+      lastLoadedSkillsAt: null,
+      lastLoadedTasksAt: null,
     });
     vi.clearAllMocks();
   });
@@ -177,6 +181,101 @@ describe('DashboardStore', () => {
       expect(state.todayTasks).toHaveLength(1);
       expect(state.todayTasks[0].name).toBe('Today Task');
     });
+
+    it('should include tasks created today that have not run yet', async () => {
+      const now = new Date();
+      const yesterday = new Date(now);
+      yesterday.setDate(yesterday.getDate() - 1);
+
+      const mockJobs = [
+        createMockJob({
+          id: 'created-today',
+          name: 'Created Today',
+          created_at: now.toISOString(),
+          next_run_at: undefined,
+          last_run_at: undefined,
+          run_count: 0,
+          enabled: true,
+        }),
+        createMockJob({
+          id: 'old-job',
+          name: 'Old Job',
+          created_at: yesterday.toISOString(),
+          next_run_at: undefined,
+          last_run_at: undefined,
+          run_count: 0,
+          enabled: true,
+        }),
+      ];
+
+      vi.mocked(cronJobsApi.listCronJobs).mockResolvedValue(mockJobs);
+
+      await useDashboardStore.getState().fetchTodayTasks();
+
+      const state = useDashboardStore.getState();
+      expect(state.todayTasks).toHaveLength(1);
+      expect(state.todayTasks[0].name).toBe('Created Today');
+    });
+
+    it('should include overdue enabled tasks that still have not run today', async () => {
+      const now = new Date();
+      const overdue = new Date(now);
+      overdue.setDate(overdue.getDate() - 7);
+      const ranToday = new Date(now);
+      ranToday.setHours(8, 0, 0, 0);
+
+      const mockJobs = [
+        createMockJob({
+          id: 'overdue-job',
+          name: 'Overdue Job',
+          created_at: overdue.toISOString(),
+          next_run_at: overdue.toISOString(),
+          last_run_at: undefined,
+          run_count: 3,
+          enabled: true,
+        }),
+        createMockJob({
+          id: 'already-ran-today',
+          name: 'Already Ran Today',
+          created_at: overdue.toISOString(),
+          next_run_at: overdue.toISOString(),
+          last_run_at: ranToday.toISOString(),
+          run_count: 4,
+          enabled: true,
+        }),
+      ];
+
+      vi.mocked(cronJobsApi.listCronJobs).mockResolvedValue(mockJobs);
+
+      await useDashboardStore.getState().fetchTodayTasks();
+
+      const state = useDashboardStore.getState();
+      expect(state.todayTasks).toHaveLength(1);
+      expect(state.todayTasks[0].name).toBe('Overdue Job');
+    });
+  });
+
+  describe('today pending job logic', () => {
+    it('should match cron jobs page pending count logic', async () => {
+      const now = new Date();
+      const laterToday = new Date(now);
+      laterToday.setHours(21, 0, 0, 0);
+      const tomorrow = new Date(now);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(9, 0, 0, 0);
+
+      const mockJobs = [
+        createMockJob({ id: 'today', name: 'Today Task', enabled: true, next_run_at: laterToday.toISOString() }),
+        createMockJob({ id: 'tomorrow', name: 'Tomorrow Task', enabled: true, next_run_at: tomorrow.toISOString() }),
+      ];
+
+      vi.mocked(cronJobsApi.listCronJobs).mockResolvedValue(mockJobs);
+
+      await useDashboardStore.getState().fetchTodayTasks();
+
+      expect(useDashboardStore.getState().todayTasks).toHaveLength(1);
+      expect(useDashboardStore.getState().todayTasks[0].id).toBe('today');
+    });
   });
 
   describe('fetchAll', () => {
@@ -192,6 +291,32 @@ describe('DashboardStore', () => {
       expect(analyticsApi.analyticsApi.getUsage).toHaveBeenCalled();
       expect(skillsApi.listSkills).toHaveBeenCalled();
       expect(cronJobsApi.listCronJobs).toHaveBeenCalled();
+    });
+
+    it('should skip system status when requested', async () => {
+      vi.mocked(analyticsApi.analyticsApi.getUsage).mockResolvedValue(createMockAnalytics());
+      vi.mocked(skillsApi.listSkills).mockResolvedValue([]);
+      vi.mocked(cronJobsApi.listCronJobs).mockResolvedValue([]);
+
+      await useDashboardStore.getState().fetchAll(false);
+
+      expect(statusApi.statusApi.getSystemStatus).not.toHaveBeenCalled();
+      expect(analyticsApi.analyticsApi.getUsage).toHaveBeenCalled();
+      expect(skillsApi.listSkills).toHaveBeenCalled();
+      expect(cronJobsApi.listCronJobs).toHaveBeenCalled();
+    });
+
+    it('should reuse fresh cached dashboard data', async () => {
+      vi.mocked(analyticsApi.analyticsApi.getUsage).mockResolvedValue(createMockAnalytics());
+      vi.mocked(skillsApi.listSkills).mockResolvedValue([]);
+      vi.mocked(cronJobsApi.listCronJobs).mockResolvedValue([]);
+
+      await useDashboardStore.getState().fetchAll(false);
+      await useDashboardStore.getState().fetchAll(false);
+
+      expect(analyticsApi.analyticsApi.getUsage).toHaveBeenCalledTimes(1);
+      expect(skillsApi.listSkills).toHaveBeenCalledTimes(1);
+      expect(cronJobsApi.listCronJobs).toHaveBeenCalledTimes(1);
     });
   });
 

@@ -8,6 +8,8 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
+use tokio::process::Command;
 
 /// MCP Server Status
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -460,7 +462,7 @@ pub async fn stop_mcp_server(
 
 /// Test MCP connection
 #[tauri::command(rename_all = "snake_case")]
-pub fn test_mcp_connection(config: McpServerConfig) -> Result<McpConnectionTestResult, String> {
+pub async fn test_mcp_connection(config: McpServerConfig) -> Result<McpConnectionTestResult, String> {
     println!("[MCP] Testing MCP connection for: {}", config.name);
 
     // Basic validation
@@ -474,16 +476,68 @@ pub fn test_mcp_connection(config: McpServerConfig) -> Result<McpConnectionTestR
         });
     }
 
-    Ok(McpConnectionTestResult {
-        success: false,
-        message: format!(
-            "Connection testing for '{}' is not implemented in this desktop build yet",
-            config.name
-        ),
-        tools: None,
-        resources: None,
-        error: Some("MCP runtime bridge not implemented".to_string()),
-    })
+    let mut command = Command::new("wsl");
+    command.arg("-e").arg(&config.command);
+    if let Some(args) = &config.args {
+        command.args(args);
+    }
+    if let Some(env) = &config.env {
+        for (key, value) in env {
+            command.env(key, value);
+        }
+    }
+    command.stdout(std::process::Stdio::null());
+    command.stderr(std::process::Stdio::piped());
+
+    let mut child = command.spawn().map_err(|e| format!("Failed to start MCP server process: {}", e))?;
+
+    tokio::time::sleep(Duration::from_secs(2)).await;
+
+    match child.try_wait() {
+        Ok(None) => {
+            let _ = child.kill().await;
+            let _ = child.wait().await;
+            Ok(McpConnectionTestResult {
+                success: true,
+                message: format!("MCP server '{}' started successfully", config.name),
+                tools: None,
+                resources: None,
+                error: None,
+            })
+        }
+        Ok(Some(status)) => {
+            let stderr = if let Some(mut stderr) = child.stderr.take() {
+                use tokio::io::AsyncReadExt;
+                let mut output = String::new();
+                let _ = stderr.read_to_string(&mut output).await;
+                output
+            } else {
+                String::new()
+            };
+
+            Ok(McpConnectionTestResult {
+                success: false,
+                message: format!("MCP server '{}' exited too early", config.name),
+                tools: None,
+                resources: None,
+                error: Some(if stderr.trim().is_empty() {
+                    format!("Process exited with status {}", status)
+                } else {
+                    stderr.trim().to_string()
+                }),
+            })
+        }
+        Err(error) => {
+            let _ = child.kill().await;
+            Ok(McpConnectionTestResult {
+                success: false,
+                message: format!("Failed to inspect MCP server '{}'", config.name),
+                tools: None,
+                resources: None,
+                error: Some(error.to_string()),
+            })
+        }
+    }
 }
 
 /// Get MCP tools for a server
@@ -523,22 +577,46 @@ pub async fn get_mcp_stats(
 ) -> Result<McpServerStats, String> {
     println!("[MCP] Getting MCP statistics...");
 
-    let servers = list_mcp_servers(mcp_manager).await?;
+    let servers = list_mcp_servers(mcp_manager.clone()).await?;
 
     let total_servers = servers.len() as i32;
     let connected = servers.iter().filter(|s| s.status == McpServerStatus::Connected).count() as i32;
     let disconnected = servers.iter().filter(|s| s.status == McpServerStatus::Disconnected).count() as i32;
     let error = servers.iter().filter(|s| s.status == McpServerStatus::Error).count() as i32;
+    let mut total_tools = 0;
+    let mut total_resources = 0;
+    let mut total_requests = 0;
+    let mut total_errors = 0;
+
+    for server in servers.iter().filter(|server| server.status == McpServerStatus::Connected) {
+        if let Ok(tools) = mcp_manager.get_server_tools(&server.name).await {
+            total_tools += tools.len() as i32;
+        }
+        if let Ok(resources) = mcp_manager.get_server_resources(&server.name).await {
+            total_resources += resources.len() as i32;
+        }
+        if let Ok(logs) = mcp_manager.get_server_logs(&server.name, 1000).await {
+            total_requests += logs.len() as i64;
+            total_errors += logs
+                .iter()
+                .filter(|entry| {
+                    entry.level.eq_ignore_ascii_case("error")
+                        || entry.message.contains("[stderr]")
+                        || entry.message.to_lowercase().contains("error")
+                })
+                .count() as i64;
+        }
+    }
 
     Ok(McpServerStats {
         total_servers,
         connected,
         disconnected,
         error,
-        total_tools: 0,
-        total_resources: 0,
-        total_requests: 0,
-        total_errors: 0,
+        total_tools,
+        total_resources,
+        total_requests,
+        total_errors,
     })
 }
 
