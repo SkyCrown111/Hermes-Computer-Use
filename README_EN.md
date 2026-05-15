@@ -25,23 +25,56 @@
 
 ---
 
-Hermes Computer Use is a desktop management console for [Hermes Agent](https://github.com/hermes-agent/hermes), providing a graphical interface to manage AI Agent sessions, skills, cron jobs, configurations, and more.
+[Hermes Computer Use](https://github.com/Crown-22/Hermes-Computer-Use) is a desktop management console for [Hermes Agent](https://github.com/hermes-agent/hermes), providing an elegant graphical interface to manage AI Agent sessions, skills, cron jobs, configurations, and more. Deeply optimized for a smooth, professional management experience.
 
 ## Features
 
-- **Dashboard** - System status overview, statistics, and quick actions
-- **Sessions Management** - View and manage AI conversation history
-- **Skills Browser** - Browse and configure Hermes Skills
-- **Cron Jobs** - Create and manage scheduled tasks
-- **Memory Module** - Manage long-term memory entries
-- **Platform Configuration** - Configure Telegram, Discord, and other platform connections
-- **File Browser** - Browse files in working directory
-- **System Monitor** - Real-time logs and performance metrics
-- **Chat Interface** - Direct chat with Hermes Agent
+### Core Modules
+
+- **🏠 Dashboard** - System status overview, statistics, and quick actions at a glance
+- **💬 Sessions Management** - View and manage AI conversation history with search, categorization, and quick switching
+- **⚡ Skills Browser** - Browse and configure 300+ Hermes Skills with one-click enable/disable
+- **⏰ Cron Jobs** - Create and manage scheduled tasks with visual scheduling configuration
+- **🧠 Memory Module** - Manage long-term memory entries and view AI context memory status
+- **🔌 Platform Configuration** - Configure Telegram, Discord, WeChat, QQ and other platform connections
+- **📁 File Browser** - Browse files in working directory with quick search and preview
+- **📊 System Monitor** - Real-time logs and performance metrics with multi-dimensional filtering
+- **💬 Chat Interface** - Direct chat with Hermes Agent with command auto-completion
+
+### Optimization Highlights
+
+- **🎨 Modern UI Design** - Contemporary interface style with soft color palette, fatigue-free for extended use
+- **⚡ Lightning Fast** - Tauri 2 native performance, fast startup, low resource usage, smooth operation
+- **🔍 Smart Search** - Global search support, quickly locate sessions, skills, and configurations
+- **📱 Multi-Platform Integration** - Unified management of 8+ communication platform Agent connections
+- **🎯 Visual Monitoring** - Real-time health dashboard with performance metrics at a glance
+- **🌙 Status Awareness** - Bottom status bar shows connection status, model info, and statistics in real-time
 
 ## Screenshots
 
-> Screenshots will be added after first release
+### Dashboard
+
+Intuitive display of core system metrics: total sessions, available skills, today's tasks, and token usage.
+
+![Dashboard](./public/screenshots/首页.png)
+
+### Sessions Management
+
+Powerful session management with time-based grouping, search, and quick switching - easily manage hundreds of conversations.
+
+![Sessions Management](./public/screenshots/会话页.png)
+
+### System Monitor
+
+Real-time system monitoring including gateway health, performance metrics, log viewing, and error rate statistics.
+
+![System Monitor](./public/screenshots/监控页.png)
+
+### Platform Configuration
+
+Unified management of 8+ communication platform Agent connections: Telegram, Discord, Slack, WeChat, QQ, Feishu, and more.
+
+![Platform Configuration](./public/screenshots/平台配置页.png)
 
 ## Installation
 
@@ -62,9 +95,11 @@ Hermes Computer Use is a desktop management console for [Hermes Agent](https://g
 
 Download the installer for your platform from the [Releases](https://github.com/Crown-22/Hermes-Computer-Use/releases) page:
 
-- **Windows**: `Hermes.Computer.Use_x.x.x_x64-setup.exe`
-- **macOS**: `Hermes.Computer.Use_x.x.x_universal.dmg`
-- **Linux**: `hermes-computer-use_x.x.x_amd64.deb`
+| Platform | Filename |
+|----------|----------|
+| Windows | `Hermes.Computer.Use_x.x.x_x64-setup.exe` |
+| macOS | `Hermes.Computer.Use_x.x.x_universal.dmg` |
+| Linux | `hermes-computer-use_x.x.x_amd64.deb` |
 
 ### First Run
 
@@ -77,9 +112,9 @@ Download the installer for your platform from the [Releases](https://github.com/
 
 ### Requirements
 
-- Node.js >= 18
-- Rust >= 1.70
-- Hermes Agent installed
+- **Node.js** >= 18
+- **Rust** >= 1.70
+- **Hermes Agent** installed
 
 ### Local Development
 
@@ -91,7 +126,7 @@ cd Hermes-Computer-Use/hermes-app
 # Install dependencies
 npm install
 
-# Start development mode
+# Start development mode (hot reload)
 npm run tauri:dev
 ```
 
@@ -101,21 +136,36 @@ npm run tauri:dev
 npm run tauri:build
 ```
 
-Build artifacts are located in `src-tauri/target/release/bundle/`.
+Build artifacts are located in `src-tauri/target/release/bundle/` directory.
+
+### Development Commands
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start frontend dev server only |
+| `npm run tauri:dev` | Start Tauri dev mode (frontend + backend) |
+| `npm run tauri:build` | Build for production |
+| `npm run build` | Build frontend only |
 
 ## Tech Stack
 
 ### Frontend
-- **React 19** - UI Framework
-- **TypeScript 5.8** - Type Safety
-- **Vite 7** - Build Tool
-- **Tailwind CSS 4** - Styling
-- **Zustand 5** - State Management
+
+| Technology | Version | Description |
+|------------|---------|-------------|
+| React | 19 | UI Framework |
+| TypeScript | 5.8 | Type Safety |
+| Vite | 7 | Build Tool |
+| Tailwind CSS | 4 | Styling |
+| Zustand | 5 | State Management |
 
 ### Backend
-- **Tauri 2** - Cross-platform Desktop Framework
-- **Rust** - Backend Logic
-- **Serde** - Serialization/Deserialization
+
+| Technology | Version | Description |
+|------------|---------|-------------|
+| Tauri | 2 | Cross-platform Desktop Framework |
+| Rust | 1.70+ | Backend Logic |
+| Serde | - | Serialization/Deserialization |
 
 ## Project Structure
 
@@ -123,22 +173,63 @@ Build artifacts are located in `src-tauri/target/release/bundle/`.
 hermes-app/
 ├── src/                      # Frontend source code
 │   ├── components/           # Reusable UI components
+│   │   ├── ui/              # Base UI component library
+│   │   └── layout/          # Layout components
 │   ├── pages/                # Page components
-│   │   ├── Dashboard/        # Dashboard page
-│   │   ├── Sessions/         # Sessions management
-│   │   ├── Skills/           # Skills management
-│   │   ├── CronJobs/         # Cron jobs
-│   │   ├── Settings/         # System settings
-│   │   ├── Monitor/          # System monitor
-│   │   ├── Memory/           # Memory management
-│   │   ├── Platforms/        # Platform configuration
-│   │   └── Files/            # File browser
+│   │   ├── Dashboard/       # Dashboard page
+│   │   ├── Sessions/        # Sessions management
+│   │   ├── Skills/          # Skills management
+│   │   ├── CronJobs/        # Cron jobs
+│   │   ├── Settings/        # System settings
+│   │   ├── Monitor/         # System monitor
+│   │   ├── Memory/          # Memory management
+│   │   ├── Platforms/       # Platform configuration
+│   │   ├── Gateway/         # Gateway management
+│   │   ├── Files/           # File management
+│   │   └── Chat/            # Chat interface
 │   ├── stores/               # Zustand state management
 │   ├── services/             # API service layer
+│   ├── hooks/                # Custom React Hooks
+│   ├── utils/                # Utility functions
 │   └── types/                # TypeScript type definitions
 ├── src-tauri/                # Tauri backend source
-│   └── src/commands/         # Tauri command modules
-└── public/                   # Static assets
+│   ├── src/
+│   │   ├── commands/        # Tauri command modules
+│   │   ├── lib.rs           # Core library
+│   │   └── main.rs          # Entry point
+│   ├── Cargo.toml           # Rust dependencies
+│   └── tauri.conf.json      # Tauri configuration
+├── public/                   # Static assets
+│   └── screenshots/         # App screenshots
+├── package.json              # Node.js dependencies
+├── tsconfig.json             # TypeScript config
+├── vite.config.ts            # Vite config
+└── tailwind.config.js        # Tailwind CSS config
+```
+
+## Configuration
+
+### Environment Variables
+
+Create a `.env` file with the following variables:
+
+```env
+# Hermes Agent API URL
+VITE_HERMES_API_URL=http://localhost:9119
+
+# Other configurations...
+```
+
+### Tauri Configuration
+
+Configure app information in `src-tauri/tauri.conf.json`:
+
+```json
+{
+  "productName": "Hermes Computer Use",
+  "version": "1.0.0",
+  "identifier": "com.crown22.hermes-computer-use"
+}
 ```
 
 ## Contributing
@@ -153,6 +244,37 @@ Contributions are welcome! Please check [CONTRIBUTING.md](CONTRIBUTING.md) for d
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Create a Pull Request
 
+### Commit Convention
+
+Use [Conventional Commits](https://www.conventionalcommits.org/) specification:
+
+- `feat:` New feature
+- `fix:` Bug fix
+- `docs:` Documentation update
+- `style:` Code style (no functionality change)
+- `refactor:` Refactoring
+- `perf:` Performance improvement
+- `test:` Testing related
+- `chore:` Build/tool related
+
+## FAQ
+
+### Q: Shows "Offline" after launch?
+
+A: Please ensure Hermes Agent is properly installed and running. Check with:
+
+```bash
+hermes status
+```
+
+### Q: How to update to the latest version?
+
+A: Download the latest installer from [Releases](https://github.com/Crown-22/Hermes-Computer-Use/releases) and install over the existing version.
+
+### Q: Which AI models are supported?
+
+A: All models supported by Hermes Agent, including OpenAI, Claude, Gemini, and Chinese LLMs.
+
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
@@ -162,6 +284,12 @@ This project is licensed under the [MIT License](LICENSE).
 - [Hermes Agent](https://github.com/hermes-agent/hermes) - Powerful AI Agent framework
 - [Tauri](https://tauri.app/) - Modern desktop application framework
 - [React](https://react.dev/) - Popular UI framework
+- [Tailwind CSS](https://tailwindcss.com/) - Utility-first CSS framework
+
+## Contact
+
+- **GitHub**: [Crown_22](https://github.com/Crown-22)
+- **Issues**: [Submit Issues](https://github.com/Crown-22/Hermes-Computer-Use/issues)
 
 ---
 
