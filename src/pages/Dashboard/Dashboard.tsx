@@ -264,7 +264,7 @@ export const Dashboard: React.FC = () => {
     }
   }, [t]);
 
-  // Memoize new session handler �?must be before any early returns (Rules of Hooks)
+  // Memoize new session handler �?must be before any early returns (Rules of Hooks)
   const handleNewSession = useCallback(() => {
     const sessionId = `new_${Date.now()}`;
     openTab(sessionId, t('dashboard.newSession'), 'new');
@@ -280,7 +280,7 @@ export const Dashboard: React.FC = () => {
     tokenUsage: usageAnalytics?.totals.total_input ?? 0,
   };
 
-  // 获取最近会话（从统计中获取�?
+  // 获取最近会话（从统计中获取�?
   const recentSessions = usageAnalytics?.daily.slice(-5).reverse() ?? [];
   const capabilityEntries = hermesEnvironment
     ? (Object.entries(capabilityLabels) as Array<[keyof typeof capabilityLabels, string]>).map(([key, label]) => ({
