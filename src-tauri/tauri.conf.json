@@ -47,7 +47,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDk2RjFFQ0JDQjc2M0MzOTYKUldTV3cyTzN2T3p4bHBFSEM5alJwVmdQL21uMHNoWld0Mnh1Q2FXRG9NR2sxZEZwZ1BXVTFieEYK",
       "endpoints": [
-        "https://github.com/Crown-22/Hermes-Computer-Use/releases/latest/download/latest.json"
+        "https://github.com/SkyCrown111/Hermes-Computer-Use/releases/latest/download/latest.json"
       ],
       "windows": {
         "installMode": "passive"

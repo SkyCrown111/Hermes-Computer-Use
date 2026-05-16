@@ -34,7 +34,7 @@ interface GitHubUpdateCheck {
   publishedAt?: string;
 }
 
-const DEFAULT_RELEASE_URL = 'https://github.com/Crown-22/Hermes-Computer-Use/releases/latest';
+const DEFAULT_RELEASE_URL = 'https://github.com/SkyCrown111/Hermes-Computer-Use/releases/latest';
 
 let _currentVersion: string | null = null;
 let _pendingUpdate: Update | null = null;

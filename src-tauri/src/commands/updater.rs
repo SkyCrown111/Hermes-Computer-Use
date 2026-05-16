@@ -3,8 +3,9 @@
 use serde::Serialize;
 
 const GITHUB_LATEST_API: &str =
-    "https://api.github.com/repos/Crown-22/Hermes-Computer-Use/releases/latest";
-const GITHUB_RELEASE_PAGE: &str = "https://github.com/Crown-22/Hermes-Computer-Use/releases/latest";
+    "https://api.github.com/repos/SkyCrown111/Hermes-Computer-Use/releases/latest";
+const GITHUB_RELEASE_PAGE: &str =
+    "https://github.com/SkyCrown111/Hermes-Computer-Use/releases/latest";
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

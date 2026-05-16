@@ -77,7 +77,7 @@ describe('updateApi', () => {
         currentVersion: '0.1.1',
         latestVersion: '0.2.0',
         available: true,
-        releaseUrl: 'https://github.com/Crown-22/Hermes-Computer-Use/releases/tag/v0.2.0',
+        releaseUrl: 'https://github.com/SkyCrown111/Hermes-Computer-Use/releases/tag/v0.2.0',
         releaseNotes: 'Bug fixes',
         publishedAt: '2026-05-01T00:00:00Z',
       });
