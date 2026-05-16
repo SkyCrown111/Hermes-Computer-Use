@@ -1,6 +1,6 @@
 [package]
 name = "hermes-computer-use"
-version = "0.1.1"
+version = "0.1.2"
 description = "Hermes Computer Use - Desktop management application for Hermes Agent"
 authors = ["Crown_22"]
 edition = "2021"
