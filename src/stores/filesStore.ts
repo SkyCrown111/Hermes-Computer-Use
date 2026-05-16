@@ -55,7 +55,8 @@ interface FilesState {
   // Actions - 目录操作
   navigateTo: (path: string) => Promise<void>;
   refreshDirectory: () => Promise<void>;
-  goUp: () => Promise<void>;
+  /** @param withinRoot Optional workspace root — parent navigation will not go above this path. */
+  goUp: (withinRoot?: string) => Promise<void>;
 
   // Actions - 文件操作
   openFile: (path: string) => Promise<void>;
@@ -105,11 +106,20 @@ interface FilesState {
   clearError: () => void;
 }
 
-// 获取父目录路径
+/** Strip one trailing slash for comparisons (empty means filesystem "/"). */
+const normalizeTrimPath = (path: string): string => path.replace(/\/$/, '');
+
+// 获取父目录路径（支持 ~/.hermes/... 等非纯 POSIX 根路径）
 const getParentPath = (path: string): string => {
-  const parts = path.split('/').filter(Boolean);
-  parts.pop();
-  return '/' + parts.join('/');
+  const trimmed = path.replace(/\/$/, '');
+  if (!trimmed || trimmed === '/') {
+    return '/';
+  }
+  const lastSlash = trimmed.lastIndexOf('/');
+  if (lastSlash <= 0) {
+    return '/';
+  }
+  return trimmed.slice(0, lastSlash);
 };
 
 // 更新树节点展开状态
@@ -132,9 +142,12 @@ const updateTreeNodeExpanded = (
   return node;
 };
 
+/** Default browse root — must match `DEFAULT_ROOTS` / `validate_path` on the backend. */
+export const DEFAULT_FILES_BROWSER_ROOT = '~/.hermes';
+
 export const useFilesStore = create<FilesState>((set, get) => ({
   // 初始状态
-  currentPath: '/',
+  currentPath: DEFAULT_FILES_BROWSER_ROOT,
   directoryContent: null,
   isLoadingDirectory: false,
   currentFile: null,
@@ -159,6 +172,11 @@ export const useFilesStore = create<FilesState>((set, get) => ({
     try {
       const content = await filesApi.getDirectory({ path });
       set({ directoryContent: content, isLoadingDirectory: false });
+      void filesApi.addCacheItem({
+        key: `dir:${content.path}`,
+        type: 'metadata',
+        size: content.totalFiles + content.totalDirectories,
+      });
     } catch (err) {
       set({ error: getErrorMessage(err), isLoadingDirectory: false });
     }
@@ -171,10 +189,29 @@ export const useFilesStore = create<FilesState>((set, get) => ({
   },
 
   // 返回上级目录
-  goUp: async () => {
+  goUp: async (withinRoot?: string) => {
     const { currentPath } = get();
-    if (currentPath === '/') return;
-    const parentPath = getParentPath(currentPath);
+    if (currentPath === '/' || currentPath === '') return;
+
+    const rootBound = withinRoot?.trim();
+    if (rootBound) {
+      const cur = normalizeTrimPath(currentPath);
+      const root = normalizeTrimPath(rootBound);
+      if (cur === root) return;
+    } else if (currentPath === DEFAULT_FILES_BROWSER_ROOT) {
+      return;
+    }
+
+    let parentPath = getParentPath(currentPath);
+
+    if (rootBound) {
+      const root = normalizeTrimPath(rootBound);
+      const p = normalizeTrimPath(parentPath);
+      if (p.length < root.length || !(p === root || p.startsWith(`${root}/`))) {
+        parentPath = rootBound;
+      }
+    }
+
     await get().navigateTo(parentPath);
   },
 
@@ -464,6 +501,11 @@ export const useFilesStore = create<FilesState>((set, get) => ({
       // Guard: only apply results if the query hasn't changed since we started
       if (get().searchQuery === query) {
         set({ searchResults: results, isSearching: false });
+        void filesApi.addCacheItem({
+          key: `search:${searchPath}::${query}`,
+          size: results.reduce((s, r) => s + (r.fileName?.length ?? 0), 0),
+          type: 'search',
+        });
       }
     } catch (err) {
       if (get().searchQuery === query) {

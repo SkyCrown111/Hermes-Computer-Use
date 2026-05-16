@@ -5,7 +5,11 @@
 use super::utils::create_command;
 use serde_yaml::Value;
 
-const DEFAULT_ROOTS: &[&str] = &["~/.hermes", "~"];
+/// Default allowlist: Hermes data dir only. User workspaces come from config.
+const DEFAULT_ROOTS: &[&str] = &["~/.hermes"];
+
+/// Absolute prefixes never allowed (WSL can expose full Windows disks via /mnt).
+const DENIED_PATH_PREFIXES: &[&str] = &["/mnt", "/proc", "/sys", "/dev"];
 
 /// Collect allowed directory roots from defaults + Hermes config.
 pub fn allowed_file_roots() -> Vec<String> {
@@ -32,6 +36,30 @@ pub fn path_under_root(path: &str, root: &str) -> bool {
 /// Check path against configured allowlist (after basic normalization).
 pub fn is_path_in_allowed_roots(path: &str, roots: &[String]) -> bool {
     roots.iter().any(|root| path_under_root(path, root))
+}
+
+/// Block known-dangerous absolute paths before root matching.
+pub fn is_denied_path_prefix(path: &str) -> bool {
+    let p = path.trim();
+    if p.is_empty() {
+        return true;
+    }
+    for prefix in DENIED_PATH_PREFIXES {
+        if p == *prefix || p.starts_with(&format!("{}/", prefix)) || p.starts_with(prefix) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Full path policy check used by file IPC.
+pub fn is_path_allowed(path: &str, roots: &[String]) -> bool {
+    // Paths under an explicit allowlisted root must be permitted even when they live under
+    // a generally blocked prefix like `/mnt/...` (common for WSL workspace roots).
+    if is_path_in_allowed_roots(path, roots) {
+        return true;
+    }
+    !is_denied_path_prefix(path) && is_path_in_allowed_roots(path, roots)
 }
 
 fn read_workspace_roots_from_config() -> Vec<String> {
@@ -116,14 +144,38 @@ mod tests {
     #[test]
     fn path_under_root_matches_children() {
         assert!(path_under_root("~/.hermes/config.yaml", "~/.hermes"));
-        assert!(path_under_root("~/Documents", "~"));
-        assert!(!path_under_root("/mnt/c", "~"));
+        assert!(!path_under_root("~/Documents", "~/.hermes"));
+        assert!(!path_under_root("/mnt/c", "~/.hermes"));
     }
 
     #[test]
-    fn default_roots_include_hermes_and_home() {
+    fn default_roots_include_hermes_only() {
         let roots = allowed_file_roots();
         assert!(roots.iter().any(|r| r == "~/.hermes"));
-        assert!(roots.iter().any(|r| r == "~"));
+        assert!(!roots.iter().any(|r| r == "~"));
+    }
+
+    #[test]
+    fn denies_mnt_and_proc() {
+        assert!(is_denied_path_prefix("/mnt/c"));
+        assert!(is_denied_path_prefix("/mnt/c/Users"));
+        assert!(is_denied_path_prefix("/proc/self"));
+    }
+
+    #[test]
+    fn is_path_allowed_respects_workspace() {
+        let roots = vec!["~/.hermes".to_string(), "/home/dev/project".to_string()];
+        assert!(is_path_allowed("~/.hermes/config.yaml", &roots));
+        assert!(is_path_allowed("/home/dev/project/src/main.rs", &roots));
+        assert!(!is_path_allowed("/mnt/c", &roots));
+        assert!(!is_path_allowed("~/random", &roots));
+    }
+
+    #[test]
+    fn is_path_allowed_allows_explicit_mnt_workspace_root() {
+        let roots = vec!["~/.hermes".to_string(), "/mnt/d/Aiagent/Hermes".to_string()];
+        assert!(is_path_allowed("/mnt/d/Aiagent/Hermes", &roots));
+        assert!(is_path_allowed("/mnt/d/Aiagent/Hermes/console/foo", &roots));
+        assert!(!is_path_allowed("/mnt/d/Other/project", &roots));
     }
 }

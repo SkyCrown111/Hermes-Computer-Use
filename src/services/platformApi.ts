@@ -106,13 +106,19 @@ export const platformApi = {
     }
   },
 
-  getPlatformMessages: async (platformType: PlatformType, chatId: string, limit?: number, beforeId?: string): Promise<PlatformMessage[]> => {
+  getPlatformMessages: async (
+    platformType: PlatformType,
+    chatId: string,
+    opts?: { limit?: number; beforeId?: string | null; tailOffset?: number | null },
+  ): Promise<PlatformMessage[]> => {
     try {
-      return await apiClient.invoke('get_platform_messages', {
+      const limit = opts?.limit ?? 50;
+      return await apiClient.invoke<PlatformMessage[]>('get_platform_messages', {
         platform_type: platformType,
         chat_id: chatId,
         limit,
-        before_id: beforeId
+        before_id: opts?.beforeId ?? null,
+        tail_offset: opts?.tailOffset ?? null,
       });
     } catch (error) {
       logger.error('[PlatformApi] getPlatformMessages failed:', getErrorDetail(error));

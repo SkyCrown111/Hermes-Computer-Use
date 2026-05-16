@@ -121,22 +121,15 @@ impl LogStreamManager {
         }
     }
 
-    /// Export logs to a file with optional filtering
-    pub async fn export_logs(
+    /// Read log file and apply optional filters (returns full text + line count).
+    pub async fn read_filtered_logs(
         &self,
         log_path: &str,
-        output_path: &str,
         filter: Option<LogFilter>,
-    ) -> Result<usize, String> {
-        println!(
-            "[LogStreamManager] Exporting logs from {} to {}",
-            log_path, output_path
-        );
-
-        // Read log file via WSL
+    ) -> Result<(String, usize), String> {
         let wsl_log_path = Self::convert_to_wsl_path(log_path);
         let output = Command::new("wsl")
-            .args(&["cat", &wsl_log_path])
+            .args(["cat", &wsl_log_path])
             .output()
             .await
             .map_err(|e| format!("Failed to read log file: {}", e))?;
@@ -149,28 +142,37 @@ impl LogStreamManager {
         }
 
         let content = String::from_utf8_lossy(&output.stdout);
-        let lines: Vec<&str> = content.lines().collect();
-
-        // Apply filters
-        let filtered_lines: Vec<String> = lines
-            .iter()
-            .filter_map(|line| {
+        let filtered_lines: Vec<String> = content
+            .lines()
+            .filter(|line| {
                 let entry = Self::parse_log_line(line);
-                if Self::matches_filter(&entry, &filter) {
-                    Some(line.to_string())
-                } else {
-                    None
-                }
+                Self::matches_filter(&entry, &filter)
             })
+            .map(|line| line.to_string())
             .collect();
 
-        // Write to output file
-        let output_content = filtered_lines.join("\n");
+        let line_count = filtered_lines.len();
+        Ok((filtered_lines.join("\n"), line_count))
+    }
+
+    /// Export logs to a file with optional filtering
+    pub async fn export_logs(
+        &self,
+        log_path: &str,
+        output_path: &str,
+        filter: Option<LogFilter>,
+    ) -> Result<usize, String> {
+        println!(
+            "[LogStreamManager] Exporting logs from {} to {}",
+            log_path, output_path
+        );
+
+        let (output_content, line_count) = self.read_filtered_logs(log_path, filter).await?;
         tokio::fs::write(output_path, output_content)
             .await
             .map_err(|e| format!("Failed to write output file: {}", e))?;
 
-        Ok(filtered_lines.len())
+        Ok(line_count)
     }
 
     /// Background task for streaming logs

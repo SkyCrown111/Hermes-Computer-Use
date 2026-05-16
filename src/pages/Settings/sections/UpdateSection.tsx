@@ -1,6 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Button, RefreshIcon, CheckIcon, AlertIcon, TrashIcon } from '../../../components';
-import { checkForUpdates, installPendingUpdate, type UpdateInfo } from '../../../services/updateApi';
+import {
+  checkForUpdates,
+  getCurrentVersion,
+  installPendingUpdate,
+  openUpdateReleasePage,
+  type UpdateInfo,
+} from '../../../services/updateApi';
 import { logger } from '../../../lib/logger';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { invoke } from '@tauri-apps/api/core';
@@ -41,8 +47,21 @@ const UpdateSection: React.FC<{ t: (key: string) => string }> = ({ t }) => {
       // Download complete, show restart prompt
       setShowRestartPrompt(true);
     } catch (err) {
+      const message = err instanceof Error ? err.message : 'Install failed';
+      if (message === 'MANUAL_DOWNLOAD_OPENED') {
+        setUpdateInfo(prev =>
+          prev
+            ? {
+                ...prev,
+                status: 'available',
+                error: undefined,
+              }
+            : null
+        );
+        return;
+      }
       setUpdateInfo(prev =>
-        prev ? { ...prev, status: 'error', error: err instanceof Error ? err.message : 'Install failed' } : null
+        prev ? { ...prev, status: 'error', error: message } : null
       );
     }
   };
@@ -78,10 +97,17 @@ const UpdateSection: React.FC<{ t: (key: string) => string }> = ({ t }) => {
   };
 
   useEffect(() => {
-    checkForUpdates().then(info => {
-      setUpdateInfo(info);
-    });
+    void loadVersionOnMount();
   }, []);
+
+  const loadVersionOnMount = async () => {
+    const version = await getCurrentVersion();
+    setUpdateInfo({
+      available: false,
+      currentVersion: version,
+      status: 'idle',
+    });
+  };
 
   // Format bytes to human readable
   const formatBytes = (bytes: number): string => {
@@ -141,6 +167,9 @@ const UpdateSection: React.FC<{ t: (key: string) => string }> = ({ t }) => {
               <span className="update-label">{t('settings.newVersion')}</span>
               <span className="update-value">{updateInfo.newVersion}</span>
             </div>
+            {updateInfo.manualDownloadOnly && (
+              <p className="update-manual-hint">{t('settings.manualUpdateHint')}</p>
+            )}
             {updateInfo.releaseDate && (
               <div className="update-info-row">
                 <span className="update-label">{t('settings.releaseDate')}</span>
@@ -200,7 +229,15 @@ const UpdateSection: React.FC<{ t: (key: string) => string }> = ({ t }) => {
         >
           {isChecking ? t('settings.checking') : t('settings.checkForUpdates')}
         </Button>
-        {updateInfo?.available && updateInfo.status !== 'ready' && (
+        {updateInfo?.available && updateInfo.status !== 'ready' && updateInfo.manualDownloadOnly && (
+          <Button
+            variant="primary"
+            onClick={() => void openUpdateReleasePage(updateInfo.releaseUrl)}
+          >
+            {t('settings.downloadFromGithub')}
+          </Button>
+        )}
+        {updateInfo?.available && updateInfo.status !== 'ready' && !updateInfo.manualDownloadOnly && (
           <Button
             variant="primary"
             onClick={handleInstall}

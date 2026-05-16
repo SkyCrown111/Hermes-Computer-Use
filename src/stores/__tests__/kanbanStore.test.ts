@@ -24,6 +24,10 @@ vi.mock('../../services/kanbanApi', () => ({
 
 import * as kanbanApi from '../../services/kanbanApi';
 
+vi.mock('../../lib/logger', () => ({
+  logger: { error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
+}));
+
 const createBoardInfo = (overrides: Partial<KanbanBoardInfo> = {}): KanbanBoardInfo => ({
   slug: 'default',
   name: 'Default',
@@ -145,5 +149,78 @@ describe('KanbanStore', () => {
     expect(state.currentBoard).toBe('default');
     expect(state.filters.board).toBe('default');
     expect(state.filters.tenant).toBeNull();
+  });
+
+  it('fetchBoard fetchStats fetchTenants load data', async () => {
+    vi.mocked(kanbanApi.getKanbanBoard).mockResolvedValue({ todo: [] });
+    vi.mocked(kanbanApi.getKanbanStats).mockResolvedValue({ ...emptyStats, total: 3 });
+    vi.mocked(kanbanApi.getKanbanTenants).mockResolvedValue(['acme']);
+
+    await useKanbanStore.getState().fetchBoard();
+    await useKanbanStore.getState().fetchStats();
+    await useKanbanStore.getState().fetchTenants();
+
+    const state = useKanbanStore.getState();
+    expect(state.board).toEqual({ todo: [] });
+    expect(state.stats.total).toBe(3);
+    expect(state.tenants).toEqual(['acme']);
+  });
+
+  it('fetchTask loads selected task', async () => {
+    vi.mocked(kanbanApi.getKanbanTask).mockResolvedValue({
+      id: 't1',
+      title: 'Task',
+      status: 'todo',
+    } as never);
+
+    await useKanbanStore.getState().fetchTask('t1');
+
+    expect(useKanbanStore.getState().selectedTask?.id).toBe('t1');
+  });
+
+  it('switchBoard refreshes board data', async () => {
+    vi.mocked(kanbanApi.switchKanbanBoard).mockResolvedValue({ ok: true });
+    vi.mocked(kanbanApi.listKanbanBoards).mockResolvedValue([createBoardInfo()]);
+    vi.mocked(kanbanApi.getCurrentKanbanBoard).mockResolvedValue('default');
+
+    const ok = await useKanbanStore.getState().switchBoard('default');
+
+    expect(ok).toBe(true);
+    expect(kanbanApi.switchKanbanBoard).toHaveBeenCalledWith('default');
+  });
+
+  it('createTask moveTask deleteTask and addComment', async () => {
+    vi.mocked(kanbanApi.createKanbanTask).mockResolvedValue({ ok: true, id: 't1' });
+    vi.mocked(kanbanApi.moveKanbanTask).mockResolvedValue({ ok: true });
+    vi.mocked(kanbanApi.deleteKanbanTask).mockResolvedValue({ ok: true });
+    vi.mocked(kanbanApi.addKanbanComment).mockResolvedValue({ ok: true });
+    vi.mocked(kanbanApi.getKanbanTask).mockResolvedValue({ id: 't1', title: 'Task', status: 'done' } as never);
+
+    useKanbanStore.setState({
+      selectedTask: { id: 't1', title: 'Task', status: 'todo' } as never,
+    });
+
+    expect(await useKanbanStore.getState().createTask({
+      title: 'New',
+      status: 'todo',
+    } as never)).toBe(true);
+
+    expect(await useKanbanStore.getState().moveTask('t1', 'done')).toBe(true);
+    expect(await useKanbanStore.getState().addComment({
+      task_id: 't1',
+      content: 'note',
+    } as never)).toBe(true);
+    expect(await useKanbanStore.getState().deleteTask('t1')).toBe(true);
+    expect(useKanbanStore.getState().selectedTask).toBeNull();
+  });
+
+  it('setFilters clearSelectedTask clearError', () => {
+    useKanbanStore.getState().setFilters({ tenant: 'acme', showArchived: true });
+    expect(useKanbanStore.getState().filters.tenant).toBe('acme');
+
+    useKanbanStore.setState({ selectedTask: { id: 't1' } as never, error: 'x' });
+    useKanbanStore.getState().clearSelectedTask();
+    useKanbanStore.getState().clearError();
+    expect(useKanbanStore.getState().error).toBeNull();
   });
 });

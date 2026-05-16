@@ -48,14 +48,20 @@ jobs:
       - name: Install frontend dependencies
         run: npm install
 
+      - name: Verify release build (no devtools feature)
+        run: cargo build --release --manifest-path src-tauri/Cargo.toml
+
       - name: Build the app
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Hermes Console ${{ github.ref_name }}'
           releaseBody: 'See CHANGELOG.md for details.'
           releaseDraft: true
           prerelease: false
+          includeUpdaterArtifacts: true
           args: ${{ matrix.args }}

@@ -129,6 +129,31 @@ describe('useHermesReadinessStore', () => {
     });
   });
 
+  it('reuses snapshot when fresh and not forced', async () => {
+    const snap = {
+      exists: true,
+      health,
+      config,
+      environment,
+      systemStatus,
+    };
+    useHermesReadinessStore.setState({
+      snapshot: snap,
+      lastLoadedAt: Date.now(),
+      error: null,
+    });
+    const r = await useHermesReadinessStore.getState().refreshSnapshot(false);
+    expect(r).toEqual(snap);
+    expect(checkDataDirExists).not.toHaveBeenCalled();
+  });
+
+  it('records string error when refresh throws non-Error', async () => {
+    vi.mocked(checkDataDirExists).mockRejectedValueOnce('string-fail');
+    const r = await useHermesReadinessStore.getState().refreshSnapshot(true);
+    expect(r).toBeNull();
+    expect(useHermesReadinessStore.getState().error).toBe('string-fail');
+  });
+
   it('deduplicates concurrent refresh calls', async () => {
     const [first, second] = await Promise.all([
       useHermesReadinessStore.getState().refreshSnapshot(true),

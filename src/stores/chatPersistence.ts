@@ -5,6 +5,11 @@ export const CHAT_MESSAGES_KEY = 'hermes-chat-messages';
 const pendingSessionIds: Set<string> = new Set();
 const MAX_PENDING_SESSIONS = 100;
 
+/** Clears in-memory pending flags (unit tests only). */
+export function __resetPendingSessionsForTests(): void {
+  pendingSessionIds.clear();
+}
+
 export function markPendingSessions<T>(sessions: Record<string, { messages: T[] }>): void {
   for (const [sessionId, state] of Object.entries(sessions)) {
     if (state.messages.length > 0) {

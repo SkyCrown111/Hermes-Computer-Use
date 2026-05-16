@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Card, Button, FolderIcon, FileIcon, SearchIcon, AlertIcon, EmptyIcon, ChartIcon, FileTextIcon, SaveIcon, HourglassIcon, SparklesIcon, XIcon, RefreshIcon, EditIcon, TrashIcon, DownloadIcon, UploadIcon, ConfirmModal, InputModal } from '../../components';
-import { useFilesStore } from '../../stores';
+import { useFilesStore, DEFAULT_FILES_BROWSER_ROOT } from '../../stores';
 import { useTranslation } from '../../hooks/useTranslation';
 import { filesApi } from '../../services/filesApi';
 import { logger } from '../../lib/logger';
@@ -66,13 +66,24 @@ const getFileIcon = (item: FileInfo): string => {
   }
 };
 
+function trimFsPath(p: string): string {
+  return p.replace(/\/$/, '');
+}
+
+function isPathUnderWorkspaceRoot(currentPath: string, root: string): boolean {
+  const c = trimFsPath(currentPath);
+  const r = trimFsPath(root);
+  if (!r) return false;
+  return c === r || c.startsWith(`${r}/`);
+}
+
 // Files Page Component
 export const Files: React.FC = () => {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<'browser' | 'cache'>('browser');
   // Workspaces loaded from store/config, defaults to home directory
   const [workspaces, setWorkspaces] = useState<Workspace[]>([
-    { id: '1', name: 'Home', path: '~', isActive: true },
+    { id: '1', name: 'Hermes', path: '~/.hermes', isActive: true },
   ]);
   // Cache items loaded from API
   const [cacheItems, setCacheItems] = useState<CacheItem[]>([]);
@@ -129,6 +140,46 @@ export const Files: React.FC = () => {
   const removeFavorite = useFilesStore(s => s.removeFavorite);
   const clearError = useFilesStore(s => s.clearError);
 
+  const workspaceRoot = useMemo(() => {
+    const active = workspaces.find(w => w.isActive) ?? workspaces[0];
+    const raw = active?.path?.trim();
+    return raw && raw.length > 0 ? raw : DEFAULT_FILES_BROWSER_ROOT;
+  }, [workspaces]);
+
+  const atWorkspaceRoot = useMemo(
+    () => trimFsPath(currentPath) === trimFsPath(workspaceRoot),
+    [currentPath, workspaceRoot]
+  );
+
+  const fileBreadcrumbs = useMemo(() => {
+    const root = trimFsPath(workspaceRoot);
+    const cur = trimFsPath(currentPath);
+    const crumbs: { name: string; path: string }[] = [{ name: t('files.root'), path: root }];
+    if (!cur || cur === root) {
+      return crumbs;
+    }
+    if (!(cur === root || cur.startsWith(`${root}/`))) {
+      return crumbs;
+    }
+    const rest = cur.slice(root.length).replace(/^\//, '');
+    if (!rest) return crumbs;
+    let acc = root;
+    for (const part of rest.split('/').filter(Boolean)) {
+      acc = `${acc}/${part}`;
+      crumbs.push({ name: part, path: acc });
+    }
+    return crumbs;
+  }, [workspaceRoot, currentPath, t]);
+
+  // 避免面包屑把「根」指到 "/"（会触发后端路径校验失败）；并保证当前路径落在活动工作区内
+  useEffect(() => {
+    if (activeTab !== 'browser') return;
+    const cur = trimFsPath(currentPath);
+    if (cur === '/' || cur === '' || !isPathUnderWorkspaceRoot(currentPath, workspaceRoot)) {
+      void navigateTo(workspaceRoot);
+    }
+  }, [activeTab, currentPath, workspaceRoot, navigateTo]);
+
   // 初始化加载
   useEffect(() => {
     // Load workspaces from storage
@@ -142,8 +193,7 @@ export const Files: React.FC = () => {
         // Navigate to first workspace path
         navigateTo(storedWorkspaces[0].path);
       } else {
-        // Default to home directory
-        navigateTo(currentPath);
+        navigateTo(DEFAULT_FILES_BROWSER_ROOT);
       }
     });
     loadFavorites();
@@ -286,8 +336,10 @@ export const Files: React.FC = () => {
         setWorkspaces(stored.map((ws, idx) => ({ ...ws, isActive: idx === 0 })));
         navigateTo(stored[0].path);
       } else {
-        setWorkspaces([{ id: 'default', name: 'Home', path: '~', isActive: true }]);
-        navigateTo('~');
+        setWorkspaces([
+          { id: 'default', name: 'Hermes', path: DEFAULT_FILES_BROWSER_ROOT, isActive: true },
+        ]);
+        navigateTo(DEFAULT_FILES_BROWSER_ROOT);
       }
       toast.success(t('files.workspaceRemoved'));
     }
@@ -337,20 +389,30 @@ export const Files: React.FC = () => {
   }, [sortBy]);
 
   // 清除缓存
-  const handleClearCache = useCallback(async (type?: 'file' | 'search' | 'metadata') => {
-    await filesApi.clearCache(type);
-    if (type) {
-      setCacheItems(prev => prev.filter(item => item.type !== type));
-    } else {
-      setCacheItems([]);
-    }
+  const refreshCachePanel = useCallback(async () => {
+    const items = await filesApi.getCacheItems();
+    setCacheItems(items);
   }, []);
+
+  const handleClearCache = useCallback(
+    async (type?: 'file' | 'search' | 'metadata') => {
+      await filesApi.clearCache(type);
+      await refreshCachePanel();
+      toast.success(t('files.cacheClearSuccess'));
+    },
+    [refreshCachePanel, t]
+  );
 
   // 删除缓存项
   const handleDeleteCacheItem = useCallback(async (key: string) => {
     await filesApi.deleteCacheItem(key);
-    setCacheItems(prev => prev.filter(item => item.key !== key));
-  }, []);
+    await refreshCachePanel();
+  }, [refreshCachePanel]);
+
+  const handleToolbarRefreshCache = useCallback(async () => {
+    await refreshCachePanel();
+    toast.success(t('files.cacheRefreshed'));
+  }, [refreshCachePanel, t]);
 
   // 处理搜索
   const handleSearch = useCallback((query: string) => {
@@ -491,34 +553,20 @@ export const Files: React.FC = () => {
     return sortOrder === 'asc' ? '↑' : '↓';
   };
 
-  // 渲染路径面包屑
-  const renderBreadcrumbs = () => {
-    const parts = currentPath.split('/').filter(Boolean);
-    const breadcrumbs = [{ name: t('files.root'), path: '/' }];
-
-    let accPath = '';
-    parts.forEach(part => {
-      accPath += '/' + part;
-      breadcrumbs.push({ name: part, path: accPath });
-    });
-
-    return (
-      <div className="toolbar-path">
-        <span className="path-label">{t('files.path')}:</span>
-        {breadcrumbs.map((crumb, index) => (
-          <span key={crumb.path}>
-            <span
-              className="path-segment"
-              onClick={() => navigateTo(crumb.path)}
-            >
-              {crumb.name}
-            </span>
-            {index < breadcrumbs.length - 1 && <span className="path-separator">/</span>}
+  // 渲染路径面包屑（根 = 当前工作区根路径，而非文件系统 "/"）
+  const renderBreadcrumbs = () => (
+    <div className="toolbar-path">
+      <span className="path-label">{t('files.path')}:</span>
+      {fileBreadcrumbs.map((crumb, index) => (
+        <span key={`${crumb.path}::${index}`}>
+          <span className="path-segment" onClick={() => navigateTo(crumb.path)}>
+            {crumb.name}
           </span>
-        ))}
-      </div>
-    );
-  };
+          {index < fileBreadcrumbs.length - 1 && <span className="path-separator">/</span>}
+        </span>
+      ))}
+    </div>
+  );
 
   return (
     <div className="files">
@@ -728,11 +776,11 @@ export const Files: React.FC = () => {
                   >
                     <FileIcon size={14} /> {t('files.newFile')}
                   </Button>
-                  {currentPath !== '/' && (
+                  {!atWorkspaceRoot && (
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => goUp()}
+                      onClick={() => goUp(workspaceRoot)}
                     >
                     <FolderIcon size={14} /> {' '}
                     {t('files.parentDir')}
@@ -742,7 +790,7 @@ export const Files: React.FC = () => {
               </div>
 
               {/* File List */}
-              <Card className="files-list-card">
+              <Card className="files-list-card" noPadding>
                 {/* List Header */}
                 <div className="files-list-header">
                   <div className="file-col-check">
@@ -925,7 +973,7 @@ export const Files: React.FC = () => {
                                   handleViewFile(file.path);
                                 }}
                               >
-                                View
+                                {t('files.view')}
                               </button>
                               <button
                                 className="file-action-btn"
@@ -1084,13 +1132,17 @@ export const Files: React.FC = () => {
                 <div className="cache-stat-icon"><SearchIcon size={24} /></div>
                 <div className="cache-stat-info">
                   <div className="cache-stat-value">{cacheStats.searchCount}</div>
-                  <div className="cache-stat-label">{t('files.searchCache')}</div>
+                  <div className="cache-stat-label">{t('files.searchCacheLabel')}</div>
                 </div>
               </Card>
             </div>
 
             {/* Cache Actions */}
             <div className="cache-actions">
+              <Button variant="ghost" size="sm" onClick={() => void handleToolbarRefreshCache()}>
+                <RefreshIcon size={14} /> {t('files.cacheRefresh')}
+              </Button>
+              <span className="cache-actions-divider" aria-hidden="true" />
               <span className="cache-actions-label">{t('files.clearCache')}</span>
               <Button variant="ghost" size="sm" onClick={() => handleClearCache('file')}>
                 {t('files.clearFileCache')}
@@ -1107,7 +1159,7 @@ export const Files: React.FC = () => {
             </div>
 
             {/* Cache List */}
-            <Card className="cache-list-card">
+            <Card className="cache-list-card" noPadding>
               <div className="cache-list-header">
                 <div className="cache-col-key">{t('files.cacheKey')}</div>
                 <div className="cache-col-type">{t('files.type')}</div>
@@ -1128,7 +1180,6 @@ export const Files: React.FC = () => {
                       <div className="cache-col-type">
                         <span className={`cache-type cache-type-${item.type}`}>
                           {item.type === 'file' ? 'File' : item.type === 'search' ? 'Search' : 'Meta'}
-                          {item.type}
                         </span>
                       </div>
                       <div className="cache-col-size">
@@ -1157,6 +1208,7 @@ export const Files: React.FC = () => {
                 <div className="cache-empty">
                   <span className="empty-icon"><SparklesIcon size={32} /></span>
                   <span>{t('files.cacheCleared')}</span>
+                  <p className="cache-empty-hint">{t('files.cacheEmptyHint')}</p>
                 </div>
               )}
             </Card>

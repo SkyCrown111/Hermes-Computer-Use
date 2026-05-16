@@ -234,6 +234,38 @@ describe('MonitorStore', () => {
       expect(useMonitorStore.getState().error).toBeNull();
     });
   });
+
+  describe('filters and live stream', () => {
+    it('should set filter level and refetch logs', async () => {
+      vi.mocked(monitorApi.getLogs).mockResolvedValue({ lines: ['2026 INFO test'], total: 1 });
+
+      useMonitorStore.getState().setFilterLevel('ERROR');
+
+      expect(useMonitorStore.getState().filterLevel).toBe('ERROR');
+      expect(monitorApi.getLogs).toHaveBeenCalled();
+    });
+
+    it('should debounce search query', async () => {
+      vi.useFakeTimers();
+      vi.mocked(monitorApi.getLogs).mockResolvedValue({ lines: [], total: 0 });
+
+      useMonitorStore.getState().setSearchQuery('gateway');
+      vi.advanceTimersByTime(400);
+
+      expect(useMonitorStore.getState().searchQuery).toBe('gateway');
+      vi.useRealTimers();
+    });
+
+    it('should append live log entries', () => {
+      useMonitorStore.getState().appendLiveLogEntry({
+        timestamp: '2026-05-15T00:00:00Z',
+        level: 'INFO',
+        message: 'live line',
+      });
+
+      expect(useMonitorStore.getState().logs.length).toBeGreaterThan(0);
+    });
+  });
 });
 
 import { afterEach } from 'vitest';

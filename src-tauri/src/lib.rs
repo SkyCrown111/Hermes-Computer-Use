@@ -3,6 +3,12 @@
 //! This module provides the main entry point for the Tauri application
 //! and registers all commands for interacting with Hermes Agent data.
 
+// SEC-06: devtools must never ship in release builds (see Cargo.toml `devtools` feature).
+#[cfg(all(feature = "devtools", not(debug_assertions)))]
+compile_error!(
+    "The `devtools` feature cannot be enabled in release builds. Build production without `--features devtools`."
+);
+
 // Import core modules
 mod core;
 mod features;
@@ -19,12 +25,12 @@ use commands::utils::needs_wsl;
 
 // Re-export commands for handler registration
 use commands::{
-    abort_chat,
     add_kanban_comment,
     add_kanban_link,
     add_mcp_server,
     append_memory,
     check_data_dir_exists,
+    check_github_release,
     check_hermes_health,
     check_wechat_qrcode_status,
     cleanup_database_messages,
@@ -50,6 +56,7 @@ use commands::{
     execute_skill,
     export_config,
     export_logs,
+    export_logs_content,
     export_session,
     file_exists,
     search_files,
@@ -111,6 +118,7 @@ use commands::{
     read_file_binary,
     reconnect_platform,
     reload_gateway_config,
+    register_chat_interrupt_alias,
     remove_kanban_link,
     remove_mcp_server,
     respond_approval,
@@ -129,7 +137,6 @@ use commands::{
     set_kanban_board_archived,
     start_log_stream,
     stop_log_stream,
-    test_skill,
     update_skill,
     get_skill_execution_history,
     get_skill_execution_history_v2,
@@ -189,6 +196,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let hermes_environment = resolve_environment().ok();
             let config_lock_path = if needs_wsl() {
@@ -377,6 +385,7 @@ pub fn run() {
             restore_checkpoint,
             delete_checkpoint,
             cleanup_database_messages,
+            check_github_release,
             list_skills,
             get_skill,
             get_skill_detail,
@@ -389,7 +398,6 @@ pub fn run() {
             get_skills_path,
             get_skill_execution_history,
             execute_skill,
-            test_skill,
             get_skill_execution_history_v2,
             list_cron_jobs,
             get_cron_job,
@@ -436,7 +444,6 @@ pub fn run() {
             respond_approval,
             respond_clarify,
             respond_secret,
-            abort_chat,
             get_logs,
             get_log_stats,
             get_gateway_status,
@@ -447,6 +454,7 @@ pub fn run() {
             start_log_stream,
             stop_log_stream,
             export_logs,
+    export_logs_content,
             list_directory,
             read_file,
             write_file,
@@ -495,6 +503,7 @@ pub fn run() {
             add_kanban_link,
             remove_kanban_link,
             // Chat interrupt
+            register_chat_interrupt_alias,
             interrupt_session,
             // Checkpoint V2 commands
             create_checkpoint_v2,

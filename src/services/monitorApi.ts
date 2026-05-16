@@ -203,4 +203,20 @@ export const monitorApi = {
   stopLogStream: async (streamId: string): Promise<void> => {
     await apiClient.invoke<void>('stop_log_stream', { stream_id: streamId });
   },
+
+  exportLogsContent: async (
+    file: LogFile = 'agent',
+    filter?: LogStreamFilter,
+  ): Promise<{ content: string; line_count: number }> => {
+    return apiClient.invoke<{ content: string; line_count: number }>('export_logs_content', {
+      log_path: LOG_FILE_PATHS[file],
+      filter: filter
+        ? {
+            level: filter.level ?? null,
+            module: filter.module ?? null,
+            keyword: filter.keyword ?? null,
+          }
+        : null,
+    });
+  },
 };

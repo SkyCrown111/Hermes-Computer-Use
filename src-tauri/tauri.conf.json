@@ -26,12 +26,14 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' http://localhost:* http://127.0.0.1:* http://ipc.localhost ws://localhost:* ws://127.0.0.1:*; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:;"
+      "csp": "default-src 'self'; connect-src 'self' http://localhost:* http://127.0.0.1:* http://ipc.localhost ws://localhost:* ws://127.0.0.1:* https://api.github.com https://github.com; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:;",
+      "capabilities": ["default", "plugins-minimal", "updater"]
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "publisher": "Crown_22",
     "icon": [
       "icons/32x32.png",
@@ -41,5 +43,15 @@
       "icons/icon.ico"
     ]
   },
-  "plugins": {}
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDk2RjFFQ0JDQjc2M0MzOTYKUldTV3cyTzN2T3p4bHBFSEM5alJwVmdQL21uMHNoWld0Mnh1Q2FXRG9NR2sxZEZwZ1BXVTFieEYK",
+      "endpoints": [
+        "https://github.com/Crown-22/Hermes-Computer-Use/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
 }

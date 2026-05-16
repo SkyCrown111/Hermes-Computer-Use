@@ -23,15 +23,14 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Test
-        run: npm test
+      - name: Test with coverage
+        run: npm run test:coverage
 
       - name: Build
         run: npm run build
 
       - name: npm audit (high+)
         run: npm audit --audit-level=high
-        continue-on-error: true
 
   rust-check:
     runs-on: ubuntu-latest
@@ -50,4 +49,3 @@ jobs:
       - name: cargo audit
         working-directory: src-tauri
         run: cargo audit
-        continue-on-error: true

@@ -6,7 +6,9 @@ import { useSettingsStore } from '../settingsStore';
 vi.mock('../../services/settingsApi', () => ({
   loadConfig: vi.fn(),
   saveConfig: vi.fn(),
+  validateConfigSection: vi.fn(),
   updateConfigSection: vi.fn(),
+  getConfigSection: vi.fn(),
   restartGateway: vi.fn(),
 }));
 
@@ -43,6 +45,11 @@ describe('SettingsStore', () => {
         terminal: { backend: 'local' as const, timeout: 180, cwd: '' },
         compression: { enabled: true, threshold: 0.8, target_ratio: 0.5 },
         checkpoint: { enabled: true, max_snapshots: 10 },
+        memory: { enabled: true, max_chars: 5000 },
+        providers: { custom_providers: [], fallback_providers: [], credential_pool_strategies: {} },
+        display: { compact: true, skin: 'dark', streaming: false },
+        approval: { mode: 'ask', safe_commands: [], dangerous_commands: [] },
+        auxiliary: { vision: { provider: 'openai', model: 'gpt-4o', base_url: '', api_key: '' } },
         raw: 'model:\n  default: gpt-4',
       };
       vi.mocked(settingsApi.loadConfig).mockResolvedValue(mockConfig);
@@ -55,6 +62,9 @@ describe('SettingsStore', () => {
       expect(state.terminalConfig).toEqual(mockConfig.terminal);
       expect(state.compressionConfig).toEqual(mockConfig.compression);
       expect(state.checkpointConfig).toEqual(mockConfig.checkpoint);
+      expect(state.memoryConfig?.max_chars).toBe(5000);
+      expect(state.displayConfig?.compact).toBe(true);
+      expect(state.approvalConfig?.mode).toBe('ask');
     });
 
     it('should set error on fetch failure', async () => {
@@ -95,16 +105,19 @@ describe('SettingsStore', () => {
   });
 
   describe('updateModelConfig', () => {
-    it('should update model config via updateConfigSection', async () => {
+    it('should validate then update model config', async () => {
+      vi.mocked(settingsApi.validateConfigSection).mockResolvedValue({ valid: true, errors: [] });
       vi.mocked(settingsApi.updateConfigSection).mockResolvedValue({ ok: true, section: 'model', data: {} });
 
       await useSettingsStore.getState().updateModelConfig({ default: 'gpt-4o' });
 
+      expect(settingsApi.validateConfigSection).toHaveBeenCalledWith('model', expect.objectContaining({ default: 'gpt-4o' }));
       expect(settingsApi.updateConfigSection).toHaveBeenCalledWith('model', expect.objectContaining({ default: 'gpt-4o' }));
       expect(useSettingsStore.getState().modelConfig?.default).toBe('gpt-4o');
     });
 
     it('should set error on update failure', async () => {
+      vi.mocked(settingsApi.validateConfigSection).mockResolvedValue({ valid: true, errors: [] });
       vi.mocked(settingsApi.updateConfigSection).mockRejectedValue(new Error('Update failed'));
 
       await useSettingsStore.getState().updateModelConfig({ default: 'test' });
@@ -115,10 +128,12 @@ describe('SettingsStore', () => {
 
   describe('updateAgentConfig', () => {
     it('should update agent config', async () => {
+      vi.mocked(settingsApi.validateConfigSection).mockResolvedValue({ valid: true, errors: [] });
       vi.mocked(settingsApi.updateConfigSection).mockResolvedValue({ ok: true, section: 'agent', data: {} });
 
       await useSettingsStore.getState().updateAgentConfig({ max_turns: 200 });
 
+      expect(settingsApi.validateConfigSection).toHaveBeenCalledWith('agent', expect.objectContaining({ max_turns: 200 }));
       expect(settingsApi.updateConfigSection).toHaveBeenCalledWith('agent', expect.objectContaining({ max_turns: 200 }));
       expect(useSettingsStore.getState().agentConfig?.max_turns).toBe(200);
     });
@@ -126,10 +141,12 @@ describe('SettingsStore', () => {
 
   describe('updateTerminalConfig', () => {
     it('should update terminal config', async () => {
+      vi.mocked(settingsApi.validateConfigSection).mockResolvedValue({ valid: true, errors: [] });
       vi.mocked(settingsApi.updateConfigSection).mockResolvedValue({ ok: true, section: 'terminal', data: {} });
 
       await useSettingsStore.getState().updateTerminalConfig({ backend: 'docker' });
 
+      expect(settingsApi.validateConfigSection).toHaveBeenCalledWith('terminal', expect.objectContaining({ backend: 'docker' }));
       expect(settingsApi.updateConfigSection).toHaveBeenCalledWith('terminal', expect.objectContaining({ backend: 'docker' }));
       expect(useSettingsStore.getState().terminalConfig?.backend).toBe('docker');
     });
@@ -212,6 +229,171 @@ describe('SettingsStore', () => {
       useSettingsStore.setState({ successMessage: 'Success' });
       useSettingsStore.getState().clearSuccessMessage();
       expect(useSettingsStore.getState().successMessage).toBeNull();
+    });
+  });
+
+  describe('additional section updates', () => {
+    beforeEach(() => {
+      vi.mocked(settingsApi.validateConfigSection).mockResolvedValue({ valid: true, section: 'x' });
+      vi.mocked(settingsApi.updateConfigSection).mockResolvedValue({ ok: true, section: 'x', data: {} });
+    });
+
+    it('should update compression config', async () => {
+      await useSettingsStore.getState().updateCompressionConfig({ enabled: false, threshold: 0.9, target_ratio: 0.4 });
+      expect(useSettingsStore.getState().compressionConfig?.enabled).toBe(false);
+    });
+
+    it('should update checkpoint config', async () => {
+      await useSettingsStore.getState().updateCheckpointConfig({ enabled: true, max_snapshots: 5 });
+      expect(useSettingsStore.getState().checkpointConfig?.max_snapshots).toBe(5);
+    });
+
+    it('should update memory config', async () => {
+      await useSettingsStore.getState().updateMemoryConfig({ enabled: true, max_chars: 1000 });
+      expect(useSettingsStore.getState().memoryConfig?.max_chars).toBe(1000);
+    });
+
+    it('should update display and approval config', async () => {
+      await useSettingsStore.getState().updateDisplayConfig({ language: 'en', theme: 'dark' });
+      await useSettingsStore.getState().updateApprovalConfig({ enabled: true });
+
+      expect(useSettingsStore.getState().displayConfig?.language).toBe('en');
+      expect(useSettingsStore.getState().approvalConfig?.enabled).toBe(true);
+    });
+
+    it('should strip masked api key before model update', async () => {
+      await useSettingsStore.getState().updateModelConfig({
+        default: 'gpt-4',
+        provider: 'openai',
+        api_key: '__MASKED__1234',
+        base_url: '',
+      });
+
+      expect(settingsApi.updateConfigSection).toHaveBeenCalledWith(
+        'model',
+        expect.not.objectContaining({ api_key: '__MASKED__1234' }),
+      );
+    });
+
+    it('should update raw yaml', async () => {
+      vi.mocked(settingsApi.saveConfig).mockResolvedValue({ ok: true });
+      vi.mocked(settingsApi.loadConfig).mockResolvedValue({ raw: 'key: value' });
+
+      await useSettingsStore.getState().updateRawYaml('key: value');
+
+      expect(useSettingsStore.getState().rawYaml).toBe('key: value');
+    });
+
+    it('should add custom provider via getConfigSection merge', async () => {
+      vi.mocked(settingsApi.getConfigSection).mockResolvedValue({
+        data: { custom_providers: [], fallback_providers: [], credential_pool_strategies: {} },
+      });
+
+      await useSettingsStore.getState().addCustomProvider({
+        name: 'local',
+        base_url: 'http://localhost:11434',
+      });
+
+      expect(settingsApi.updateConfigSection).toHaveBeenCalledWith(
+        'providers',
+        expect.objectContaining({
+          custom_providers: [expect.objectContaining({ name: 'local' })],
+        }),
+      );
+    });
+
+    it('fetchCompressionConfig loads section', async () => {
+      vi.mocked(settingsApi.loadConfig).mockResolvedValue({
+        compression: { enabled: true, threshold: 0.7, target_ratio: 0.5 },
+      });
+
+      await useSettingsStore.getState().fetchCompressionConfig();
+
+      expect(useSettingsStore.getState().compressionConfig?.threshold).toBe(0.7);
+    });
+
+    it('updates auxiliary task config', async () => {
+      vi.mocked(settingsApi.getConfigSection).mockResolvedValue({
+        data: { vision: { enabled: false } },
+      });
+
+      await useSettingsStore.getState().updateAuxiliaryTaskConfig('vision', {
+        provider: 'openai',
+        model: 'gpt-4o',
+        base_url: 'https://api.openai.com',
+        api_key: 'sk-test',
+      });
+
+      expect(useSettingsStore.getState().auxiliaryConfig?.vision?.model).toBe('gpt-4o');
+    });
+
+    it('deletes auxiliary task config', async () => {
+      vi.mocked(settingsApi.getConfigSection).mockResolvedValue({
+        data: {
+          vision: {
+            provider: 'openai',
+            model: 'gpt-4o',
+            base_url: 'https://api.openai.com',
+            api_key: 'sk-test',
+          },
+        },
+      });
+
+      await useSettingsStore.getState().deleteAuxiliaryTaskConfig('vision');
+
+      expect(useSettingsStore.getState().auxiliaryConfig?.vision).toBeUndefined();
+    });
+
+    it('manages fallback providers', async () => {
+      vi.mocked(settingsApi.getConfigSection).mockResolvedValue({
+        data: { custom_providers: [], fallback_providers: [], credential_pool_strategies: {} },
+      });
+
+      await useSettingsStore.getState().addFallbackProvider({ name: 'backup', priority: 2 });
+      await useSettingsStore.getState().deleteFallbackProvider(0);
+
+      expect(settingsApi.updateConfigSection).toHaveBeenCalled();
+    });
+
+    it('updates credential pool strategy', async () => {
+      vi.mocked(settingsApi.getConfigSection).mockResolvedValue({
+        data: { custom_providers: [], fallback_providers: [], credential_pool_strategies: {} },
+      });
+
+      await useSettingsStore.getState().updateCredentialPoolStrategy('openai', 'round_robin');
+
+      expect(useSettingsStore.getState().providersConfig?.credential_pool_strategies?.openai).toBe('round_robin');
+    });
+
+    it('updates and deletes custom provider', async () => {
+      vi.mocked(settingsApi.getConfigSection).mockResolvedValue({
+        data: {
+          custom_providers: [{ name: 'local', base_url: 'http://localhost' }],
+          fallback_providers: [],
+          credential_pool_strategies: {},
+        },
+      });
+
+      await useSettingsStore.getState().updateCustomProvider(0, {
+        name: 'local-v2',
+        base_url: 'http://127.0.0.1:11434',
+      });
+      await useSettingsStore.getState().deleteCustomProvider(0);
+
+      expect(settingsApi.updateConfigSection).toHaveBeenCalled();
+    });
+
+    it('fetchCheckpointConfig and fetchRawYaml', async () => {
+      vi.mocked(settingsApi.loadConfig).mockResolvedValue({
+        checkpoint: { enabled: true, max_snapshots: 8 },
+        raw: 'key: value',
+      });
+
+      await useSettingsStore.getState().fetchCheckpointConfig();
+      await useSettingsStore.getState().fetchRawYaml();
+
+      expect(useSettingsStore.getState().checkpointConfig?.max_snapshots).toBe(8);
+      expect(useSettingsStore.getState().rawYaml).toBe('key: value');
     });
   });
 });

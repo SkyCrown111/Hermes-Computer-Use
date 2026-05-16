@@ -37,6 +37,9 @@ export function isSafeUrl(href: string | null | undefined): boolean {
       // Relative URL resolved against base — allow if no dangerous scheme in input
       return !/^\s*javascript:/i.test(trimmed) && !/^\s*vbscript:/i.test(trimmed);
     }
+    if (url.protocol === 'data:') {
+      return /^data:image\/(png|jpe?g|gif|webp|svg\+xml);/i.test(trimmed);
+    }
     return ALLOWED_SCHEMES.has(url.protocol);
   } catch {
     return false;

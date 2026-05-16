@@ -35,3 +35,19 @@ pub async fn export_logs(
 ) -> Result<usize, String> {
     log_stream_manager.export_logs(&log_path, &output_path, filter).await
 }
+
+/// Return filtered log file contents for UI download (no server-side output path).
+#[tauri::command]
+pub async fn export_logs_content(
+    log_path: String,
+    filter: Option<LogFilter>,
+    log_stream_manager: State<'_, Arc<LogStreamManager>>,
+) -> Result<serde_json::Value, String> {
+    let (content, line_count) = log_stream_manager
+        .read_filtered_logs(&log_path, filter)
+        .await?;
+    Ok(serde_json::json!({
+        "content": content,
+        "line_count": line_count,
+    }))
+}

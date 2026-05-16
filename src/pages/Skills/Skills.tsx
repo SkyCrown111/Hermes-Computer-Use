@@ -5,6 +5,7 @@ import { useSkillsStore, useNavigationStore, useChatStore } from '../../stores';
 import type { Skill, SkillDetail } from '../../types/skill';
 import { useTranslation } from '../../hooks/useTranslation';
 import { logger } from '../../lib/logger';
+import { isTauri } from '../../lib/tauri';
 import { toast } from '../../stores/toastStore';
 import { SKILL_CATEGORY_DEFINITIONS } from '../../types/skill';
 import './Skills.css';
@@ -96,6 +97,7 @@ export const Skills: React.FC = () => {
   const createSkill = useSkillsStore(s => s.createSkill);
   const updateSkill = useSkillsStore(s => s.updateSkill);
   const deleteSkill = useSkillsStore(s => s.deleteSkill);
+  const executeSkill = useSkillsStore(s => s.executeSkill);
   const setSearchQuery = useSkillsStore(s => s.setSearchQuery);
   const setSelectedCategory = useSkillsStore(s => s.setSelectedCategory);
   const clearSelectedSkill = useSkillsStore(s => s.clearSelectedSkill);
@@ -184,22 +186,79 @@ export const Skills: React.FC = () => {
     }
   }, [clearSelectedSkill, lang, openTab, queuePendingPrompt, setActiveItem]);
 
-  // Execute skill - starts a new chat session with skill context
+  const runSkillDirect = useCallback(async (
+    skill: Pick<Skill, 'name' | 'category' | 'description' | 'enabled'>,
+    options?: {
+      inputText?: string;
+      parameters?: Record<string, string>;
+      closeDetail?: boolean;
+    },
+  ): Promise<boolean> => {
+    if (!skill.enabled) {
+      toast.error(lang === 'zh' ? '该 Skill 已禁用，无法执行。' : 'This skill is disabled and cannot be run.');
+      return false;
+    }
+
+    if (!isTauri()) {
+      launchSkillChat(skill, {
+        inputText: options?.inputText,
+        parameters: options?.parameters,
+        closeDetail: options?.closeDetail,
+      });
+      return true;
+    }
+
+    setIsExecuting(true);
+    try {
+      const result = await executeSkill({
+        skill_name: skill.name,
+        skill_category: skill.category,
+        input_text: options?.inputText,
+        parameters: options?.parameters,
+      });
+
+      if (!result) {
+        toast.error(t('skills.execution.failed'));
+        return false;
+      }
+
+      if (!result.success) {
+        toast.error(result.error || t('skills.execution.failed'));
+        return false;
+      }
+
+      const preview = result.output.trim().slice(0, 240);
+      toast.success(
+        preview
+          ? `${t('skills.execution.success')}: ${preview}${result.output.length > 240 ? '…' : ''}`
+          : t('skills.execution.success'),
+      );
+
+      if (options?.closeDetail) {
+        clearSelectedSkill();
+      }
+      return true;
+    } catch (err) {
+      logger.error('[Skills] execute_skill failed:', err);
+      toast.error(t('skills.execution.failed'));
+      return false;
+    } finally {
+      setIsExecuting(false);
+    }
+  }, [clearSelectedSkill, executeSkill, lang, launchSkillChat, t]);
+
   const handleExecuteSkill = useCallback(async (skill: typeof selectedSkill) => {
     if (!skill) return;
-    launchSkillChat(
+    await runSkillDirect(
       {
         name: skill.name,
         category: skill.category,
         description: skill.metadata.description,
         enabled: true,
       },
-      {
-        detail: skill,
-        closeDetail: true,
-      }
+      { closeDetail: true },
     );
-  }, [launchSkillChat]);
+  }, [runSkillDirect]);
 
   // Open execution modal
   const openExecutionModal = useCallback(() => {
@@ -212,37 +271,30 @@ export const Skills: React.FC = () => {
   const handleExecuteWithParams = useCallback(async () => {
     if (!selectedSkill) return;
 
-    setIsExecuting(true);
-    try {
-      const params: Record<string, string> = {};
-      executionParams.forEach(p => {
-        if (p.key.trim()) {
-          params[p.key.trim()] = p.value;
-        }
-      });
+    const params: Record<string, string> = {};
+    executionParams.forEach(p => {
+      if (p.key.trim()) {
+        params[p.key.trim()] = p.value;
+      }
+    });
 
-      launchSkillChat(
-        {
-          name: selectedSkill.name,
-          category: selectedSkill.category,
-          description: selectedSkill.metadata.description,
-          enabled: true,
-        },
-        {
-          detail: selectedSkill,
-          inputText: executionInput,
-          parameters: params,
-          closeDetail: true,
-        }
-      );
+    const ok = await runSkillDirect(
+      {
+        name: selectedSkill.name,
+        category: selectedSkill.category,
+        description: selectedSkill.metadata.description,
+        enabled: true,
+      },
+      {
+        inputText: executionInput,
+        parameters: params,
+        closeDetail: true,
+      },
+    );
+    if (ok) {
       setShowExecutionModal(false);
-      toast.success(t('skills.execution.success'));
-    } catch {
-      toast.error(t('skills.execution.failed'));
-    } finally {
-      setIsExecuting(false);
     }
-  }, [selectedSkill, executionInput, executionParams, launchSkillChat, t]);
+  }, [selectedSkill, executionInput, executionParams, runSkillDirect]);
 
   // Handle edit skill
   const handleEditSkill = useCallback((skill: typeof selectedSkill) => {
@@ -492,9 +544,9 @@ export const Skills: React.FC = () => {
                         <Button
                           variant="primary"
                           size="sm"
-                          disabled={!skill.enabled}
+                          disabled={!skill.enabled || isExecuting}
                           onClick={() => {
-                            launchSkillChat(skill);
+                            void runSkillDirect(skill);
                           }}
                         >
                           <PlayIcon size={14} />
@@ -703,12 +755,26 @@ export const Skills: React.FC = () => {
                     <Button variant="secondary" onClick={() => handleEditSkill(selectedSkill)}>
                       <EditIcon size={14} /> {t('common.edit')}
                     </Button>
-                    <Button variant="secondary" onClick={openExecutionModal}>
+                    <Button variant="ghost" onClick={() => {
+                      launchSkillChat(
+                        {
+                          name: selectedSkill.name,
+                          category: selectedSkill.category,
+                          description: selectedSkill.metadata.description,
+                          enabled: true,
+                        },
+                        { detail: selectedSkill, closeDetail: true },
+                      );
+                    }}>
+                      {t('skills.runInChat')}
+                    </Button>
+                    <Button variant="secondary" onClick={openExecutionModal} disabled={isExecuting}>
                       <PlayIcon size={14} /> {t('skills.runWithParams')}
                     </Button>
                     <Button
                       variant="primary"
-                      onClick={() => handleExecuteSkill(selectedSkill)}
+                      disabled={isExecuting}
+                      onClick={() => void handleExecuteSkill(selectedSkill)}
                     >
                       <PlayIcon size={14} /> {t('skills.executeSkill')}
                     </Button>

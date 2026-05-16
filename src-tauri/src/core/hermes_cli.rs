@@ -1,6 +1,9 @@
-//! Hermes CLI
+//! Hermes CLI adapter used by Tauri commands and `hermes_adapter`.
 //!
-//! Unified Hermes CLI calling layer.
+//! - Inject `Arc<HermesCli>` from app state in commands whenever possible (Gateway, MCP, skills,
+//!   platforms, cron triggers).
+//! - Helpers in [`crate::hermes_adapter::cli_bridge`] wrap [`HermesCli`] for code paths that do
+//!   not have access to shared app state (constructs a short-lived instance).
 
 use std::time::Duration;
 use tokio::process::Command;
@@ -28,6 +31,68 @@ impl HermesCli {
             wsl_enabled: cfg!(windows),
             timeout: Duration::from_secs(30),
         }
+    }
+
+    /// Synchronous Hermes CLI call for use in non-async Tauri commands.
+    ///
+    /// Returns `Err` only when the process cannot be spawned, or the run exceeds `timeout`.
+    /// Non-zero exit codes are represented as `Ok(CliResult { success: false, .. })`.
+    pub fn execute_sync(&self, args: &[&str]) -> Result<CliResult> {
+        tauri::async_runtime::block_on(self.execute_sync_inner(args))
+    }
+
+    async fn execute_sync_inner(&self, args: &[&str]) -> Result<CliResult> {
+        let args_vec: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+        let timeout = self.timeout.max(Duration::from_secs(120));
+        let wsl_enabled = self.wsl_enabled;
+
+        let mut cmd = if wsl_enabled {
+            let mut c = Command::new("wsl");
+            c.arg("-e").arg("hermes");
+            for arg in &args_vec {
+                c.arg(arg);
+            }
+            c
+        } else {
+            let mut c = Command::new("hermes");
+            for arg in &args_vec {
+                c.arg(arg);
+            }
+            c
+        };
+
+        let output = tokio::time::timeout(timeout, cmd.output())
+            .await
+            .map_err(|_| {
+                HermesError::timeout(
+                    format!("Command timed out: hermes {}", args_vec.join(" ")),
+                    timeout.as_millis() as u64,
+                )
+            })?
+            .map_err(|e| HermesError::CliError {
+                code: "CLI_EXEC_FAILED",
+                message: format!("Failed to execute command: {}", e),
+                command: Some(format!("hermes {}", args_vec.join(" "))),
+                exit_code: None,
+            })?;
+
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let exit_code = output.status.code().unwrap_or(-1);
+        let success = output.status.success();
+
+        println!(
+            "[HermesCli] Sync: hermes {} (exit: {})",
+            args_vec.join(" "),
+            exit_code
+        );
+
+        Ok(CliResult {
+            stdout,
+            stderr,
+            exit_code,
+            success,
+        })
     }
 
     /// Execute Hermes CLI command with automatic retry

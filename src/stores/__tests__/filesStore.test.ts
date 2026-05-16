@@ -23,6 +23,8 @@ vi.mock('../../services/filesApi', () => ({
     getRecentFiles: vi.fn(),
     addFavorite: vi.fn(),
     removeFavorite: vi.fn(),
+    getCacheItems: vi.fn().mockResolvedValue([]),
+    addCacheItem: vi.fn().mockResolvedValue(undefined),
   },
 }));
 
@@ -137,6 +139,24 @@ describe('FilesStore', () => {
       await useFilesStore.getState().goUp();
 
       expect(useFilesStore.getState().currentPath).toBe('/');
+    });
+
+    it('should compute parent for ~/.hermes/... paths', async () => {
+      vi.mocked(filesApi.getDirectory).mockResolvedValue(createMockDirectoryContent());
+      useFilesStore.setState({ currentPath: '~/.hermes/foo' });
+
+      await useFilesStore.getState().goUp('~/.hermes');
+
+      expect(useFilesStore.getState().currentPath).toBe('~/.hermes');
+    });
+
+    it('should clamp goUp to workspace root', async () => {
+      vi.mocked(filesApi.getDirectory).mockResolvedValue(createMockDirectoryContent());
+      useFilesStore.setState({ currentPath: '/mnt/d/proj/sub' });
+
+      await useFilesStore.getState().goUp('/mnt/d/proj');
+
+      expect(useFilesStore.getState().currentPath).toBe('/mnt/d/proj');
     });
   });
 
@@ -386,6 +406,80 @@ describe('FilesStore', () => {
       useFilesStore.setState({ error: 'Error' });
       useFilesStore.getState().clearError();
       expect(useFilesStore.getState().error).toBeNull();
+    });
+  });
+
+  describe('clipboard paste and batch delete', () => {
+    it('should paste copied files to destination', async () => {
+      useFilesStore.setState({
+        clipboardFiles: new Set(['/a.txt']),
+        clipboardOperation: 'copy',
+        currentPath: '/dest',
+      });
+      vi.mocked(filesApi.batchCopy).mockResolvedValue([{ success: true, message: '' }]);
+      vi.mocked(filesApi.getDirectory).mockResolvedValue(createMockDirectoryContent({ path: '/dest' }));
+
+      const ok = await useFilesStore.getState().paste('/dest');
+
+      expect(ok).toBe(true);
+      expect(filesApi.batchCopy).toHaveBeenCalled();
+    });
+
+    it('should delete selected files', async () => {
+      useFilesStore.setState({
+        selectedFiles: new Set(['/a.txt', '/b.txt']),
+        currentPath: '/',
+      });
+      vi.mocked(filesApi.batchDelete).mockResolvedValue([{ success: true, message: '' }]);
+      vi.mocked(filesApi.getDirectory).mockResolvedValue(createMockDirectoryContent());
+
+      const ok = await useFilesStore.getState().deleteSelected();
+
+      expect(ok).toBe(true);
+      expect(useFilesStore.getState().selectedFiles.size).toBe(0);
+    });
+  });
+
+  describe('file tree and favorites', () => {
+    it('should load file tree and toggle nodes', async () => {
+      const tree = { name: 'root', path: '/', type: 'directory' as const, children: [] };
+      vi.mocked(filesApi.getFileTree).mockResolvedValue(tree);
+
+      await useFilesStore.getState().loadFileTree('/', 2);
+      expect(useFilesStore.getState().fileTree?.path).toBe('/');
+
+      useFilesStore.getState().expandTreeNode('/');
+      expect(useFilesStore.getState().expandedPaths.has('/')).toBe(true);
+      useFilesStore.getState().collapseTreeNode('/');
+      useFilesStore.getState().toggleTreeNode('/');
+    });
+
+    it('should load favorites and recent files', async () => {
+      const fav = createMockFileInfo({ path: '/fav.txt' });
+      vi.mocked(filesApi.getFavoriteFiles).mockResolvedValue([fav]);
+      vi.mocked(filesApi.getRecentFiles).mockResolvedValue([fav]);
+      vi.mocked(filesApi.addFavorite).mockResolvedValue(undefined);
+      vi.mocked(filesApi.removeFavorite).mockResolvedValue(undefined);
+
+      await useFilesStore.getState().loadFavorites();
+      await useFilesStore.getState().loadRecentFiles();
+      await useFilesStore.getState().addFavorite('/fav.txt');
+      await useFilesStore.getState().removeFavorite('/fav.txt');
+
+      expect(useFilesStore.getState().favoriteFiles).toHaveLength(1);
+    });
+  });
+
+  describe('rename move copy', () => {
+    it('should rename move and copy files', async () => {
+      vi.mocked(filesApi.renameFile).mockResolvedValue({ success: true, message: '' });
+      vi.mocked(filesApi.moveFile).mockResolvedValue({ success: true, message: '' });
+      vi.mocked(filesApi.copyFile).mockResolvedValue({ success: true, message: '' });
+      vi.mocked(filesApi.getDirectory).mockResolvedValue(createMockDirectoryContent());
+
+      expect(await useFilesStore.getState().renameFile('/a.txt', 'b.txt')).toBe(true);
+      expect(await useFilesStore.getState().moveFile('/a.txt', '/b.txt')).toBe(true);
+      expect(await useFilesStore.getState().copyFile('/a.txt', '/c.txt')).toBe(true);
     });
   });
 });

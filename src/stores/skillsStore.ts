@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Skill, SkillDetail, SkillCategory, SkillExecutionRecord, SkillExecutionParams } from '../types/skill';
 import * as skillsApi from '../services/skillsApi';
+import type { SkillExecutionResult } from '../services/skillsApi';
 import { logger } from '../lib/logger';
 import { getErrorMessage } from '../lib/errorUtils';
 
@@ -33,7 +34,7 @@ interface SkillsState {
   createSkill: (skill: { name: string; category: string; description: string; content: string }) => Promise<boolean>;
   updateSkill: (category: string, originalName: string, skill: { name: string; category: string; description: string; content: string }) => Promise<boolean>;
   deleteSkill: (category: string, name: string) => Promise<boolean>;
-  executeSkill: (params: SkillExecutionParams) => Promise<string>;
+  executeSkill: (params: SkillExecutionParams) => Promise<SkillExecutionResult | null>;
   setSearchQuery: (query: string) => void;
   setSelectedCategory: (category: string | null) => void;
   clearSelectedSkill: () => void;
@@ -203,10 +204,11 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
         }
       }
       const result = await skillsApi.executeSkill(params.skill_name, args);
-      return result.id;
+      await get().fetchExecutionHistory(params.skill_name, params.skill_category);
+      return result;
     } catch (err) {
       set({ error: getErrorMessage(err) });
-      return '';
+      return null;
     }
   },
 

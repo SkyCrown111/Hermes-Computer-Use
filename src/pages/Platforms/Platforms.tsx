@@ -6,6 +6,7 @@ import { useTranslation } from '../../hooks/useTranslation';
 import { toast } from '../../stores/toastStore';
 import { platformApi } from '../../services/platformApi';
 import type { Platform, PlatformType } from '../../types/platform';
+import { PlatformInbox } from './PlatformInbox';
 import './Platforms.css';
 
 // 平台配置表单字段
@@ -167,7 +168,7 @@ export function Platforms() {
 
   // ===== WeChat QR Code =====
   const [qrcodeUrl, setQrcodeUrl] = useState<string | null>(null);
-  const [qrcodeStatus, setQrcodeStatus] = useState<'pending' | 'scanned' | 'expired'>('pending');
+  const [qrcodeStatus, setQrcodeStatus] = useState<'pending' | 'scanned' | 'expired' | 'confirmed'>('pending');
   const [qrcodeError, setQrcodeError] = useState<string | null>(null);
   const isPageVisible = usePageVisibility();
 
@@ -183,6 +184,14 @@ export function Platforms() {
     }
   }, [t]);
 
+  useEffect(() => {
+    if (!isConfigModalOpen) {
+      setQrcodeUrl(null);
+      setQrcodeStatus('pending');
+      setQrcodeError(null);
+    }
+  }, [isConfigModalOpen]);
+
   // Fetch QR code when opening WeChat config modal
   useEffect(() => {
     if (isConfigModalOpen && selectedPlatform === 'weixin') {
@@ -193,14 +202,18 @@ export function Platforms() {
   usePolling(async () => {
     try {
       const result = await platformApi.checkWechatQRCodeStatus();
-      if (result.status === 'scanned' || result.status === 'expired') {
-        setQrcodeStatus(result.status);
+      if (result.status === 'scanned' || result.status === 'expired' || result.status === 'confirmed') {
+        setQrcodeStatus(result.status as 'scanned' | 'expired' | 'confirmed');
+      }
+      if (result.status === 'confirmed') {
+        toast.success(t('platforms.wechat.confirmed'));
+        await fetchPlatforms();
       }
     } catch {
       // QR code polling failed silently
     }
   }, 3000, {
-    enabled: isPageVisible && isConfigModalOpen && selectedPlatform === 'weixin' && qrcodeStatus === 'pending',
+    enabled: isPageVisible && isConfigModalOpen && selectedPlatform === 'weixin' && qrcodeStatus !== 'expired' && qrcodeStatus !== 'confirmed',
     immediate: false,
   });
 
@@ -275,6 +288,8 @@ export function Platforms() {
         ))}
       </div>
 
+      <PlatformInbox platforms={platforms} />
+
       {/* 配置弹窗 */}
       {isConfigModalOpen && selectedPlatformData && (
         <div className="modal-overlay" onClick={closeConfigModal}>
@@ -307,13 +322,28 @@ export function Platforms() {
                         className="qrcode-image"
                       />
                     </div>
+                    {qrcodeStatus === 'expired' && (
+                      <div className="qrcode-error qrcode-expired">
+                        <p><WarningIcon size={16} /> {t('platforms.wechat.expired')}</p>
+                        <button type="button" className="btn btn-secondary" onClick={() => void loadQRCode()}>
+                          {t('platforms.wechat.refreshQrcode')}
+                        </button>
+                      </div>
+                    )}
                     {qrcodeStatus === 'pending' && (
                       <p className="qrcode-hint">{t('platforms.wechat.scanPrompt')}</p>
                     )}
                     {qrcodeStatus === 'scanned' && (
                       <p className="qrcode-scanned"><CheckIcon size={16} /> {t('platforms.wechat.scanned')}</p>
                     )}
-                    <p className="qrcode-expiry">{t('platforms.wechat.qrcodeExpiry')}</p>
+                    {qrcodeStatus === 'confirmed' && (
+                      <p className="qrcode-scanned qrcode-confirmed">
+                        <CheckIcon size={16} /> {t('platforms.wechat.confirmedHint')}
+                      </p>
+                    )}
+                    {qrcodeStatus !== 'expired' && (
+                      <p className="qrcode-expiry">{t('platforms.wechat.qrcodeExpiry')}</p>
+                    )}
                   </div>
                 ) : (
                   <div className="qrcode-loading">

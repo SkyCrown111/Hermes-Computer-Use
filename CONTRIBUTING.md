@@ -53,7 +53,7 @@ hermes-app/
 
 - 勿将 `~/.hermes/config.yaml` 或任何 API 密钥提交到 Git
 - 参考根目录 [AUDIT_REPORT.md](AUDIT_REPORT.md) 了解已知风险与整改状态
-- CI 会运行 `npm audit` 与 `cargo audit`（高危漏洞需人工跟进）
+- CI 会运行 `npm audit --audit-level=high` 与 `cargo audit`；任一步失败会阻断该次流水线，需在合并前处理或更新依赖
 
 ### 提交信息
 

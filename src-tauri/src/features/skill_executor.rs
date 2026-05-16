@@ -39,13 +39,19 @@ impl SkillExecutor {
         }
     }
 
-    /// Execute a skill with arguments
+    /// Execute a skill with arguments (`dry_run` maps to `hermes skills run ... --dry-run`).
     pub async fn execute_skill(
         &self,
         skill_name: &str,
         args: &[&str],
+        dry_run: bool,
     ) -> Result<SkillExecution, String> {
-        println!("[SkillExecutor] Executing skill: {} with args: {:?}", skill_name, args);
+        println!(
+            "[SkillExecutor] {} skill: {} with args: {:?}",
+            if dry_run { "Dry-run" } else { "Executing" },
+            skill_name,
+            args
+        );
 
         // Generate execution ID
         let execution_id = self.generate_execution_id();
@@ -56,12 +62,20 @@ impl SkillExecutor {
             name: skill_name.to_string(),
         });
 
-        // Build command arguments: hermes skills run <skill_name> [args]
-        let mut cmd_args = vec!["skills", "run", skill_name];
-        cmd_args.extend(args);
+        // Build command arguments: hermes skills run <skill_name> [--dry-run] [args]
+        let mut cmd_args: Vec<String> = vec![
+            "skills".into(),
+            "run".into(),
+            skill_name.to_string(),
+        ];
+        if dry_run {
+            cmd_args.push("--dry-run".into());
+        }
+        cmd_args.extend(args.iter().map(|s| (*s).to_string()));
+        let cmd_refs: Vec<&str> = cmd_args.iter().map(|s| s.as_str()).collect();
 
         // Execute via HermesCli
-        let result = self.hermes_cli.execute(&cmd_args).await;
+        let result = self.hermes_cli.execute(&cmd_refs).await;
 
         let completed_at = chrono::Utc::now().to_rfc3339();
 
@@ -139,109 +153,6 @@ impl SkillExecutor {
             Ok(execution)
         } else {
             Err(execution.error.unwrap_or_else(|| "Skill execution failed".to_string()))
-        }
-    }
-
-    /// Test a skill with dry-run
-    pub async fn test_skill(
-        &self,
-        skill_name: &str,
-        args: &[&str],
-    ) -> Result<SkillExecution, String> {
-        println!("[SkillExecutor] Testing skill: {} with args: {:?}", skill_name, args);
-
-        // Generate execution ID
-        let execution_id = self.generate_execution_id();
-        let started_at = chrono::Utc::now().to_rfc3339();
-
-        // Emit start event
-        self.event_bus.publish(Event::SkillExecutionStarted {
-            name: skill_name.to_string(),
-        });
-
-        // Build command arguments: hermes skills run <skill_name> --dry-run [args]
-        let mut cmd_args = vec!["skills", "run", skill_name, "--dry-run"];
-        cmd_args.extend(args);
-
-        // Execute via HermesCli
-        let result = self.hermes_cli.execute(&cmd_args).await;
-
-        let completed_at = chrono::Utc::now().to_rfc3339();
-
-        let execution = match result {
-            Ok(cli_result) => {
-                let success = cli_result.success;
-                let output = if !cli_result.stdout.is_empty() {
-                    cli_result.stdout
-                } else {
-                    cli_result.stderr.clone()
-                };
-                let error = if !success && !cli_result.stderr.is_empty() {
-                    Some(cli_result.stderr)
-                } else {
-                    None
-                };
-
-                // Emit completion event
-                if success {
-                    self.event_bus.publish(Event::SkillExecutionCompleted {
-                        name: skill_name.to_string(),
-                    });
-                } else {
-                    self.event_bus.publish(Event::SkillExecutionFailed {
-                        name: skill_name.to_string(),
-                        error: error.clone().unwrap_or_else(|| "Unknown error".to_string()),
-                    });
-                }
-
-                SkillExecution {
-                    id: execution_id.clone(),
-                    skill_name: skill_name.to_string(),
-                    args: args.iter().map(|s| s.to_string()).collect(),
-                    started_at: started_at.clone(),
-                    completed_at: Some(completed_at),
-                    success,
-                    output,
-                    error,
-                }
-            }
-            Err(e) => {
-                let error_msg = e.to_user_message();
-                // Emit failure event
-                self.event_bus.publish(Event::SkillExecutionFailed {
-                    name: skill_name.to_string(),
-                    error: error_msg.clone(),
-                });
-
-                SkillExecution {
-                    id: execution_id.clone(),
-                    skill_name: skill_name.to_string(),
-                    args: args.iter().map(|s| s.to_string()).collect(),
-                    started_at: started_at.clone(),
-                    completed_at: Some(completed_at),
-                    success: false,
-                    output: String::new(),
-                    error: Some(error_msg),
-                }
-            }
-        };
-
-        // Store in history
-        {
-            let mut history = self.execution_history.write().await;
-            history.push(execution.clone());
-            
-            // Keep only last 100 executions
-            let len = history.len();
-            if len > 100 {
-                history.drain(0..len - 100);
-            }
-        }
-
-        if execution.success {
-            Ok(execution)
-        } else {
-            Err(execution.error.unwrap_or_else(|| "Skill test failed".to_string()))
         }
     }
 

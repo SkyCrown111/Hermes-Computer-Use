@@ -1,7 +1,7 @@
 // Hermes Chat Proxy Commands
 // Direct Hermes Agent calling with real-time streaming via Python wrapper
 
-use super::utils::{create_command, run_shell_command};
+use super::utils::{create_command, is_process_running, kill_process_by_pid, run_shell_command};
 use crate::hermes_adapter::resolve_environment;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
@@ -13,9 +13,41 @@ use tauri::AppHandle;
 use tauri::Emitter;
 
 // Global state to track running chat processes by session ID
-// Key: session_id, Value: process PID
+// Key: spawn-time session key (e.g. temp `new_*` id passed into stream_agent stdin), Value: PID
 static RUNNING_PROCESSES: LazyLock<Arc<Mutex<HashMap<String, u32>>>> =
     LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
+
+/// After Hermes assigns a real session UUID, the UI migrates tabs to that id but the PID map
+/// still uses the original spawn key. Maps `alias_id` (UUID) -> `stream_key` (spawn key).
+static CHAT_INTERRUPT_ALIASES: LazyLock<Arc<Mutex<HashMap<String, String>>>> =
+    LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
+
+fn inject_stream_session_key(v: serde_json::Value, stream_key: &str) -> serde_json::Value {
+    match v {
+        serde_json::Value::Object(mut map) => {
+            map.insert(
+                "stream_session_key".to_string(),
+                serde_json::Value::String(stream_key.to_string()),
+            );
+            serde_json::Value::Object(map)
+        }
+        other => other,
+    }
+}
+
+fn resolve_interrupt_pid_key(session_id: &str) -> String {
+    CHAT_INTERRUPT_ALIASES
+        .lock()
+        .ok()
+        .and_then(|m| m.get(session_id).cloned())
+        .unwrap_or_else(|| session_id.to_string())
+}
+
+fn clear_interrupt_aliases_for_stream_key(stream_key: &str) {
+    if let Ok(mut aliases) = CHAT_INTERRUPT_ALIASES.lock() {
+        aliases.retain(|_, v| v != stream_key);
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
@@ -469,7 +501,10 @@ pub async fn stream_chat_realtime(
                     if let Some(status_json) = trimmed.strip_prefix("STATUS:") {
                         if let Ok(status_data) = serde_json::from_str::<serde_json::Value>(status_json)
                         {
-                            let _ = app_clone.emit("chat:status", status_data);
+                            let _ = app_clone.emit(
+                                "chat:status",
+                                inject_stream_session_key(status_data, &session_key),
+                            );
                         }
                     } else if let Some(token) = trimmed.strip_prefix("TOKEN:") {
                         // Limit content size to prevent memory issues
@@ -484,7 +519,8 @@ pub async fn stream_chat_realtime(
                             "chat:chunk",
                             serde_json::json!({
                                 "content": token,
-                                "accumulated": accumulated_content.clone()
+                                "accumulated": accumulated_content.clone(),
+                                "stream_session_key": session_key
                             }),
                         );
                     } else if let Some(reasoning) = trimmed.strip_prefix("REASONING:") {
@@ -500,43 +536,62 @@ pub async fn stream_chat_realtime(
                             "chat:reasoning",
                             serde_json::json!({
                                 "text": reasoning,
-                                "accumulated": accumulated_reasoning.clone()
+                                "accumulated": accumulated_reasoning.clone(),
+                                "stream_session_key": session_key
                             }),
                         );
                     } else if let Some(tool_json) = trimmed.strip_prefix("TOOL:") {
                         if let Ok(tool_data) = serde_json::from_str::<serde_json::Value>(tool_json)
                         {
-                            let _ = app_clone.emit("chat:tool", tool_data);
+                            let _ = app_clone.emit(
+                                "chat:tool",
+                                inject_stream_session_key(tool_data, &session_key),
+                            );
                         }
                     } else if let Some(approval_json) = trimmed.strip_prefix("APPROVAL:") {
                         if let Ok(approval_data) =
                             serde_json::from_str::<serde_json::Value>(approval_json)
                         {
-                            let _ = app_clone.emit("chat:approval", approval_data);
+                            let _ = app_clone.emit(
+                                "chat:approval",
+                                inject_stream_session_key(approval_data, &session_key),
+                            );
                         }
                     } else if let Some(clarify_json) = trimmed.strip_prefix("CLARIFY:") {
                         if let Ok(clarify_data) =
                             serde_json::from_str::<serde_json::Value>(clarify_json)
                         {
-                            let _ = app_clone.emit("chat:clarify", clarify_data);
+                            let _ = app_clone.emit(
+                                "chat:clarify",
+                                inject_stream_session_key(clarify_data, &session_key),
+                            );
                         }
                     } else if let Some(secret_json) = trimmed.strip_prefix("SECRET:") {
                         if let Ok(secret_data) =
                             serde_json::from_str::<serde_json::Value>(secret_json)
                         {
-                            let _ = app_clone.emit("chat:secret", secret_data);
+                            let _ = app_clone.emit(
+                                "chat:secret",
+                                inject_stream_session_key(secret_data, &session_key),
+                            );
                         }
                     } else if let Some(usage_json) = trimmed.strip_prefix("USAGE:") {
                         if let Ok(usage_data) =
                             serde_json::from_str::<serde_json::Value>(usage_json)
                         {
-                            let _ = app_clone.emit("chat:usage", usage_data);
+                            let _ = app_clone.emit(
+                                "chat:usage",
+                                inject_stream_session_key(usage_data, &session_key),
+                            );
                         }
                     } else if let Some(session_json) = trimmed.strip_prefix("SESSION:") {
                         if let Ok(session_data) =
                             serde_json::from_str::<serde_json::Value>(session_json)
                         {
-                            let _ = app_clone.emit("chat:session", session_data);
+                            let _ = app_clone.emit(
+                                "chat:session",
+                                inject_stream_session_key(session_data, &session_key),
+                            );
                         }
                     } else if let Some(result_json) = trimmed.strip_prefix("DONE:") {
                         done_received = Some(result_json.to_string());
@@ -573,7 +628,8 @@ pub async fn stream_chat_realtime(
                                 serde_json::json!({
                                     "id": session_id_result.clone(),
                                     "content": content,
-                                    "reasoning": accumulated_reasoning.clone()
+                                    "reasoning": accumulated_reasoning.clone(),
+                                    "stream_session_key": session_key
                                 }),
                             );
                         }
@@ -581,9 +637,14 @@ pub async fn stream_chat_realtime(
                         let _ = app_clone.emit(
                             "chat:error",
                             serde_json::json!({
-                                "error": error_msg
+                                "error": error_msg,
+                                "stream_session_key": session_key
                             }),
                         );
+                        if let Ok(mut processes) = RUNNING_PROCESSES.lock() {
+                            processes.remove(&session_key);
+                        }
+                        clear_interrupt_aliases_for_stream_key(&session_key);
                         return Err(error_msg.to_string());
                     }
                 }
@@ -606,6 +667,7 @@ pub async fn stream_chat_realtime(
             processes.remove(&session_key);
             println!("[ChatStream] Cleared process PID for session: {}", session_key);
         }
+        clear_interrupt_aliases_for_stream_key(&session_key);
 
         if !status.success() {
             // Try to read stderr for more detailed error
@@ -628,7 +690,8 @@ pub async fn stream_chat_realtime(
             let _ = app_clone.emit(
                 "chat:error",
                 serde_json::json!({
-                    "error": error_msg.clone()
+                    "error": error_msg.clone(),
+                    "stream_session_key": session_key
                 }),
             );
             return Err(error_msg);
@@ -648,7 +711,8 @@ pub async fn stream_chat_realtime(
                 serde_json::json!({
                     "id": session_id_result.clone(),
                     "content": content,
-                    "reasoning": accumulated_reasoning.clone()
+                    "reasoning": accumulated_reasoning.clone(),
+                    "stream_session_key": session_key
                 }),
             );
         }
@@ -771,69 +835,16 @@ pub async fn stream_chat_with_progress(
     Ok(result)
 }
 
-/// Abort the currently running chat stream.
-/// If `session_id` is provided, only kills the process for that session.
-/// Otherwise, kills all running chat processes.
+/// Maps a UI session id (e.g. migrated UUID) to the spawn-time key used in `RUNNING_PROCESSES`.
 #[tauri::command(rename_all = "snake_case")]
-pub fn abort_chat(session_id: Option<String>) -> Result<(), String> {
-    println!("[ChatAbort] Attempting to abort chat, session_id: {:?}", session_id);
-
-    let mut processes = RUNNING_PROCESSES
+pub fn register_chat_interrupt_alias(alias_id: String, stream_key: String) -> Result<(), String> {
+    if alias_id.is_empty() || stream_key.is_empty() {
+        return Err("alias_id and stream_key must be non-empty".to_string());
+    }
+    let mut aliases = CHAT_INTERRUPT_ALIASES
         .lock()
-        .map_err(|e| format!("Failed to lock processes: {}", e))?;
-
-    let pids: Vec<(String, u32)> = if let Some(sid) = session_id {
-        // Only kill the specific session
-        if let Some(pid) = processes.remove(&sid) {
-            vec![(sid, pid)]
-        } else {
-            println!("[ChatAbort] No running process for session: {}", sid);
-            return Ok(());
-        }
-    } else {
-        // Kill all running processes
-        processes.drain().collect()
-    };
-
-    if pids.is_empty() {
-        println!("[ChatAbort] No running processes to abort");
-        return Ok(());
-    }
-
-    for (sid, pid) in &pids {
-        println!("[ChatAbort] Killing process PID: {} for session: {}", pid, sid);
-        match kill_process(*pid) {
-            Ok(()) => println!("[ChatAbort] Process killed successfully"),
-            Err(e) => println!("[ChatAbort] Failed to kill process: {}", e),
-        }
-    }
-
-    println!("[ChatAbort] Aborted {} process(es)", pids.len());
-    Ok(())
-}
-
-/// Kill a process by PID (cross-platform)
-fn kill_process(pid: u32) -> Result<(), String> {
-    #[cfg(windows)]
-    {
-        let output = create_command("taskkill")
-            .args(["/F", "/T", "/PID", &pid.to_string()])
-            .output()
-            .map_err(|e| format!("Failed to kill process: {}", e))?;
-        if !output.status.success() {
-            return Err(format!("taskkill failed: {}", String::from_utf8_lossy(&output.stderr)));
-        }
-    }
-    #[cfg(not(windows))]
-    {
-        let output = std::process::Command::new("kill")
-            .args(["-9", &pid.to_string()])
-            .output()
-            .map_err(|e| format!("Failed to kill process: {}", e))?;
-        if !output.status.success() {
-            return Err("kill failed".to_string());
-        }
-    }
+        .map_err(|e| format!("Failed to lock interrupt aliases: {}", e))?;
+    aliases.insert(alias_id, stream_key);
     Ok(())
 }
 
@@ -842,16 +853,35 @@ fn kill_process(pid: u32) -> Result<(), String> {
 pub fn interrupt_session(session_id: String) -> Result<(), String> {
     println!("[ChatInterrupt] Interrupting session: {}", session_id);
 
+    let pid_key = resolve_interrupt_pid_key(&session_id);
+    if pid_key != session_id {
+        println!(
+            "[ChatInterrupt] Resolved interrupt alias {:?} -> {:?}",
+            session_id, pid_key
+        );
+    }
+
     let mut processes = RUNNING_PROCESSES
         .lock()
         .map_err(|e| format!("Failed to lock processes: {}", e))?;
 
-    if let Some(pid) = processes.remove(&session_id) {
-        println!("[ChatInterrupt] Killing process with PID: {} for session: {}", pid, session_id);
-        kill_process(pid)?;
-        println!("[ChatInterrupt] Session {} interrupted successfully", session_id);
+    if let Some(pid) = processes.remove(&pid_key) {
+        println!(
+            "[ChatInterrupt] Killing process with PID: {} for session: {}",
+            pid, pid_key
+        );
+        drop(processes);
+        kill_process_by_pid(pid)?;
+        clear_interrupt_aliases_for_stream_key(&pid_key);
+        println!(
+            "[ChatInterrupt] Session {} interrupted successfully",
+            pid_key
+        );
     } else {
-        println!("[ChatInterrupt] No running process for session {}", session_id);
+        println!(
+            "[ChatInterrupt] No running process for session {} (lookup key {})",
+            session_id, pid_key
+        );
     }
 
     Ok(())
@@ -868,35 +898,7 @@ pub fn cleanup_stale_processes() {
 
     let stale_keys: Vec<String> = processes
         .iter()
-        .filter(|(_, pid)| {
-            // Check if the process is still running.
-            // The PIDs stored are the Windows-side PIDs of the wsl.exe process tree.
-            #[cfg(windows)]
-            {
-                // Use std::process::Command directly �?tasklist is a native Windows command,
-                // not a WSL command, so it must not go through create_command.
-                let check = std::process::Command::new("tasklist")
-                    .args(["/FI", &format!("PID eq {}", pid), "/NH"])
-                    .output();
-                match check {
-                    Ok(output) => {
-                        let stdout = String::from_utf8_lossy(&output.stdout);
-                        // If the PID appears in tasklist output, process is still alive
-                        !stdout.contains(&pid.to_string())
-                    }
-                    Err(_) => true, // Assume stale if we can't check
-                }
-            }
-            #[cfg(not(windows))]
-            {
-                // On Linux/macOS, use kill -0 to check if process exists
-                std::process::Command::new("kill")
-                    .args(["-0", &pid.to_string()])
-                    .output()
-                    .map(|o| !o.status.success())
-                    .unwrap_or(true)
-            }
-        })
+        .filter(|(_, pid)| !is_process_running(**pid))
         .map(|(k, _)| k.clone())
         .collect();
 

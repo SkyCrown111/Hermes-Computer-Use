@@ -18,13 +18,13 @@ export default defineConfig({
         'src/main.tsx',
         'src/vite-env.d.ts',
       ],
-      // Enforce on stores only (audit target ~80% long-term; current ~50% avg)
+      // Enforce on stores only — P2 #16 target 80% lines/statements (ratchet)
       thresholds: {
         'src/stores/**': {
-          lines: 45,
-          functions: 45,
-          branches: 40,
-          statements: 45,
+          lines: 80,
+          functions: 88,
+          branches: 56,
+          statements: 80,
         },
       },
     },

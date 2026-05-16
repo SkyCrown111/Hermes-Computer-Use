@@ -2,7 +2,7 @@
 //!
 //! Commands for file system operations via WSL.
 
-use super::path_policy::{allowed_file_roots, is_path_in_allowed_roots};
+use super::path_policy::{allowed_file_roots, is_path_allowed};
 use super::utils::create_command;
 use crate::core::errors::HermesError;
 use serde::{Deserialize, Serialize};
@@ -132,7 +132,7 @@ fn validate_path(path: &str) -> Result<String, String> {
     }
 
     let roots = allowed_file_roots();
-    if !is_path_in_allowed_roots(&normalized, &roots) {
+    if !is_path_allowed(&normalized, &roots) {
         return Err(
             HermesError::validation(
                 "path",
@@ -150,10 +150,15 @@ mod path_tests {
     use super::validate_path;
 
     #[test]
-    fn allows_home_and_hermes_paths() {
-        assert!(validate_path("~").is_ok());
+    fn allows_hermes_paths() {
         assert!(validate_path("~/.hermes").is_ok());
-        assert!(validate_path("~/project").is_ok());
+        assert!(validate_path("~/.hermes/sessions/db.sqlite").is_ok());
+    }
+
+    #[test]
+    fn blocks_bare_home_without_workspace() {
+        assert!(validate_path("~").is_err());
+        assert!(validate_path("~/project").is_err());
     }
 
     #[test]
@@ -166,6 +171,13 @@ mod path_tests {
     fn blocks_traversal_and_injection() {
         assert!(validate_path("/home/user/../etc/passwd").is_err());
         assert!(validate_path("~/foo;rm -rf /").is_err());
+    }
+
+    #[test]
+    fn quote_wsl_path_lets_tilde_expand_in_bash() {
+        assert_eq!(super::quote_wsl_path("~"), "\"$HOME\"");
+        assert_eq!(super::quote_wsl_path("~/.hermes"), "\"$HOME/.hermes\"");
+        assert_eq!(super::quote_wsl_path("/mnt/c/foo"), "'/mnt/c/foo'");
     }
 }
 
@@ -180,6 +192,19 @@ fn is_protected_path(path: &str) -> bool {
 
 fn quote_shell_arg(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+/// Bash argument for validated user paths. Single-quoted [`quote_shell_arg`] suppresses tilde
+/// expansion, so `~/.hermes` would not resolve — use `$HOME/...` for `~/...` paths instead.
+fn quote_wsl_path(path: &str) -> String {
+    if path == "~" {
+        return "\"$HOME\"".to_string();
+    }
+    if let Some(rest) = path.strip_prefix("~/") {
+        let esc = rest.replace('\\', "\\\\").replace('"', "\\\"");
+        return format!("\"$HOME/{esc}\"");
+    }
+    quote_shell_arg(path)
 }
 
 /// Get file extension and mime type
@@ -232,7 +257,7 @@ pub async fn list_directory(
     let sort_order = sort_order.unwrap_or_else(|| "asc".to_string());
 
     // Build ls command
-    let quoted_path = quote_shell_arg(&path);
+    let quoted_path = quote_wsl_path(&path);
     let cmd = if recursive {
         format!(
             "find {} -maxdepth 5 \\( -type f -o -type d \\) 2>/dev/null | head -1000",
@@ -568,7 +593,7 @@ pub async fn read_file(path: String) -> Result<FileContent, String> {
     println!("[Files] Reading file: {}", path);
     let _ = validate_path(&path)?;
 
-    let cmd = format!("cat {} 2>/dev/null", quote_shell_arg(&path));
+    let cmd = format!("cat {} 2>/dev/null", quote_wsl_path(&path));
     let output = create_command("wsl")
         .args(["bash", "-c", &cmd])
         .output()
@@ -622,13 +647,13 @@ pub async fn write_file(path: String, content: String) -> Result<FileOperationRe
     let _ = validate_path(&path)?;
 
     // Create parent directory if needed
-    let parent_cmd = format!("mkdir -p $(dirname {})", quote_shell_arg(&path));
+    let parent_cmd = format!("mkdir -p $(dirname {})", quote_wsl_path(&path));
     let _ = create_command("wsl")
         .args(["bash", "-c", &parent_cmd])
         .output();
 
     let mut child = create_command("wsl")
-        .args(["bash", "-c", &format!("cat > {}", quote_shell_arg(&path))])
+        .args(["bash", "-c", &format!("cat > {}", quote_wsl_path(&path))])
         .stdin(std::process::Stdio::piped())
         .spawn()
         .map_err(|e| format!("Failed to write file: {}", e))?;
@@ -659,7 +684,7 @@ pub async fn create_directory(path: String) -> Result<FileOperationResult, Strin
     println!("[Files] Creating directory: {}", path);
     let _ = validate_path(&path)?;
 
-    let cmd = format!("mkdir -p {}", quote_shell_arg(&path));
+    let cmd = format!("mkdir -p {}", quote_wsl_path(&path));
     let output = create_command("wsl")
         .args(["bash", "-c", &cmd])
         .output()
@@ -688,7 +713,7 @@ pub async fn delete_file(path: String) -> Result<FileOperationResult, String> {
         return Err(format!("Cannot delete protected path: {}", path));
     }
 
-    let cmd = format!("rm -rf {}", quote_shell_arg(&path));
+    let cmd = format!("rm -rf {}", quote_wsl_path(&path));
     let output = create_command("wsl")
         .args(["bash", "-c", &cmd])
         .output()
@@ -715,8 +740,8 @@ pub async fn move_file(source: String, destination: String) -> Result<FileOperat
 
     let cmd = format!(
         "mv {} {}",
-        quote_shell_arg(&source),
-        quote_shell_arg(&destination)
+        quote_wsl_path(&source),
+        quote_wsl_path(&destination)
     );
     let output = create_command("wsl")
         .args(["bash", "-c", &cmd])
@@ -744,8 +769,8 @@ pub async fn copy_file(source: String, destination: String) -> Result<FileOperat
 
     let cmd = format!(
         "cp -r {} {}",
-        quote_shell_arg(&source),
-        quote_shell_arg(&destination)
+        quote_wsl_path(&source),
+        quote_wsl_path(&destination)
     );
     let output = create_command("wsl")
         .args(["bash", "-c", &cmd])
@@ -770,7 +795,7 @@ pub async fn file_exists(path: String) -> Result<serde_json::Value, String> {
     println!("[Files] Checking if exists: {}", path);
     let _ = validate_path(&path)?;
 
-    let quoted_path = quote_shell_arg(&path);
+    let quoted_path = quote_wsl_path(&path);
     let cmd = format!(
         "test -e {0} && echo 'exists' || echo 'not_found'; test -d {0} && echo 'directory' || test -f {0} && echo 'file'",
         quoted_path
@@ -801,7 +826,7 @@ pub async fn get_file_tree(path: String, depth: Option<u32>) -> Result<serde_jso
     let max_depth = depth.unwrap_or(3);
     let cmd = format!(
         "find {} -maxdepth {} -type d 2>/dev/null | head -100",
-        quote_shell_arg(&path),
+        quote_wsl_path(&path),
         max_depth
     );
 
@@ -847,7 +872,7 @@ pub async fn read_file_binary(path: String) -> Result<BinaryFileContent, String>
     let _ = validate_path(&path)?;
 
     // Use base64 command to encode the file
-    let cmd = format!("base64 -w 0 {} 2>/dev/null", quote_shell_arg(&path));
+    let cmd = format!("base64 -w 0 {} 2>/dev/null", quote_wsl_path(&path));
     let output = create_command("wsl")
         .args(["bash", "-c", &cmd])
         .output()
@@ -910,7 +935,7 @@ pub async fn write_file_binary(
     let _ = validate_path(&path)?;
 
     // Create parent directory if needed
-    let parent_cmd = format!("mkdir -p $(dirname {})", quote_shell_arg(&path));
+    let parent_cmd = format!("mkdir -p $(dirname {})", quote_wsl_path(&path));
     let _ = create_command("wsl")
         .args(["bash", "-c", &parent_cmd])
         .output();
@@ -920,7 +945,7 @@ pub async fn write_file_binary(
         .args([
             "bash",
             "-c",
-            &format!("base64 -d > {} 2>/dev/null", quote_shell_arg(&path)),
+            &format!("base64 -d > {} 2>/dev/null", quote_wsl_path(&path)),
         ])
         .stdin(std::process::Stdio::piped())
         .spawn()

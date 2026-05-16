@@ -214,6 +214,76 @@ describe('ChatStore', () => {
     });
   });
 
+  describe('pending prompt and interactive state', () => {
+    it('queues and consumes pending prompt', () => {
+      const store = useChatStore.getState();
+      store.queuePendingPrompt(sessionId, 'run skill', true);
+
+      expect(useChatStore.getState().sessions[sessionId].pendingPrompt).toBe('run skill');
+
+      const consumed = store.consumePendingPrompt(sessionId);
+      expect(consumed.prompt).toBe('run skill');
+      expect(consumed.autoSend).toBe(true);
+      expect(useChatStore.getState().sessions[sessionId].pendingPrompt).toBeNull();
+    });
+
+    it('manages permission clarify and secret prompts', () => {
+      const store = useChatStore.getState();
+      store.setPendingPermission(sessionId, {
+        id: 'p1',
+        command: 'rm -rf',
+        description: 'danger',
+      });
+      expect(useChatStore.getState().sessions[sessionId].pendingPermission?.id).toBe('p1');
+      store.clearPendingPermission(sessionId);
+
+      store.setPendingClarify(sessionId, {
+        id: 'c1',
+        question: 'Which file?',
+        choices: ['a', 'b'],
+      });
+      store.clearPendingClarify(sessionId);
+
+      store.setPendingSecret(sessionId, {
+        id: 's1',
+        prompt: 'API key',
+        metadata: {},
+      });
+      store.clearPendingSecret(sessionId);
+
+      expect(useChatStore.getState().sessions[sessionId].pendingClarify).toBeNull();
+    });
+
+    it('supports streaming reasoning and tool calls on messages', () => {
+      const store = useChatStore.getState();
+      store.addMessage(sessionId, { role: 'user', content: 'hi' });
+      store.setStreaming(sessionId, true);
+      expect(useChatStore.getState().sessions[sessionId].isStreaming).toBe(true);
+
+      store.setReasoningText(sessionId, 'step 1');
+      store.appendReasoningText(sessionId, ' step 2');
+      expect(useChatStore.getState().sessions[sessionId].reasoningText).toContain('step 2');
+      store.clearReasoningText(sessionId);
+
+      store.addMessage(sessionId, { role: 'assistant', content: 'done' });
+      const msgId = useChatStore.getState().sessions[sessionId].messages[0].id;
+      store.addToolCall(sessionId, { name: 'read_file', event_type: 'tool.started' });
+      store.updateToolCall(sessionId, 'read_file', { event_type: 'tool.completed' });
+
+      store.setError(sessionId, 'stream failed');
+      expect(useChatStore.getState().sessions[sessionId].error).toBe('stream failed');
+    });
+
+    it('loadMessages and getLastMessage', () => {
+      const store = useChatStore.getState();
+      store.loadMessages(sessionId, [
+        { id: 'm1', role: 'user', content: 'a', timestamp: 't1' },
+        { id: 'm2', role: 'assistant', content: 'b', timestamp: 't2' },
+      ]);
+      expect(store.getLastMessage(sessionId)?.content).toBe('b');
+    });
+  });
+
   describe('persistence', () => {
     it('should persist and restore messages via initializeChatStore', async () => {
       // Add messages to a session

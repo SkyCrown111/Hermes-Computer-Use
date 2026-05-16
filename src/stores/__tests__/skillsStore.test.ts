@@ -12,6 +12,7 @@ vi.mock('../../services/skillsApi', () => ({
   toggleSkill: vi.fn(),
   createSkill: vi.fn(),
   deleteSkill: vi.fn(),
+  executeSkill: vi.fn(),
 }));
 
 import * as skillsApi from '../../services/skillsApi';
@@ -309,6 +310,39 @@ describe('SkillsStore', () => {
       useSkillsStore.setState({ error: 'Some error' });
       useSkillsStore.getState().clearError();
       expect(useSkillsStore.getState().error).toBeNull();
+    });
+  });
+
+  describe('executeSkill', () => {
+    it('invokes API with built args and refreshes history', async () => {
+      vi.mocked(skillsApi.executeSkill).mockResolvedValue({
+        id: '1',
+        skillName: 'my-skill',
+        args: ['hello', 'a=1'],
+        startedAt: 't',
+        success: true,
+        output: 'ok',
+      });
+      vi.mocked(skillsApi.getSkillExecutionHistory).mockResolvedValue([]);
+      const r = await useSkillsStore.getState().executeSkill({
+        skill_name: 'my-skill',
+        skill_category: 'dev',
+        input_text: 'hello',
+        parameters: { a: 1 },
+      });
+      expect(r?.success).toBe(true);
+      expect(skillsApi.executeSkill).toHaveBeenCalledWith('my-skill', ['hello', 'a=1']);
+      expect(skillsApi.getSkillExecutionHistory).toHaveBeenCalledWith('my-skill', 20, 'dev');
+    });
+
+    it('returns null and sets error on failure', async () => {
+      vi.mocked(skillsApi.executeSkill).mockRejectedValue(new Error('run failed'));
+      const r = await useSkillsStore.getState().executeSkill({
+        skill_name: 'x',
+        skill_category: 'c',
+      });
+      expect(r).toBeNull();
+      expect(useSkillsStore.getState().error).toBeTruthy();
     });
   });
 });

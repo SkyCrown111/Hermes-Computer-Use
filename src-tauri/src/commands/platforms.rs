@@ -4,9 +4,10 @@
 //! Reads from gateway_state.json in WSL.
 
 use super::utils::create_command;
+use crate::core::HermesCli;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
-use std::sync::{LazyLock, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 
 /// Store WeChat QR code value for polling iLink API
 static WECHAT_QR_VALUE: LazyLock<Mutex<Option<String>>> = LazyLock::new(|| Mutex::new(None));
@@ -24,6 +25,7 @@ const VALID_PLATFORM_TYPES: &[&str] = &[
     "api_server",
     "api",
     "webhook",
+    "qqbot",
 ];
 
 /// Validate platform type against whitelist and normalize aliases to canonical frontend types.
@@ -297,7 +299,10 @@ with open(filepath, 'w', encoding='utf-8') as f:
 
 /// Enable platform - updates gateway state and attempts to connect via Hermes gateway
 #[tauri::command(rename_all = "snake_case")]
-pub fn enable_platform(platform_type: String) -> Result<(), String> {
+pub fn enable_platform(
+    platform_type: String,
+    hermes_cli: tauri::State<'_, Arc<HermesCli>>,
+) -> Result<(), String> {
     println!("[Platforms] Enabling platform: {}", platform_type);
 
     // Validate platform type
@@ -334,16 +339,11 @@ pub fn enable_platform(platform_type: String) -> Result<(), String> {
 
     write_gateway_state(&gateway_state)?;
 
-    // Try to trigger the gateway to connect the platform via hermes CLI
-    let connect_result = create_command("wsl")
-        .args([
-            "python3", "-c",
-            &format!("import os; venv = os.path.expanduser('~/.hermes/hermes-agent/venv/bin/python'); import subprocess; subprocess.run([venv, '-m', 'hermes_cli.main', 'platform', 'connect', '{}'])", valid_type),
-        ])
-        .output();
+    // Try to trigger the gateway to connect the platform via Hermes CLI
+    let connect_result = hermes_cli.execute_sync(&["platform", "connect", valid_type.as_str()]);
 
     match connect_result {
-        Ok(output) if output.status.success() => {
+        Ok(output) if output.success => {
             println!("[Platforms] Gateway connected platform: {}", valid_type);
             // Update state to connected
             let mut gateway_state = read_gateway_state()?;
@@ -361,12 +361,18 @@ pub fn enable_platform(platform_type: String) -> Result<(), String> {
             write_gateway_state(&gateway_state)?;
         }
         Ok(output) => {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            println!("[Platforms] Gateway connect failed (platform state saved as 'connecting'): {}", stderr);
+            let stderr = output.stderr.trim();
+            println!(
+                "[Platforms] Gateway connect failed (platform state saved as 'connecting'): {}",
+                stderr
+            );
             // Leave state as "connecting" -?the gateway may connect later
         }
         Err(e) => {
-            println!("[Platforms] Gateway CLI not available (platform state saved as 'connecting'): {}", e);
+            println!(
+                "[Platforms] Gateway CLI not available (platform state saved as 'connecting'): {}",
+                e
+            );
         }
     }
 
@@ -423,6 +429,7 @@ fn get_required_fields(platform_type: &str) -> Vec<&'static str> {
         "feishu" | "lark" => vec!["app_id", "app_secret"],
         "api_server" | "api" => vec!["port"],
         "webhook" => vec!["url"],
+        "qqbot" | "weixin" => vec![],
         _ => vec![],
     }
 }
@@ -517,7 +524,10 @@ pub fn test_platform_connection(platform_type: String) -> Result<serde_json::Val
 
 /// Reconnect platform - attempts to reconnect via Hermes gateway
 #[tauri::command(rename_all = "snake_case")]
-pub fn reconnect_platform(platform_type: String) -> Result<(), String> {
+pub fn reconnect_platform(
+    platform_type: String,
+    hermes_cli: tauri::State<'_, Arc<HermesCli>>,
+) -> Result<(), String> {
     println!("[Platforms] Reconnecting platform: {}", platform_type);
 
     // Validate platform type
@@ -558,17 +568,12 @@ pub fn reconnect_platform(platform_type: String) -> Result<(), String> {
     }
     write_gateway_state(&gateway_state)?;
 
-    // Try to trigger reconnect via hermes CLI
-    let connect_result = create_command("wsl")
-        .args([
-            "python3", "-c",
-            &format!("import os; venv = os.path.expanduser('~/.hermes/hermes-agent/venv/bin/python'); import subprocess; subprocess.run([venv, '-m', 'hermes_cli.main', 'platform', 'connect', '{}'])", valid_type),
-        ])
-        .output();
+    // Try to trigger reconnect via Hermes CLI
+    let connect_result = hermes_cli.execute_sync(&["platform", "connect", valid_type.as_str()]);
 
     // Update state based on result
     let new_state = match connect_result {
-        Ok(output) if output.status.success() => "connected",
+        Ok(output) if output.success => "connected",
         _ => "error",
     };
 
@@ -844,6 +849,7 @@ pub fn send_platform_message(
     platform_type: String,
     chat_id: String,
     message: String,
+    hermes_cli: tauri::State<'_, Arc<HermesCli>>,
 ) -> Result<serde_json::Value, String> {
     let valid_type = normalize_platform_type(&platform_type)?;
 
@@ -852,99 +858,86 @@ pub fn send_platform_message(
         return Err("Chat ID cannot be empty".to_string());
     }
 
-    // Use base64 encoding for safe message transport
-    let message_b64 = STANDARD.encode(&message);
-    let chat_id_b64 = STANDARD.encode(&chat_id);
+    let target = format!("{}:{}", valid_type, chat_id);
 
-    let script = format!(
-        r#"
-import os
-import sys
-import json
-import base64
-
-# Decode inputs from base64
-chat_id = base64.b64decode("{}").decode('utf-8')
-message = base64.b64decode("{}").decode('utf-8')
-platform = "{}"
-target = f"{{platform}}:{{chat_id}}"
-
-# Try to use hermes CLI to send the message
-venv_python = os.path.expanduser("~/.hermes/hermes-agent/venv/bin/python")
-if not os.path.isfile(venv_python):
-    print(json.dumps({{"success": False, "error": "Hermes agent not installed"}}))
-    exit(0)
-
-import subprocess
-result = subprocess.run(
-    [venv_python, '-m', 'hermes_cli.main', 'send', '--target', target, '--message', message],
-    capture_output=True, text=True, timeout=30
-)
-
-if result.returncode == 0:
-    print(json.dumps({{"success": True, "output": result.stdout.strip()}}))
-else:
-    print(json.dumps({{"success": False, "error": result.stderr.strip() or "Send failed"}}))
-"#,
-        chat_id_b64, message_b64, valid_type
-    );
-
-    let output = create_command("wsl")
-        .args(["python3", "-c", &script])
-        .output()
-        .map_err(|e| format!("Failed to send message: {}", e))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Failed to send message: {}", stderr));
+    match hermes_cli.execute_sync(&["send", "--target", target.as_str(), "--message", message.as_str()])
+    {
+        Ok(r) if r.success => Ok(serde_json::json!({
+            "success": true,
+            "output": r.stdout.trim()
+        })),
+        Ok(r) => Ok(serde_json::json!({
+            "success": false,
+            "error": if r.stderr.trim().is_empty() {
+                "Send failed".to_string()
+            } else {
+                r.stderr.trim().to_string()
+            }
+        })),
+        Err(e) => Ok(serde_json::json!({
+            "success": false,
+            "error": e.to_user_message()
+        })),
     }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let result: serde_json::Value = serde_json::from_str(&stdout.trim())
-        .map_err(|e| format!("Failed to parse result: {}", e))?;
-
-    Ok(result)
 }
 
-/// Get recent messages from a platform chat
+/// Get recent messages from a platform chat.
+///
+/// `tail_offset` skips that many messages from the **end** of the cache (0 = latest `limit` messages).
+/// `before_id` is reserved for future use; prefer `tail_offset` for pagination.
 #[tauri::command(rename_all = "snake_case")]
 pub fn get_platform_messages(
     platform_type: String,
     chat_id: String,
     limit: Option<usize>,
     before_id: Option<String>,
+    tail_offset: Option<usize>,
 ) -> Result<Vec<PlatformMessage>, String> {
     let valid_type = normalize_platform_type(&platform_type)?;
-    let limit = limit.unwrap_or(50);
+    let limit = limit.unwrap_or(50).max(1);
+    let tail_off = tail_offset.unwrap_or(0);
 
-    let _before_clause = match before_id {
-        Some(id) => format!(r#", "before_id": "{}""#, id),
-        None => String::new(),
-    };
+    if chat_id.is_empty() {
+        return Err("Chat ID cannot be empty".to_string());
+    }
+
+    let _ = before_id;
+
+    let cfg = serde_json::json!({
+        "platform": valid_type,
+        "chat_id": chat_id,
+        "limit": limit,
+        "tail_offset": tail_off,
+    });
+    let encoded = STANDARD.encode(cfg.to_string());
 
     let script = format!(
         r#"
-import sys
+import base64
 import json
 import os
-sys.path.insert(0, str(__import__('pathlib').Path.home() / '.hermes' / 'hermes-agent'))
 
-platform = "{}"
-chat_id = "{}"
-limit = {}
+raw = base64.b64decode("{}").decode("utf-8")
+cfg = json.loads(raw)
+platform = cfg["platform"]
+chat_id = cfg["chat_id"]
+limit = int(cfg["limit"])
+tail_off = int(cfg.get("tail_offset") or 0)
 
-# Load cached messages from gateway state
 state_file = os.path.expanduser("~/.hermes/gateway_state.json")
 messages = []
-
 try:
-    with open(state_file, 'r') as f:
+    with open(state_file, "r", encoding="utf-8") as f:
         state = json.load(f)
-    
     platform_state = state.get("platforms", {{}}).get(platform, {{}})
     cached_msgs = platform_state.get("cached_messages", {{}}).get(chat_id, [])
-    
-    for msg in cached_msgs[:limit]:
+    if not isinstance(cached_msgs, list):
+        cached_msgs = []
+    n = len(cached_msgs)
+    end = max(0, n - tail_off)
+    start = max(0, end - limit)
+    chunk = cached_msgs[start:end]
+    for msg in chunk:
         messages.append({{
             "message_id": msg.get("id", ""),
             "chat_id": chat_id,
@@ -953,14 +946,13 @@ try:
             "content": msg.get("content", ""),
             "timestamp": msg.get("timestamp", ""),
             "is_from_me": msg.get("is_from_me", False),
-            "reply_to": msg.get("reply_to")
+            "reply_to": msg.get("reply_to"),
         }})
-except Exception as e:
+except Exception:
     pass
-
 print(json.dumps(messages))
 "#,
-        valid_type, chat_id, limit
+        encoded
     );
 
     let output = create_command("wsl")
@@ -974,7 +966,7 @@ print(json.dumps(messages))
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let messages: Vec<PlatformMessage> = serde_json::from_str(&stdout.trim())
+    let messages: Vec<PlatformMessage> = serde_json::from_str(stdout.trim())
         .map_err(|e| format!("Failed to parse messages: {}", e))?;
 
     Ok(messages)

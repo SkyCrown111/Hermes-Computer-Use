@@ -2,6 +2,7 @@
  * Tools API - Direct tool invocation
  */
 import { isTauri } from '../lib/tauri';
+import { isToolDirectInvocable } from '../lib/ipcToolPolicy';
 import { apiClient } from './apiClient';
 import { logger } from '../lib/logger';
 
@@ -43,7 +44,8 @@ export async function listAvailableTools(): Promise<ToolInfo[]> {
     ];
   }
 
-  return apiClient.invoke<ToolInfo[]>('list_available_tools');
+  const tools = await apiClient.invoke<ToolInfo[]>('list_available_tools');
+  return tools.filter((t) => isToolDirectInvocable(t.name));
 }
 
 /**

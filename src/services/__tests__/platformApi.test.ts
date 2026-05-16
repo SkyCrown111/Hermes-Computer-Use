@@ -12,47 +12,59 @@ vi.mock('../../lib/logger', () => ({
 import { apiClient } from '../apiClient';
 import { platformApi } from '../platformApi';
 
-describe('platformApi', () => {
+describe('platformApi messaging', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('getPlatforms invokes get_platforms', async () => {
+  it('getPlatformChats invokes get_platform_chats', async () => {
     vi.mocked(apiClient.invoke).mockResolvedValue([
-      { type: 'telegram', name: 'Telegram', status: 'connected', enabled: true },
+      { chat_id: 'c1', chat_type: 'dm', name: 'Alice', platform: 'telegram' },
     ]);
 
-    const platforms = await platformApi.getPlatforms();
+    const chats = await platformApi.getPlatformChats('telegram', 20);
 
-    expect(platforms).toHaveLength(1);
-    expect(apiClient.invoke).toHaveBeenCalledWith('get_platforms');
-  });
-
-  it('getPlatforms returns empty array on failure', async () => {
-    vi.mocked(apiClient.invoke).mockRejectedValue(new Error('offline'));
-
-    const platforms = await platformApi.getPlatforms();
-
-    expect(platforms).toEqual([]);
-  });
-
-  it('getPlatformStatus returns disconnected with error on failure', async () => {
-    vi.mocked(apiClient.invoke).mockRejectedValue(new Error('timeout'));
-
-    const status = await platformApi.getPlatformStatus('discord');
-
-    expect(status.type).toBe('discord');
-    expect(status.status).toBe('disconnected');
-    expect(status.error).toContain('timeout');
-  });
-
-  it('enablePlatform invokes enable_platform', async () => {
-    vi.mocked(apiClient.invoke).mockResolvedValue(undefined);
-
-    await platformApi.enablePlatform('telegram');
-
-    expect(apiClient.invoke).toHaveBeenCalledWith('enable_platform', {
+    expect(chats).toHaveLength(1);
+    expect(apiClient.invoke).toHaveBeenCalledWith('get_platform_chats', {
       platform_type: 'telegram',
+      limit: 20,
+    });
+  });
+
+  it('getPlatformMessages invokes get_platform_messages', async () => {
+    vi.mocked(apiClient.invoke).mockResolvedValue([
+      {
+        message_id: 'm1',
+        chat_id: 'c1',
+        sender_id: 'u1',
+        content: 'hi',
+        timestamp: '2026-05-15T00:00:00Z',
+        is_from_me: false,
+      },
+    ]);
+
+    const messages = await platformApi.getPlatformMessages('telegram', 'c1', { limit: 50 });
+
+    expect(messages[0].content).toBe('hi');
+    expect(apiClient.invoke).toHaveBeenCalledWith('get_platform_messages', {
+      platform_type: 'telegram',
+      chat_id: 'c1',
+      limit: 50,
+      before_id: null,
+      tail_offset: null,
+    });
+  });
+
+  it('sendPlatformMessage invokes send_platform_message', async () => {
+    vi.mocked(apiClient.invoke).mockResolvedValue({ success: true });
+
+    const result = await platformApi.sendPlatformMessage('telegram', 'c1', 'hello');
+
+    expect(result.success).toBe(true);
+    expect(apiClient.invoke).toHaveBeenCalledWith('send_platform_message', {
+      platform_type: 'telegram',
+      chat_id: 'c1',
+      message: 'hello',
     });
   });
 });

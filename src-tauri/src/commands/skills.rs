@@ -904,34 +904,27 @@ print(json.dumps(filtered))
 
 use crate::features::SkillExecutor;
 
-/// Execute a skill with arguments
+/// Execute a skill with arguments (`dry_run` runs `hermes skills run ... --dry-run`).
 #[tauri::command(rename_all = "snake_case")]
 pub async fn execute_skill(
     skill_name: String,
     args: Vec<String>,
+    dry_run: Option<bool>,
     skill_executor: tauri::State<'_, Arc<SkillExecutor>>,
 ) -> Result<crate::features::skill_executor::SkillExecution, String> {
-    println!("[Command] execute_skill: {} with args: {:?}", skill_name, args);
-    
-    // Convert Vec<String> to Vec<&str>
-    let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    
-    skill_executor.execute_skill(&skill_name, &args_refs).await
-}
+    println!(
+        "[Command] execute_skill: {} dry_run={:?} args: {:?}",
+        skill_name,
+        dry_run,
+        args
+    );
 
-/// Test a skill with dry-run
-#[tauri::command(rename_all = "snake_case")]
-pub async fn test_skill(
-    skill_name: String,
-    args: Vec<String>,
-    skill_executor: tauri::State<'_, Arc<SkillExecutor>>,
-) -> Result<crate::features::skill_executor::SkillExecution, String> {
-    println!("[Command] test_skill: {} with args: {:?}", skill_name, args);
-    
     // Convert Vec<String> to Vec<&str>
     let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    
-    skill_executor.test_skill(&skill_name, &args_refs).await
+
+    skill_executor
+        .execute_skill(&skill_name, &args_refs, dry_run.unwrap_or(false))
+        .await
 }
 
 /// Get skill execution history

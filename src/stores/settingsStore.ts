@@ -2,6 +2,7 @@
 
 import { create } from 'zustand';
 import type {
+  ConfigSection,
   ModelConfig,
   AgentConfig,
   TerminalConfig,
@@ -32,6 +33,15 @@ function clearSuccessLater() {
 /** Get a translated success message using the current language */
 function msg(key: string): string {
   return t(key, useThemeStore.getState().language || 'zh');
+}
+
+/** Backend validate then persist — surfaces range errors before merge/write. */
+async function validateAndUpdateSection(
+  section: ConfigSection,
+  data: Record<string, unknown>,
+): Promise<void> {
+  await settingsApi.validateConfigSection(section, data);
+  await settingsApi.updateConfigSection(section, data);
 }
 
 // API response type from backend
@@ -372,7 +382,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
           delete cleanData.api_key;
         }
       }
-      await settingsApi.updateConfigSection('model', cleanData);
+      await validateAndUpdateSection('model', cleanData);
       set({ modelConfig: data as ModelConfig, isSaving: false, successMessage: msg('settings.saved.model') });
       clearSuccessLater();
     } catch (err) {
@@ -385,7 +395,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   updateAgentConfig: async (data: Partial<AgentConfig>) => {
     set({ isSaving: true, error: null });
     try {
-      await settingsApi.updateConfigSection('agent', data as Record<string, unknown>);
+      await validateAndUpdateSection('agent', data as Record<string, unknown>);
       set({ agentConfig: data as AgentConfig, isSaving: false, successMessage: msg('settings.saved.agent') });
       clearSuccessLater();
     } catch (err) {
@@ -397,7 +407,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   updateTerminalConfig: async (data: Partial<TerminalConfig>) => {
     set({ isSaving: true, error: null });
     try {
-      await settingsApi.updateConfigSection('terminal', data as Record<string, unknown>);
+      await validateAndUpdateSection('terminal', data as Record<string, unknown>);
       set({ terminalConfig: data as TerminalConfig, isSaving: false, successMessage: msg('settings.saved.terminal') });
       clearSuccessLater();
     } catch (err) {
@@ -409,7 +419,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   updateCompressionConfig: async (data: Partial<CompressionConfig>) => {
     set({ isSaving: true, error: null });
     try {
-      await settingsApi.updateConfigSection('compression', data as Record<string, unknown>);
+      await validateAndUpdateSection('compression', data as Record<string, unknown>);
       set({ compressionConfig: data as CompressionConfig, isSaving: false, successMessage: msg('settings.saved.compression') });
       clearSuccessLater();
     } catch (err) {
@@ -421,7 +431,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   updateCheckpointConfig: async (data: Partial<CheckpointConfig>) => {
     set({ isSaving: true, error: null });
     try {
-      await settingsApi.updateConfigSection('checkpoint', data as Record<string, unknown>);
+      await validateAndUpdateSection('checkpoint', data as Record<string, unknown>);
       set({ checkpointConfig: data as CheckpointConfig, isSaving: false, successMessage: msg('settings.saved.checkpoint') });
       clearSuccessLater();
     } catch (err) {
@@ -446,7 +456,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   updateMemoryConfig: async (data: Partial<MemoryConfig>) => {
     set({ isSaving: true, error: null });
     try {
-      await settingsApi.updateConfigSection('memory', data as Record<string, unknown>);
+      await validateAndUpdateSection('memory', data as Record<string, unknown>);
       set({ memoryConfig: data as MemoryConfig, isSaving: false, successMessage: msg('settings.saved.memory') });
       clearSuccessLater();
     } catch (err) {
@@ -460,7 +470,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     try {
       const resp = await settingsApi.getConfigSection<Record<string, AuxiliaryTaskConfig>>('auxiliary');
       const currentAuxiliary = resp.data || {};
-      await settingsApi.updateConfigSection('auxiliary', { ...currentAuxiliary, [taskType]: data });
+      const auxiliaryPayload = { ...currentAuxiliary, [taskType]: data };
+      await validateAndUpdateSection('auxiliary', auxiliaryPayload as Record<string, unknown>);
       set({ auxiliaryConfig: { ...get().auxiliaryConfig, [taskType]: data } as AuxiliaryConfig, isSaving: false, successMessage: msg('settings.saved.auxiliary') });
       clearSuccessLater();
     } catch (err) {
@@ -475,7 +486,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       const resp = await settingsApi.getConfigSection<Record<string, AuxiliaryTaskConfig>>('auxiliary');
       const currentAuxiliary = { ...(resp.data || {}) };
       delete currentAuxiliary[taskType];
-      await settingsApi.updateConfigSection('auxiliary', currentAuxiliary);
+      await validateAndUpdateSection('auxiliary', currentAuxiliary as Record<string, unknown>);
       set({ auxiliaryConfig: currentAuxiliary as AuxiliaryConfig, isSaving: false, successMessage: msg('settings.deleted.auxiliary') });
       clearSuccessLater();
     } catch (err) {
@@ -487,7 +498,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   updateProvidersConfig: async (data: Partial<ProvidersConfig>) => {
     set({ isSaving: true, error: null });
     try {
-      await settingsApi.updateConfigSection('providers', data as Record<string, unknown>);
+      await validateAndUpdateSection('providers', data as Record<string, unknown>);
       set({ providersConfig: data as ProvidersConfig, isSaving: false, successMessage: msg('settings.saved.providers') });
       clearSuccessLater();
     } catch (err) {
@@ -507,7 +518,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       const resp = await settingsApi.getConfigSection<ProvidersConfig>('providers');
       const currentProviders = resp.data || { custom_providers: [], fallback_providers: [], credential_pool_strategies: {} };
       const newCustomProviders = [...(currentProviders.custom_providers || []), cleanProvider];
-      await settingsApi.updateConfigSection('providers', { ...currentProviders, custom_providers: newCustomProviders });
+      await validateAndUpdateSection('providers', { ...currentProviders, custom_providers: newCustomProviders } as Record<string, unknown>);
       set({ providersConfig: { ...get().providersConfig, custom_providers: newCustomProviders } as ProvidersConfig, isSaving: false, successMessage: msg('settings.added.customProvider') });
       clearSuccessLater();
     } catch (err) {
@@ -528,7 +539,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       const currentProviders = resp.data || { custom_providers: [], fallback_providers: [], credential_pool_strategies: {} };
       const newCustomProviders = [...(currentProviders.custom_providers || [])];
       newCustomProviders[index] = cleanProvider;
-      await settingsApi.updateConfigSection('providers', { ...currentProviders, custom_providers: newCustomProviders });
+      await validateAndUpdateSection('providers', { ...currentProviders, custom_providers: newCustomProviders } as Record<string, unknown>);
       set({ providersConfig: { ...get().providersConfig, custom_providers: newCustomProviders } as ProvidersConfig, isSaving: false, successMessage: msg('settings.updated.customProvider') });
       clearSuccessLater();
     } catch (err) {
@@ -544,7 +555,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       const currentProviders = resp.data || { custom_providers: [], fallback_providers: [], credential_pool_strategies: {} };
       const newCustomProviders = [...(currentProviders.custom_providers || [])];
       newCustomProviders.splice(index, 1);
-      await settingsApi.updateConfigSection('providers', { ...currentProviders, custom_providers: newCustomProviders });
+      await validateAndUpdateSection('providers', { ...currentProviders, custom_providers: newCustomProviders } as Record<string, unknown>);
       set({ providersConfig: { ...get().providersConfig, custom_providers: newCustomProviders } as ProvidersConfig, isSaving: false, successMessage: msg('settings.deleted.customProvider') });
       clearSuccessLater();
     } catch (err) {
@@ -559,7 +570,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       const resp = await settingsApi.getConfigSection<ProvidersConfig>('providers');
       const currentProviders = resp.data || { custom_providers: [], fallback_providers: [], credential_pool_strategies: {} };
       const newFallbackProviders = [...(currentProviders.fallback_providers || []), provider];
-      await settingsApi.updateConfigSection('providers', { ...currentProviders, fallback_providers: newFallbackProviders });
+      await validateAndUpdateSection('providers', { ...currentProviders, fallback_providers: newFallbackProviders } as Record<string, unknown>);
       set({ providersConfig: { ...get().providersConfig, fallback_providers: newFallbackProviders } as ProvidersConfig, isSaving: false, successMessage: msg('settings.added.fallbackProvider') });
       clearSuccessLater();
     } catch (err) {
@@ -575,7 +586,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       const currentProviders = resp.data || { custom_providers: [], fallback_providers: [], credential_pool_strategies: {} };
       const newFallbackProviders = [...(currentProviders.fallback_providers || [])];
       newFallbackProviders.splice(index, 1);
-      await settingsApi.updateConfigSection('providers', { ...currentProviders, fallback_providers: newFallbackProviders });
+      await validateAndUpdateSection('providers', { ...currentProviders, fallback_providers: newFallbackProviders } as Record<string, unknown>);
       set({ providersConfig: { ...get().providersConfig, fallback_providers: newFallbackProviders } as ProvidersConfig, isSaving: false, successMessage: msg('settings.deleted.fallbackProvider') });
       clearSuccessLater();
     } catch (err) {
@@ -590,7 +601,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       const resp = await settingsApi.getConfigSection<ProvidersConfig>('providers');
       const currentProviders = resp.data || { custom_providers: [], fallback_providers: [], credential_pool_strategies: {} };
       const newStrategies = { ...(currentProviders.credential_pool_strategies || {}), [provider]: strategy };
-      await settingsApi.updateConfigSection('providers', { ...currentProviders, credential_pool_strategies: newStrategies });
+      await validateAndUpdateSection('providers', { ...currentProviders, credential_pool_strategies: newStrategies } as Record<string, unknown>);
       set({ providersConfig: { ...get().providersConfig, credential_pool_strategies: newStrategies } as ProvidersConfig, isSaving: false, successMessage: msg('settings.updated.credentialPool') });
       clearSuccessLater();
     } catch (err) {
@@ -602,7 +613,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   updateDisplayConfig: async (data: Partial<DisplayConfig>) => {
     set({ isSaving: true, error: null });
     try {
-      await settingsApi.updateConfigSection('display', data as Record<string, unknown>);
+      await validateAndUpdateSection('display', data as Record<string, unknown>);
       set({ displayConfig: data as DisplayConfig, isSaving: false, successMessage: msg('settings.saved.display') });
       clearSuccessLater();
     } catch (err) {
@@ -614,7 +625,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   updateApprovalConfig: async (data: Partial<ApprovalConfig>) => {
     set({ isSaving: true, error: null });
     try {
-      await settingsApi.updateConfigSection('approval', data as Record<string, unknown>);
+      await validateAndUpdateSection('approval', data as Record<string, unknown>);
       set({ approvalConfig: data as ApprovalConfig, isSaving: false, successMessage: msg('settings.saved.approval') });
       clearSuccessLater();
     } catch (err) {

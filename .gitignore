@@ -17,6 +17,8 @@ dist-ssr
 
 # Tauri build outputs
 src-tauri/target
+src-tauri/.tauri/*.key
+!src-tauri/.tauri/*.key.pub
 
 # IDE
 .vscode/*

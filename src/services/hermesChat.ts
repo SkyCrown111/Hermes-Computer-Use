@@ -295,8 +295,7 @@ export async function respondSecret(secretId: string, value: string): Promise<vo
 
 export async function abortChat(sessionId: string): Promise<void> {
   if (!isTauri()) return;
-  // Use interrupt_session to kill only the specific session's process,
-  // not abort_chat which kills ALL running chat processes.
+  // Use interrupt_session to kill only the specific session's process.
   await apiClient.invoke('interrupt_session', { session_id: sessionId });
 }
 

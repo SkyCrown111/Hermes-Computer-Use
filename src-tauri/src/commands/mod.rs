@@ -19,6 +19,7 @@ pub mod sessions;
 pub mod skills;
 pub mod system;
 pub mod tools;
+pub mod updater;
 pub mod utils;
 
 // Re-export all commands for easy registration
@@ -37,3 +38,4 @@ pub use sessions::*;
 pub use skills::*;
 pub use system::*;
 pub use tools::*;
+pub use updater::*;

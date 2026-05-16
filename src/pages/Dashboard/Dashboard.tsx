@@ -240,7 +240,9 @@ export const Dashboard: React.FC = () => {
     setIsCheckingUpdates(true);
     try {
       const result = await checkForUpdates();
-      if (result.available) {
+      if (result.status === 'error') {
+        toast.error(result.error ?? t('dashboard.updateCheckFailed'));
+      } else if (result.available) {
         toast.info(t('dashboard.updateAvailable'), `v${result.newVersion}${result.releaseNotes ? ` - ${result.releaseNotes.slice(0, 100)}...` : ''}`);
       } else {
         toast.success(t('dashboard.upToDate'));

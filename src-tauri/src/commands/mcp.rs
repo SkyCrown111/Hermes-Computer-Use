@@ -700,3 +700,35 @@ pub async fn update_mcp_server(name: String, config: McpServerConfig) -> Result<
 
     Ok(())
 }
+
+#[cfg(test)]
+mod validation_tests {
+    use super::{validate_mcp_command, validate_mcp_server_name};
+
+    #[test]
+    fn validate_mcp_command_rejects_empty() {
+        assert!(validate_mcp_command("").is_err());
+        assert!(validate_mcp_command("   ").is_err());
+    }
+
+    #[test]
+    fn validate_mcp_command_rejects_shell_metacharacters() {
+        for cmd in ["npx; rm", "node | sh", "cmd &", "echo `id`", "a$(whoami)"] {
+            assert!(validate_mcp_command(cmd).is_err(), "expected reject: {}", cmd);
+        }
+    }
+
+    #[test]
+    fn validate_mcp_command_allows_simple_commands() {
+        assert!(validate_mcp_command("npx").is_ok());
+        assert!(validate_mcp_command("node").is_ok());
+        assert!(validate_mcp_command("/usr/bin/mcp-server").is_ok());
+    }
+
+    #[test]
+    fn validate_mcp_server_name_rejects_invalid() {
+        assert!(validate_mcp_server_name("").is_err());
+        assert!(validate_mcp_server_name("bad name").is_err());
+        assert!(validate_mcp_server_name("ok-server.v1").is_ok());
+    }
+}

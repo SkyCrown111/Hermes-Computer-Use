@@ -64,4 +64,17 @@ describe('mcpApi', () => {
       config: { name: 't', command: 'npx' },
     });
   });
+
+  it('testConnection surfaces backend validation failure', async () => {
+    vi.mocked(apiClient.invoke).mockResolvedValue({
+      success: false,
+      message: 'MCP command contains forbidden character',
+      error: 'MCP command contains forbidden character',
+    });
+
+    const result = await mcpApi.testConnection({ name: 'bad', command: 'npx; rm' });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('forbidden');
+  });
 });

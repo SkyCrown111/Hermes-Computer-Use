@@ -10,7 +10,7 @@ use serde_json::Value;
 /// Max serialized args payload for direct IPC tool invocation (1 MiB).
 const MAX_INVOKE_ARGS_BYTES: usize = 1_048_576;
 
-/// Tool names blocked from direct IPC invoke; use chat approval flow instead.
+/// Exact tool names blocked from direct IPC invoke; use chat approval flow instead.
 const IPC_BLOCKED_TOOLS: &[&str] = &[
     "run_terminal_cmd",
     "run_terminal",
@@ -20,11 +20,48 @@ const IPC_BLOCKED_TOOLS: &[&str] = &[
     "bash",
     "computer_use",
     "computer",
+    "write_file",
+    "edit_file",
+    "delete_file",
+    "apply_patch",
+    "create_file",
+    "run_command",
 ];
 
-fn is_ipc_blocked_tool(tool_name: &str) -> bool {
+/// Substrings that imply shell, filesystem mutation, or code execution — not allowed via IPC.
+const IPC_BLOCKED_NAME_FRAGMENTS: &[&str] = &[
+    "terminal",
+    "shell",
+    "bash",
+    "execute",
+    "exec_",
+    "write_",
+    "delete_",
+    "remove_",
+    "patch",
+    "computer_use",
+];
+
+/// Whether a tool may be invoked directly from the desktop UI (Tools page IPC).
+pub fn is_tool_direct_invocable(tool_name: &str) -> bool {
+    if tool_name.trim().is_empty() {
+        return false;
+    }
     let lower = tool_name.to_ascii_lowercase();
-    IPC_BLOCKED_TOOLS.iter().any(|blocked| lower == *blocked)
+    if IPC_BLOCKED_TOOLS.iter().any(|blocked| lower == *blocked) {
+        return false;
+    }
+    if IPC_BLOCKED_NAME_FRAGMENTS
+        .iter()
+        .any(|frag| lower.contains(frag))
+    {
+        return false;
+    }
+    true
+}
+
+fn is_ipc_blocked_tool(tool_name: &str) -> bool {
+    !is_tool_direct_invocable(tool_name)
 }
 
 fn validate_invoke_args(args: &Value) -> Result<(), String> {
@@ -37,6 +74,32 @@ fn validate_invoke_args(args: &Value) -> Result<(), String> {
         return Err("Tool args payload is too large".to_string());
     }
     Ok(())
+}
+
+/// Reject unknown arg keys when schema is available from registry (best-effort).
+fn validate_tool_args_against_schema(tool_name: &str, args: &Value) -> Option<String> {
+    let schema_value = get_tool_schema(tool_name.to_string()).ok()?;
+    let props = schema_value
+        .get("schema")
+        .and_then(|s| s.get("properties"))
+        .or_else(|| schema_value.get("properties"))?;
+    let Some(props_obj) = props.as_object() else {
+        return None;
+    };
+    let allowed: std::collections::HashSet<&str> =
+        props_obj.keys().map(String::as_str).collect();
+    let Some(arg_obj) = args.as_object() else {
+        return None;
+    };
+    for key in arg_obj.keys() {
+        if !allowed.contains(key.as_str()) {
+            return Some(format!(
+                "Unknown argument '{}' for tool '{}'",
+                key, tool_name
+            ));
+        }
+    }
+    None
 }
 
 /// Tool information schema
@@ -130,7 +193,10 @@ except Exception as e:
 /// List all available tools from Hermes Agent
 #[tauri::command(rename_all = "snake_case")]
 pub fn list_available_tools() -> Result<Vec<ToolInfo>, String> {
-    fetch_registered_tools()
+    Ok(fetch_registered_tools()?
+        .into_iter()
+        .filter(|t| is_tool_direct_invocable(&t.name))
+        .collect())
 }
 
 /// Get schema for a specific tool.
@@ -140,6 +206,13 @@ pub fn get_tool_schema(tool_name: String) -> Result<serde_json::Value, String> {
     // Validate tool_name: only allow alphanumeric, underscores, hyphens, and dots
     if tool_name.chars().any(|c| !c.is_alphanumeric() && c != '_' && c != '-' && c != '.') {
         return Err(format!("Invalid tool name: {}", tool_name));
+    }
+
+    if is_ipc_blocked_tool(&tool_name) {
+        return Err(format!(
+            "Tool '{}' is not available for direct invocation; use Chat",
+            tool_name
+        ));
     }
 
     let env = resolve_environment().map_err(|e| e.to_string())?;
@@ -230,9 +303,13 @@ pub async fn invoke_tool(
 
     if is_ipc_blocked_tool(&tool_name) {
         return Err(format!(
-            "Tool '{}' cannot be invoked directly from the desktop UI; use chat with approval instead",
+            "Tool '{}' cannot be invoked directly from the desktop UI; use Chat so Hermes can request approval",
             tool_name
         ));
+    }
+
+    if let Some(schema_err) = validate_tool_args_against_schema(&tool_name, &args) {
+        return Err(schema_err);
     }
 
     validate_invoke_args(&args)?;
@@ -383,4 +460,30 @@ except Exception:
         .map_err(|e| format!("Failed to parse toolsets: {}", e))?;
 
     Ok(toolsets)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn blocks_terminal_and_write_tools() {
+        assert!(!is_tool_direct_invocable("terminal"));
+        assert!(!is_tool_direct_invocable("run_terminal_cmd"));
+        assert!(!is_tool_direct_invocable("write_file"));
+        assert!(!is_tool_direct_invocable("apply_patch"));
+    }
+
+    #[test]
+    fn allows_read_and_search_tools() {
+        assert!(is_tool_direct_invocable("web_search"));
+        assert!(is_tool_direct_invocable("read_file"));
+        assert!(is_tool_direct_invocable("grep_search"));
+    }
+
+    #[test]
+    fn validate_invoke_args_rejects_non_object() {
+        assert!(validate_invoke_args(&serde_json::json!([])).is_err());
+        assert!(validate_invoke_args(&serde_json::json!({})).is_ok());
+    }
 }

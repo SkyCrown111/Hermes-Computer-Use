@@ -6,6 +6,8 @@ import { useMonitorStore } from '../../stores';
 import { usePageVisibility, usePolling } from '../../hooks';
 import { useTranslation } from '../../hooks/useTranslation';
 import { logger } from '../../lib/logger';
+import { monitorApi } from '../../services/monitorApi';
+import { toast } from '../../stores/toastStore';
 import type { LogFile, LogLevel, LogLine } from '../../types/monitor';
 import './Monitor.css';
 
@@ -287,9 +289,39 @@ export const Monitor: React.FC = () => {
     }
   }, []);
 
-  // Export logs
-  const handleExportLogs = useCallback(() => {
-    const content = filteredLogs
+  // Export logs (full file via backend + current filters)
+  const handleExportLogs = useCallback(async () => {
+    const downloadBlob = (content: string) => {
+      const blob = new Blob([content], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${currentFile}-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.log`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    };
+
+    try {
+      if (isTauri()) {
+        const { content, line_count } = await monitorApi.exportLogsContent(currentFile, {
+          level: filterLevel ?? undefined,
+          module: filterComponent ?? undefined,
+          keyword: searchQuery || undefined,
+        });
+        downloadBlob(content);
+        toast.success(
+          t('monitor.exportSuccess').replace('{count}', String(line_count)),
+        );
+        return;
+      }
+    } catch (err) {
+      logger.error('[Monitor] export_logs_content failed:', err);
+      toast.error(t('monitor.exportFailed'));
+    }
+
+    const fallback = filteredLogs
       .map(line => {
         const parts = [];
         if (line.timestamp) parts.push(line.timestamp);
@@ -299,17 +331,8 @@ export const Monitor: React.FC = () => {
         return parts.join(' ');
       })
       .join('\n');
-
-    const blob = new Blob([content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${currentFile}-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.log`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, [filteredLogs, currentFile]);
+    downloadBlob(fallback);
+  }, [filteredLogs, currentFile, filterLevel, filterComponent, searchQuery, t]);
 
   // Copy logs to clipboard
   const handleCopyLogs = useCallback(async () => {

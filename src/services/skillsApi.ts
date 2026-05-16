@@ -112,12 +112,20 @@ export interface SkillExecutionResult {
   error?: string;
 }
 
-export async function executeSkill(skillName: string, args: string[] = []): Promise<SkillExecutionResult> {
-  return apiClient.invoke<SkillExecutionResult>('execute_skill', { skill_name: skillName, args });
+export async function executeSkill(
+  skillName: string,
+  args: string[] = [],
+  options?: { dryRun?: boolean },
+): Promise<SkillExecutionResult> {
+  return apiClient.invoke<SkillExecutionResult>('execute_skill', {
+    skill_name: skillName,
+    args,
+    dry_run: options?.dryRun ?? false,
+  });
 }
 
 export async function testSkill(skillName: string, args: string[] = []): Promise<SkillExecutionResult> {
-  return apiClient.invoke<SkillExecutionResult>('test_skill', { skill_name: skillName, args });
+  return executeSkill(skillName, args, { dryRun: true });
 }
 
 export async function getSkillExecutionHistory(skillName: string, limit?: number, skillCategory?: string): Promise<SkillExecutionRecord[]> {

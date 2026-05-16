@@ -659,6 +659,13 @@
   font-family: var(--font-mono);
 }
 
+.update-manual-hint {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+
 .update-status {
   display: flex;
   align-items: center;

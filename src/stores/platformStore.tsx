@@ -63,6 +63,7 @@ const defaultPlatforms: Platform[] = [
   { type: 'weixin', name: '微信', description: 'WeChat Personal', status: 'disconnected', enabled: false },
   { type: 'wechat', name: '企业微信', description: 'WeChat Work', status: 'disconnected', enabled: false },
   { type: 'lark', name: '飞书', description: 'Lark Bot', status: 'disconnected', enabled: false },
+  { type: 'qqbot', name: 'QQ Bot', description: 'QQ 频道机器人', status: 'disconnected', enabled: false },
   { type: 'api', name: 'API Gateway', description: 'REST API', status: 'disconnected', enabled: false },
   { type: 'webhook', name: 'Webhook', description: 'Custom Webhook', status: 'disconnected', enabled: false },
 ];
@@ -253,6 +254,7 @@ const PLATFORM_ICON_MAP: Partial<Record<PlatformType, ReactNode>> = {
   whatsapp: <ChatIcon size={18} />,
   weixin: <ChatIcon size={18} />,
   wechat: <BotIcon size={18} />,
+  qqbot: <BotIcon size={18} />,
   lark: <ZapIcon size={18} />,
   api: <PlugIcon size={18} />,
   webhook: <GlobeIcon size={18} />,

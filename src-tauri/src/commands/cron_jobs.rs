@@ -4,8 +4,10 @@
 //! Reads from ~/.hermes/cron/jobs.json in WSL.
 
 use super::utils::create_command;
+use crate::core::HermesCli;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 /// Schedule type - matches frontend Schedule interface
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -432,9 +434,12 @@ pub fn get_cron_path() -> Result<String, String> {
 }
 
 /// Trigger a cron job manually
-/// Tries hermes CLI first, falls back to direct stream_agent.py invocation
+/// Tries Hermes CLI (`hermes cron run`) first, falls back to `stream_agent.py`.
 #[tauri::command(rename_all = "snake_case")]
-pub fn trigger_cron_job(id: String) -> Result<(), String> {
+pub fn trigger_cron_job(
+    id: String,
+    hermes_cli: tauri::State<'_, Arc<HermesCli>>,
+) -> Result<(), String> {
     println!("[Cron] Triggering job: {}", id);
 
     // Validate job_id
@@ -448,13 +453,30 @@ pub fn trigger_cron_job(id: String) -> Result<(), String> {
 
     // Verify job exists and get its details
     let jobs = list_cron_jobs()?;
-    let job = jobs.iter().find(|j| j.id == id)
+    let job = jobs
+        .iter()
+        .find(|j| j.id == id)
         .ok_or_else(|| format!("Job not found: {}", id))?;
+
+    match hermes_cli.execute_sync(&["cron", "run", id.as_str()]) {
+        Ok(r) if r.success => {
+            println!("[Cron] Triggered job via Hermes CLI: {}", id);
+            return Ok(());
+        }
+        Ok(r) => {
+            println!(
+                "[Cron] Hermes CLI cron run failed (exit {}), falling back: {}",
+                r.exit_code, r.stderr
+            );
+        }
+        Err(e) => {
+            println!("[Cron] Hermes CLI error, falling back: {}", e);
+        }
+    }
 
     let job_prompt = job.prompt.clone();
     let id_b64 = STANDARD.encode(&id);
 
-    // Try hermes CLI first, fall back to direct agent invocation
     let script = format!(
         r#"
 import os
@@ -465,23 +487,10 @@ import json
 job_id = base64.b64decode("{id_b64}").decode('utf-8')
 job_prompt = base64.b64decode("{prompt_b64}").decode('utf-8')
 
-# Try hermes CLI cron run first
+stream_agent = os.path.expanduser("~/.hermes/hermes-agent/stream_agent.py")
 venv_python = os.path.expanduser("~/.hermes/hermes-agent/venv/bin/python")
 
-if os.path.isfile(venv_python):
-    result = subprocess.run(
-        [venv_python, '-m', 'hermes_cli.main', 'cron', 'run', job_id],
-        capture_output=True, text=True, timeout=60
-    )
-    if result.returncode == 0:
-        print(f"Triggered job via CLI: {{job_id}}")
-        exit(0)
-    # CLI failed, fall through to direct invocation
-
-# Fallback: invoke stream_agent.py directly with the job prompt
-stream_agent = os.path.expanduser("~/.hermes/hermes-agent/stream_agent.py")
 if os.path.isfile(stream_agent):
-    skills_json = json.dumps({{}})
     result = subprocess.run(
         [venv_python if os.path.isfile(venv_python) else 'python3', stream_agent, '--stdin'],
         input=json.dumps({{"message": job_prompt, "session_id": "cron_" + job_id, "skills": []}}),
@@ -494,7 +503,7 @@ if os.path.isfile(stream_agent):
         print(f"ERROR: stream_agent failed: {{result.stderr}}")
         exit(1)
 else:
-    print(f"ERROR: Neither hermes CLI nor stream_agent.py found")
+    print(f"ERROR: stream_agent.py not found")
     exit(1)
 "#,
         id_b64 = id_b64,

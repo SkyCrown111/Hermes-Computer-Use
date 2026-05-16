@@ -57,12 +57,16 @@ function failStreamWait(err: Error): void {
   completionReject = null;
 }
 
-function requireRequestSessionId(): string | null {
-  if (!activeRequestSessionId) {
-    logger.warn('[ChatStreamBridge] No active stream session');
+/** Prefer backend `stream_session_key` so chunks still route after tab migration / without relying on a single active pointer. */
+function resolveStreamTargetSessionId(
+  payload?: { stream_session_key?: string } | null,
+): string | null {
+  const sid = payload?.stream_session_key ?? activeRequestSessionId;
+  if (!sid) {
+    logger.warn('[ChatStreamBridge] No stream session key (missing payload.stream_session_key and no active stream)');
     return null;
   }
-  return activeRequestSessionId;
+  return sid;
 }
 
 function mapTools(tools: StreamToolEvent[]): ToolCallInfo[] {
@@ -141,7 +145,22 @@ export function applyPendingSecret(requestSessionId: string, secret: StreamSecre
   useChatStore.getState().setPendingSecret(sessionId, secret);
 }
 
-export function handleChatSessionCreated(oldRequestSessionId: string, newSessionId: string): void {
+export async function handleChatSessionCreated(
+  oldRequestSessionId: string,
+  newSessionId: string,
+): Promise<void> {
+  if (isTauri()) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('register_chat_interrupt_alias', {
+        alias_id: newSessionId,
+        stream_key: oldRequestSessionId,
+      });
+    } catch (e) {
+      logger.warn('[ChatStreamBridge] register_chat_interrupt_alias failed:', e);
+    }
+  }
+
   useChatStore.getState().migrateSession(oldRequestSessionId, newSessionId);
   useNavigationStore.getState().replaceTabId(oldRequestSessionId, newSessionId);
   useSessionStore.getState().addSessionOptimistic(newSessionId);
@@ -263,63 +282,73 @@ export async function ensureChatStreamBridge(): Promise<void> {
   const unlisteners: Array<() => void> = [];
 
   unlisteners.push(
-    await listen<{ content: string; accumulated: string }>('chat:chunk', (event) => {
-      const requestId = requireRequestSessionId();
+    await listen<{ content: string; accumulated: string; stream_session_key?: string }>(
+      'chat:chunk',
+      (event) => {
+        const requestId = resolveStreamTargetSessionId(event.payload);
+        if (!requestId) return;
+        resetIdleTimer();
+        applyStreamingChunk(requestId, event.payload.accumulated);
+        streamCallbacks?.onChunk?.(event.payload.content, event.payload.accumulated);
+      },
+    ),
+  );
+
+  unlisteners.push(
+    await listen<{ text: string; accumulated: string; stream_session_key?: string }>(
+      'chat:reasoning',
+      (event) => {
+        const requestId = resolveStreamTargetSessionId(event.payload);
+        if (!requestId) return;
+        resetIdleTimer();
+        applyStreamingReasoning(requestId, event.payload.accumulated);
+        streamCallbacks?.onReasoning?.(event.payload.text, event.payload.accumulated);
+      },
+    ),
+  );
+
+  unlisteners.push(
+    await listen<StreamToolEvent & { stream_session_key?: string }>('chat:tool', (event) => {
+      const requestId = resolveStreamTargetSessionId(event.payload);
       if (!requestId) return;
       resetIdleTimer();
-      applyStreamingChunk(requestId, event.payload.accumulated);
-      streamCallbacks?.onChunk?.(event.payload.content, event.payload.accumulated);
+      const { stream_session_key: _sk, ...toolPayload } = event.payload;
+      streamingToolsAccumulator.push(toolPayload as StreamToolEvent);
+      applyStreamingTool(requestId, toolPayload as StreamToolEvent);
+      streamCallbacks?.onTool?.(toolPayload as StreamToolEvent);
     }),
   );
 
   unlisteners.push(
-    await listen<{ text: string; accumulated: string }>('chat:reasoning', (event) => {
-      const requestId = requireRequestSessionId();
+    await listen<StreamApprovalEvent & { stream_session_key?: string }>('chat:approval', (event) => {
+      const requestId = resolveStreamTargetSessionId(event.payload);
       if (!requestId) return;
       resetIdleTimer();
-      applyStreamingReasoning(requestId, event.payload.accumulated);
-      streamCallbacks?.onReasoning?.(event.payload.text, event.payload.accumulated);
+      const { stream_session_key: _sk, ...approval } = event.payload;
+      applyPendingApproval(requestId, approval);
+      streamCallbacks?.onApproval?.(approval);
     }),
   );
 
   unlisteners.push(
-    await listen<StreamToolEvent>('chat:tool', (event) => {
-      const requestId = requireRequestSessionId();
+    await listen<StreamClarifyEvent & { stream_session_key?: string }>('chat:clarify', (event) => {
+      const requestId = resolveStreamTargetSessionId(event.payload);
       if (!requestId) return;
       resetIdleTimer();
-      streamingToolsAccumulator.push(event.payload);
-      applyStreamingTool(requestId, event.payload);
-      streamCallbacks?.onTool?.(event.payload);
+      const { stream_session_key: _sk, ...clarify } = event.payload;
+      applyPendingClarify(requestId, clarify);
+      streamCallbacks?.onClarify?.(clarify);
     }),
   );
 
   unlisteners.push(
-    await listen<StreamApprovalEvent>('chat:approval', (event) => {
-      const requestId = requireRequestSessionId();
+    await listen<StreamSecretEvent & { stream_session_key?: string }>('chat:secret', (event) => {
+      const requestId = resolveStreamTargetSessionId(event.payload);
       if (!requestId) return;
       resetIdleTimer();
-      applyPendingApproval(requestId, event.payload);
-      streamCallbacks?.onApproval?.(event.payload);
-    }),
-  );
-
-  unlisteners.push(
-    await listen<StreamClarifyEvent>('chat:clarify', (event) => {
-      const requestId = requireRequestSessionId();
-      if (!requestId) return;
-      resetIdleTimer();
-      applyPendingClarify(requestId, event.payload);
-      streamCallbacks?.onClarify?.(event.payload);
-    }),
-  );
-
-  unlisteners.push(
-    await listen<StreamSecretEvent>('chat:secret', (event) => {
-      const requestId = requireRequestSessionId();
-      if (!requestId) return;
-      resetIdleTimer();
-      applyPendingSecret(requestId, event.payload);
-      streamCallbacks?.onSecret?.(event.payload);
+      const { stream_session_key: _sk, ...secret } = event.payload;
+      applyPendingSecret(requestId, secret);
+      streamCallbacks?.onSecret?.(secret);
     }),
   );
 
@@ -331,48 +360,51 @@ export async function ensureChatStreamBridge(): Promise<void> {
   );
 
   unlisteners.push(
-    await listen<{ status: string; message: string }>('chat:status', (event) => {
+    await listen<{ status: string; message?: string; stream_session_key?: string }>('chat:status', (event) => {
       resetIdleTimer();
       streamCallbacks?.onStatus?.(event.payload.status);
     }),
   );
 
   unlisteners.push(
-    await listen<{ session_id: string }>('chat:session', (event) => {
-      const requestId = requireRequestSessionId();
+    await listen<{ session_id: string; stream_session_key?: string }>('chat:session', async (event) => {
+      const requestId = resolveStreamTargetSessionId(event.payload);
       if (!requestId) return;
       resetIdleTimer();
-      handleChatSessionCreated(requestId, event.payload.session_id);
+      await handleChatSessionCreated(requestId, event.payload.session_id);
       streamCallbacks?.onSessionCreated?.(event.payload.session_id);
     }),
   );
 
   unlisteners.push(
-    await listen<{ id?: string; content: string; reasoning?: string }>('chat:complete', (event) => {
-      const requestId = requireRequestSessionId();
-      if (!requestId) return;
-      const tools = [...streamingToolsAccumulator];
-      streamingToolsAccumulator.length = 0;
-      finalizeChatStreamComplete(
-        requestId,
-        event.payload.content,
-        event.payload.id ?? null,
-        event.payload.reasoning ?? null,
-        tools,
-      );
-      streamCallbacks?.onComplete?.(
-        event.payload.content,
-        event.payload.id ?? null,
-        null,
-        event.payload.reasoning ?? null,
-      );
-      finishStreamWait();
-    }),
+    await listen<{ id?: string; content: string; reasoning?: string; stream_session_key?: string }>(
+      'chat:complete',
+      (event) => {
+        const requestId = resolveStreamTargetSessionId(event.payload);
+        if (!requestId) return;
+        const tools = [...streamingToolsAccumulator];
+        streamingToolsAccumulator.length = 0;
+        finalizeChatStreamComplete(
+          requestId,
+          event.payload.content,
+          event.payload.id ?? null,
+          event.payload.reasoning ?? null,
+          tools,
+        );
+        streamCallbacks?.onComplete?.(
+          event.payload.content,
+          event.payload.id ?? null,
+          null,
+          event.payload.reasoning ?? null,
+        );
+        finishStreamWait();
+      },
+    ),
   );
 
   unlisteners.push(
-    await listen<{ error: string }>('chat:error', (event) => {
-      const requestId = requireRequestSessionId();
+    await listen<{ error: string; stream_session_key?: string }>('chat:error', (event) => {
+      const requestId = resolveStreamTargetSessionId(event.payload);
       if (!requestId) return;
       const tools = [...streamingToolsAccumulator];
       streamingToolsAccumulator.length = 0;

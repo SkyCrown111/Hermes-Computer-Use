@@ -381,10 +381,18 @@ mod tests {
     }
 
     #[test]
-    fn json_parse_error_maps_to_parse_error() {
-        let bad = "{ not json";
-        let err = serde_json::from_str::<serde_json::Value>(bad).unwrap_err();
-        let hermes_err: HermesError = err.into();
-        assert_eq!(hermes_err.code(), "PARSE_JSON_ERROR");
+    fn cli_failed_includes_exit_code_in_user_message() {
+        let err = HermesError::cli_failed("hermes foo", 2);
+        let msg = err.to_user_message();
+        assert!(msg.contains("2"), "{}", msg);
+    }
+
+    #[test]
+    fn display_formats_code_and_message() {
+        let err = HermesError::GenericError {
+            code: "TEST",
+            message: "hello".into(),
+        };
+        assert_eq!(format!("{}", err), "[TEST] hello");
     }
 }

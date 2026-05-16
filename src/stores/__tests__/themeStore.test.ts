@@ -172,6 +172,23 @@ describe('ThemeStore', () => {
       expect(useThemeStore.getState().displayPreferences.compactMode).toBe(true);
       expect(useThemeStore.getState().displayPreferences.sidebarPosition).toBe('right');
     });
+
+    it('should set streaming reasoning tool and markdown options', () => {
+      const store = useThemeStore.getState();
+      store.setShowStreaming(true);
+      store.setShowReasoning(true);
+      store.setShowToolPreview(true);
+      store.setToolProgress('detailed');
+      store.setMarkdownMode('source');
+      store.setShowInlineDiffs(true);
+      store.setShowCost(true);
+      store.setResumeDisplay('full');
+
+      const prefs = useThemeStore.getState().displayPreferences;
+      expect(prefs.showStreaming).toBe(true);
+      expect(prefs.toolProgress).toBe('detailed');
+      expect(prefs.resumeDisplay).toBe('full');
+    });
   });
 
   describe('persistence', () => {

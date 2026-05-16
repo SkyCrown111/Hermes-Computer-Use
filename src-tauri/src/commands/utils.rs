@@ -108,6 +108,61 @@ pub fn run_python_script(script: &str) -> Result<Output, String> {
     }
 }
 
+// ── Native OS process helpers (not routed through bash/WSL) ─────────
+
+/// Kill a process by PID using the host OS (taskkill on Windows, kill on Unix).
+pub fn kill_process_by_pid(pid: u32) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        let output = create_command("taskkill")
+            .args(["/F", "/T", "/PID", &pid.to_string()])
+            .output()
+            .map_err(|e| format!("Failed to kill process: {}", e))?;
+        if !output.status.success() {
+            return Err(format!(
+                "taskkill failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let output = create_command("kill")
+            .args(["-9", &pid.to_string()])
+            .output()
+            .map_err(|e| format!("Failed to kill process: {}", e))?;
+        if !output.status.success() {
+            return Err("kill failed".to_string());
+        }
+    }
+    Ok(())
+}
+
+/// Returns true when a PID is still running on the host OS.
+pub fn is_process_running(pid: u32) -> bool {
+    #[cfg(windows)]
+    {
+        let check = create_command("tasklist")
+            .args(["/FI", &format!("PID eq {}", pid), "/NH"])
+            .output();
+        match check {
+            Ok(output) => {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                stdout.contains(&pid.to_string())
+            }
+            Err(_) => false,
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        create_command("kill")
+            .args(["-0", &pid.to_string()])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+}
+
 /// Read a file's content through the platform shell.
 /// Returns `Some(content)` on success, `None` on failure.
 pub fn read_file_via_shell(path: &str) -> Option<String> {
