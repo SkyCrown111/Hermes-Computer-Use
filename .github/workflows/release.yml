@@ -64,7 +64,7 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: 'Hermes Console ${{ github.ref_name }}'
           releaseBody: 'See CHANGELOG.md for details.'
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
           includeUpdaterJson: true
           args: ${{ matrix.args }}
