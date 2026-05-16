@@ -567,8 +567,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--color-primary);
-  color: var(--color-on-primary);
+  background: var(--color-primary-soft);
+  color: var(--color-on-primary-soft);
+  border: 1px solid var(--color-primary-soft-border);
   border-radius: 50%;
   font-size: var(--text-sm);
   font-weight: var(--font-bold);

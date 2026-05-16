@@ -43,9 +43,9 @@
 }
 
 .memory-tab-active {
-  background: var(--color-primary);
-  border-color: var(--color-primary);
-  color: var(--color-on-primary);
+  background: var(--color-primary-soft);
+  border-color: var(--color-primary-soft-border);
+  color: var(--color-on-primary-soft);
 }
 
 .memory-tab-icon {

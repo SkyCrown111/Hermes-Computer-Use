@@ -1,41 +1,49 @@
 /* ============================================
-   Hermes Console - Reference Design Color System
+   Hermes Console - Color System
+   Light: white / gray / black  |  Dark: unchanged
    ============================================ */
 
-:root {
-  /* Primary Colors (Warm Brown/Copper) */
-  --color-primary: #c27a47;
-  --color-primary-rgb: 194, 122, 71;
-  --color-primary-container: #d08a59;
-  --color-primary-fixed: #f3dfcf;
-  --color-primary-fixed-dim: #e1b189;
+:root,
+[data-theme="light"] {
+  /* Primary — neutral accent (black/gray, not warm copper) */
+  --color-primary: #171717;
+  --color-primary-rgb: 23, 23, 23;
+  --color-primary-container: #404040;
+  --color-primary-fixed: #f5f5f5;
+  --color-primary-fixed-dim: #e5e5e5;
 
-  --color-on-primary: #fffaf6;
-  --color-on-surface: #2f2923;
-  --color-on-surface-variant: #6f655a;
+  /* Soft fills (tabs/chips) */
+  --color-primary-soft: rgba(0, 0, 0, 0.06);
+  --color-primary-soft-hover: rgba(0, 0, 0, 0.09);
+  --color-primary-soft-border: rgba(0, 0, 0, 0.12);
+  --color-on-primary-soft: #171717;
 
-  /* Surface Colors (Light Theme) */
-  --color-surface: #f7f4ee;
-  --color-surface-bright: #fcfaf6;
-  --color-surface-dim: #e8e1d7;
-  --color-surface-container: #f1ebe2;
-  --color-surface-container-low: #faf7f2;
-  --color-surface-container-high: #ebe3d8;
-  --color-surface-container-highest: #e1d7ca;
+  --color-on-primary: #ffffff;
+  --color-on-surface: #171717;
+  --color-on-surface-variant: #525252;
+
+  /* Surface Colors (Light — white & gray scale) */
+  --color-surface: #ffffff;
+  --color-surface-bright: #ffffff;
+  --color-surface-dim: #f5f5f5;
+  --color-surface-container: #f5f5f5;
+  --color-surface-container-low: #fafafa;
+  --color-surface-container-high: #f0f0f0;
+  --color-surface-container-highest: #e5e5e5;
   --color-surface-container-lowest: #ffffff;
-  --color-surface-variant: #ece5db;
+  --color-surface-variant: #f0f0f0;
 
-  --color-background: #f5f1ea;
+  --color-background: #fafafa;
 
   /* Outline Colors */
-  --color-outline: #9b8f82;
-  --color-outline-variant: #ddd2c5;
+  --color-outline: #737373;
+  --color-outline-variant: #e5e5e5;
 
   /* Secondary and Tertiary Colors */
-  --color-secondary: #7e8ea1;
-  --color-secondary-container: #d9e4f0;
-  --color-tertiary: #7b8668;
-  --color-tertiary-container: #dde5d1;
+  --color-secondary: #525252;
+  --color-secondary-container: #f5f5f5;
+  --color-tertiary: #737373;
+  --color-tertiary-container: #f0f0f0;
 
   /* Status Colors */
   --color-error: #BA1A1A;
@@ -47,14 +55,14 @@
   --color-info: #2563EB;
   --color-info-container: #DBEAFE;
 
-  /* Inverse Colors (for dark elements on light backgrounds) */
-  --color-inverse-surface: #28231f;
-  --color-inverse-on-surface: #f4eee6;
-  --color-inverse-primary: #dfab83;
+  /* Inverse Colors (primary buttons & emphasis on light bg) */
+  --color-inverse-surface: #171717;
+  --color-inverse-on-surface: #fafafa;
+  --color-inverse-primary: #a3a3a3;
 
   /* Brand and Accent Colors */
-  --color-brand: var(--color-primary);
-  --color-text-accent: var(--color-secondary);
+  --color-brand: #171717;
+  --color-text-accent: #404040;
 
   /* Fonts */
   --font-headline: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
@@ -69,14 +77,14 @@
   --titlebar-height: 40px;
 
   /* Surface aliases */
-  --color-surface-sidebar: #f3eee6;
-  --color-surface-elevated: rgba(255, 255, 255, 0.72);
+  --color-surface-sidebar: #f5f5f5;
+  --color-surface-elevated: rgba(255, 255, 255, 0.92);
   --color-surface-hover: var(--color-surface-container-high);
   --color-surface-selected: var(--color-surface-container);
-  --color-surface-user-msg: var(--color-surface-container);
-  --color-overlay: rgba(34, 30, 26, 0.48);
-  --color-scrim: rgba(20, 17, 16, 0.6);
-  --color-code-surface: rgba(47, 41, 35, 0.06);
+  --color-surface-user-msg: var(--color-surface-container-high);
+  --color-overlay: rgba(0, 0, 0, 0.45);
+  --color-scrim: rgba(0, 0, 0, 0.55);
+  --color-code-surface: rgba(0, 0, 0, 0.04);
   --color-control-thumb: var(--color-surface-container-lowest);
 
   /* Border aliases */
@@ -93,19 +101,19 @@
   --color-surface-info: var(--color-surface-container-low);
 
   /* Shadows */
-  --shadow-sm: 0 8px 20px rgba(47, 41, 35, 0.05);
-  --shadow-md: 0 16px 38px rgba(47, 41, 35, 0.08);
-  --shadow-lg: 0 24px 56px rgba(47, 41, 35, 0.11);
-  --shadow-dropdown: 0 12px 28px rgba(47, 41, 35, 0.08), 0 24px 64px rgba(47, 41, 35, 0.12);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 12px 28px rgba(0, 0, 0, 0.1);
+  --shadow-dropdown: 0 8px 24px rgba(0, 0, 0, 0.1), 0 16px 40px rgba(0, 0, 0, 0.08);
 
   /* Button colors */
-  --color-btn-primary-bg: var(--color-primary);
-  --color-btn-primary-fg: var(--color-on-primary);
+  --color-btn-primary-bg: var(--color-inverse-surface);
+  --color-btn-primary-fg: var(--color-inverse-on-surface);
   --color-btn-primary-bg-hover: var(--color-primary-container);
-  --color-btn-primary-bg-active: var(--color-primary);
+  --color-btn-primary-bg-active: #0a0a0a;
 
   /* Glass Tokens */
-  --bg-glass: rgba(255, 255, 255, 0.72);
+  --bg-glass: rgba(255, 255, 255, 0.88);
   --glass-blur: blur(20px);
   --glass-border: var(--color-border);
 
@@ -208,6 +216,16 @@
   --color-primary-fixed: #343434;
   --color-primary-fixed-dim: #2a2a2a;
   --color-on-primary: #121212;
+
+  --color-primary-soft: rgba(255, 255, 255, 0.08);
+  --color-primary-soft-hover: rgba(255, 255, 255, 0.12);
+  --color-primary-soft-border: rgba(255, 255, 255, 0.14);
+  --color-on-primary-soft: #f3f3f3;
+
+  --color-btn-primary-bg: var(--color-surface-selected);
+  --color-btn-primary-fg: var(--color-text-primary);
+  --color-btn-primary-bg-hover: var(--color-surface-hover);
+  --color-btn-primary-bg-active: var(--color-surface-selected);
 
   /* Inverse Colors (for light elements on dark backgrounds) */
   --color-inverse-surface: #f2f2f2;
@@ -331,7 +349,7 @@ select {
   cursor: pointer;
   transition: all var(--duration-fast) var(--ease-out);
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2387736D' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23525252' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 10px center;
   padding-right: 32px;
@@ -646,8 +664,8 @@ select option {
 }
 
 .toggle-switch input:checked + .toggle-slider {
-  background: var(--color-primary);
-  border-color: var(--color-primary);
+  background: var(--color-primary-container);
+  border-color: var(--color-primary-container);
 }
 
 .toggle-switch input:checked + .toggle-slider::before {

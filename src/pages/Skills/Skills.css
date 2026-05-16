@@ -142,9 +142,10 @@
   height: 0;
 }
 
+/* Shared sizing (colors follow theme below) */
 .skills-page .skill-toggle .toggle-slider {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.14);
+  background: var(--color-surface-container-high);
+  border: 1px solid var(--color-border);
 }
 
 .skills-page .skill-toggle .toggle-slider::before {
@@ -157,12 +158,45 @@
 }
 
 .skills-page .skill-toggle input:checked + .toggle-slider {
-  background: rgba(255, 255, 255, 0.94);
-  border-color: rgba(255, 255, 255, 0.94);
+  background: var(--color-primary-container);
+  border-color: var(--color-primary-container);
 }
 
 .skills-page .skill-toggle input:checked + .toggle-slider::before {
   transform: translateX(20px);
+  background-color: var(--color-control-thumb);
+}
+
+/* Light — align with global neutral toggle */
+[data-theme="light"] .skills-page .skill-toggle .toggle-slider,
+:root:not([data-theme="dark"]) .skills-page .skill-toggle .toggle-slider {
+  background: var(--color-surface-container-high);
+  border-color: var(--color-outline-variant);
+}
+
+[data-theme="light"] .skills-page .skill-toggle input:checked + .toggle-slider,
+:root:not([data-theme="dark"]) .skills-page .skill-toggle input:checked + .toggle-slider {
+  background: var(--color-inverse-surface);
+  border-color: var(--color-inverse-surface);
+}
+
+[data-theme="light"] .skills-page .skill-toggle input:checked + .toggle-slider::before,
+:root:not([data-theme="dark"]) .skills-page .skill-toggle input:checked + .toggle-slider::before {
+  background-color: var(--color-inverse-on-surface);
+}
+
+/* Dark — original high-contrast switch on dark cards */
+[data-theme="dark"] .skills-page .skill-toggle .toggle-slider {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+[data-theme="dark"] .skills-page .skill-toggle input:checked + .toggle-slider {
+  background: rgba(255, 255, 255, 0.94);
+  border-color: rgba(255, 255, 255, 0.94);
+}
+
+[data-theme="dark"] .skills-page .skill-toggle input:checked + .toggle-slider::before {
   background-color: #6f6f6f;
 }
 
