@@ -54,27 +54,27 @@
 
 ### Dashboard
 
-Intuitive display of core system metrics: total sessions, available skills, today's tasks, and token usage.
+Intuitive display of core system metrics: total sessions, available skills, today's tasks, and token usage. Includes system status checks, recent activity logs, and quick action shortcuts.
 
-![Dashboard](./public/screenshots/首页.png)
+![Dashboard](./public/screenshots/home.png)
 
-### Sessions Management
+### Session Workspace
 
-Powerful session management with time-based grouping, search, and quick switching - easily manage hundreds of conversations.
+Conversation workspace with Hermes Agent. Supports multi-session management, time-based grouping, and search. The input bar supports command auto-completion and file attachments.
 
-![Sessions Management](./public/screenshots/会话页.png)
+![Session Workspace](./public/screenshots/Session.png)
 
-### System Monitor
+### Quick Destinations
 
-Real-time system monitoring including gateway health, performance metrics, log viewing, and error rate statistics.
+One-stop access to all core modules: Chat, Skills, Tasks, File Browser, Platform Config, Gateway Monitor, MCP Extensions, and more.
 
-![System Monitor](./public/screenshots/监控页.png)
+![Quick Destinations](./public/screenshots/help.png)
 
-### Platform Configuration
+### Preferences
 
-Unified management of 8+ communication platform Agent connections: Telegram, Discord, Slack, WeChat, QQ, Feishu, and more.
+Customize app appearance and behavior: Light/Dark/System theme switching, Chinese/English language toggle, and navigation to low-frequency utility pages.
 
-![Platform Configuration](./public/screenshots/平台配置页.png)
+![Preferences](./public/screenshots/Preferences.png)
 
 ## Installation
 

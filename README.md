@@ -54,27 +54,27 @@
 
 ### 首页仪表盘
 
-直观展示系统核心指标：总会话数、可用技能数、今日任务、Token 使用量。
+直观展示系统核心指标：总会话数、可用技能数、今日任务、Token 使用量。包含系统状态检查、近期活动记录和快捷操作入口。
 
-![首页仪表盘](./public/screenshots/首页.png)
+![首页仪表盘](./public/screenshots/home.png)
 
-### 会话管理
+### 会话工作区
 
-强大的会话管理功能，支持按时间分组、搜索、快速切换，轻松管理数百个对话。
+与 Hermes Agent 的对话工作区，支持多会话管理、时间分组、搜索切换，底部输入框支持命令补全和文件附加。
 
-![会话管理](./public/screenshots/会话页.png)
+![会话工作区](./public/screenshots/Session.png)
 
-### 系统监控
+### 快捷导航
 
-实时监控系统运行状态，包括网关健康度、性能指标、日志查看、错误率统计。
+一站式访问所有核心功能模块：聊天、技能管理、定时任务、文件浏览、平台配置、网关监控、MCP 扩展等。
 
-![系统监控](./public/screenshots/监控页.png)
+![快捷导航](./public/screenshots/help.png)
 
-### 平台配置
+### 偏好设置
 
-统一管理 8+ 通讯平台的 Agent 接入：Telegram、Discord、Slack、微信、QQ、飞书等。
+自定义应用外观和行为：支持亮色/暗色/跟随系统主题切换，中英文语言切换，以及低频工具页面导航。
 
-![平台配置](./public/screenshots/平台配置页.png)
+![偏好设置](./public/screenshots/Preferences.png)
 
 ## 安装
 
